@@ -286,10 +286,15 @@ def cdr_modify(document_id: str, target: dict, changes: dict,
     target: {"index":1} / {"name":"cdr_ab12cd34"} / {"selection":true}
     changes 可用键：
       dx,dy（相对移动）｜x,y（绝对左下角）｜width,height[,keep_aspect]｜rotate
-      fill（纯色/渐变/纹理/"none"）｜outline（宽度或 {width,color,caps,join,behind_fill}）
+      fill（纯色/渐变/纹理/"none"）｜outline（宽度或
+        {width,color,caps,join,behind_fill,dash,start_arrow,end_arrow}）
       drop_shadow {opacity,offset_x,offset_y,color}｜contour {offset,steps}｜envelope 1..39
       text｜font｜size｜bold｜italic｜underline｜alignment
+      fit_to_path（{"name":"曲线对象"}）｜fit_frame（文本适应文本框）
       name｜to_front｜to_back｜duplicate[,dup_dx,dup_dy]｜delete
+
+    注：outline 的 dash / start_arrow / end_arrow 传的是 CorelDRAW 线条样式库与
+    箭头库的**索引**（实测 Outline.Style=数字会类型不匹配，必须赋对象）。
     """
     def _run():
         if not isinstance(changes, dict) or not changes:
@@ -309,12 +314,15 @@ def cdr_text(document_id: str, target: dict, text: str | None = None,
              font: str | None = None, size: float | None = None, bold: bool | None = None,
              italic: bool | None = None, underline: bool | None = None,
              alignment: str | None = None, to_curves: bool = False,
+             fit_to_path: dict | None = None, fit_frame: bool = False,
              expected_revision: int | None = None, snapshot_token: str | None = None,
              page_index: int | None = None) -> dict:
-    """文字的排版级操作：改内容、字体、字号、粗斜体、下划线、对齐、转曲。
+    """文字的排版级操作：改内容、字体、字号、粗斜体、下划线、对齐、沿路径、转曲。
 
-    与 cdr_modify 的区别：这里对「不是文字的对象」会直接报错，不会静默失败；
-    to_curves=true 可把文字转成曲线（发排前必做）。
+    Args:
+        fit_to_path: 让文字沿某条曲线排布，如 {"name": "cdr_ab12"}（指向一个曲线对象）
+        fit_frame: 段落文本内容超出文本框时，自动收缩字号以适配
+        to_curves: 转成曲线（发排前必做）
     """
     def _run():
         doc, sess = _with_doc(document_id)
@@ -322,6 +330,7 @@ def cdr_text(document_id: str, target: dict, text: str | None = None,
         result = _com(lambda _b: ops.set_text(
             doc, page_index, target, text=text, font=font, size=size, bold=bold,
             italic=italic, underline=underline, alignment=alignment, to_curves=to_curves,
+            fit_to_path=fit_to_path, fit_frame=fit_frame,
         ), label="cdr_text")
         return _commit(doc, sess, result, warnings)
 

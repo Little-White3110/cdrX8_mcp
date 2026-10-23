@@ -133,6 +133,29 @@ def main() -> int:
                   str(mod.get("applied")))
             state = mod["state"]
 
+    # ---------------- 5b. 虚线 / 箭头 / 文字沿路径 ----------------
+    print("\n[5b] 虚线描边 + 箭头 + 文字沿路径")
+    curve_s = next((s for s in shapes if s["type"] == "curve"), None)
+    if curve_s:
+        dash = server.cdr_modify(doc_id, target={"name": curve_s["name"]},
+                                 changes={"outline": {"width": 1.0, "dash": 5,
+                                                      "start_arrow": 2, "end_arrow": 3}},
+                                 expected_revision=state["revision"],
+                                 snapshot_token=state["snapshot_token"])
+        if no_error("cdr_modify(虚线+箭头)", dash):
+            check("虚线/箭头已应用", "outline" in dash.get("applied", []),
+                  f"applied={dash.get('applied')} warns={dash.get('warnings')}")
+            state = dash["state"]
+        if text_shape and curve_s:
+            onpath = server.cdr_text(doc_id, target={"name": text_shape["name"]},
+                                     fit_to_path={"name": curve_s["name"]},
+                                     expected_revision=state["revision"],
+                                     snapshot_token=state["snapshot_token"])
+            if no_error("cdr_text(fit_to_path)", onpath):
+                check("文字沿路径已应用", "fit_to_path" in onpath.get("applied", []),
+                      f"applied={onpath.get('applied')} warns={onpath.get('warnings')}")
+                state = onpath["state"]
+
     # ---------------- 6. 布尔运算与整形 ----------------
     print("\n[6] 布尔运算（weld / trim / intersect / fillet / to_curves）")
     seed = server.cdr_create(doc_id, items=[

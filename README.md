@@ -7,7 +7,7 @@
 
 > **已在真机验证**：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）+ Python 3.11.9 64 位
 > - 单元测试 **43 项通过**
-> - 端到端联调（真实 CorelDRAW）**31/31 通过**
+> - 端到端联调（真实 CorelDRAW）**33/33 通过**
 > - 能力边界来自对 `vgcoreauto.tlb` 的反解（692 个接口 / 6789 个方法）+ 逐项实跑
 
 ---
@@ -64,8 +64,8 @@ python -m cdrx8_mcp              # 启动 MCP 服务器（stdio）
 | 工具 | 作用 |
 |---|---|
 | `cdr_create` | 批量创建：矩形（含圆角）/ 椭圆（含圆弧、扇形）/ 多边形 / 星形 / 螺旋 / 网格 / 直线 / 贝塞尔 / 文字 / 段落文字 / 参考线 |
-| `cdr_modify` | 移动、缩放、旋转、填充（纯色/渐变/纹理/无色）、描边、投影、轮廓图、封套、改字、层级、复制、删除 |
-| `cdr_text` | 排版级文字操作：内容 / 字体 / 字号 / 粗斜体 / 下划线 / 对齐 / **转曲** |
+| `cdr_modify` | 移动、缩放、旋转、填充（纯色/渐变/纹理/无色）、描边（含**虚线**与**箭头**）、投影、轮廓图、封套、改字、层级、复制、删除 |
+| `cdr_text` | 排版级文字操作：内容 / 字体 / 字号 / 粗斜体 / 下划线 / 对齐 / **沿路径** / 文本框自适应 / **转曲** |
 | `cdr_replace_text` | 全文档文字替换（底层用 X8 原生 `Page.TextReplace`） |
 | `cdr_select` | 按名字 / 类型 / 矩形框选，加入选择集 |
 | `cdr_shape_ops` | **布尔与整形**：weld / trim / intersect / combine / group / ungroup / break_apart / to_curves / powerclip / fillet / chamfer / scallop |
@@ -121,8 +121,13 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 "fill": "none"                                     // 无色
 "outline": 0.8                                     // 宽度
 "outline": {"width":1,"color":"#000000","caps":1,"join":0,"behind_fill":true}
+"outline": {"width":1,"dash":5,"start_arrow":2,"end_arrow":3}   // 虚线 + 箭头（传库索引）
 "drop_shadow": {"opacity":60,"offset_x":3,"offset_y":-3,"color":"#444444"}
 ```
+
+> `dash` / `start_arrow` / `end_arrow` 传的是 CorelDRAW **线条样式库 / 箭头库的索引**
+> （实测必须赋 `app.OutlineStyles.Item(n)` / `app.ArrowHeads.Item(n)` 对象，直接给数字会「类型不匹配」）。
+> 索引与图案的对应关系取决于本机 CorelDRAW 安装，建议先试 2~8 找到想要的样式。
 
 ### 对象类型 ID
 
@@ -167,7 +172,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ---
 
-## X8 特有问题（14 条，全部实测）
+## X8 特有问题（15 条，全部实测）
 
 这些是 **X8 与 2024+ 的差异**，也是本项目存在的主要理由。
 
@@ -187,6 +192,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 | 12 | `Layer.Import` 必须三参 | `layer.Import(path, 0, app.CreateStructImportOptions())` | TypeError |
 | 13 | CDR 没有可用的 `ExportEx` 过滤器 | 存盘只能 `SaveAs` | "指定的过滤器 ID 无效" |
 | 14 | 没有 `SetActivePage` | `doc.Pages.Item(i).Activate()` | AttributeError |
+| 15 | **`Outline.Style` / 箭头不能直接给数字** | 赋 `app.OutlineStyles.Item(n)` / `app.ArrowHeads.Item(n)` 对象 | 类型不匹配 |
 
 改代码前请先读 [`src/cdrx8_mcp/constants.py`](src/cdrx8_mcp/constants.py) 里的注释。
 
@@ -195,8 +201,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 ## 已知限制（诚实清单）
 
 **做不到：**
-* **描边样式（虚线）与箭头没法设**：`Outline.Style = 1` / `StartArrow = 1` 都返回「类型不匹配」——X8 需要传对象而不是枚举，暂未打通
-* **立体化 / 透镜 不可用**：`CreateExtrude` / `CreateLens` 参数组合没试通；轮廓图、封套、投影已验证可用
+* **立体化 / 透镜 不可用**：`CreateExtrude` / `CreateLens` 参数组合没试通；轮廓图、封套、投影、虚线、箭头均已验证可用
 * **图案填充需要图案文件**：`ApplyPatternFill` 无文件时报错
 * **尺寸标注 / 表格 / 字形 / 刀刻 / 橡皮 / 网格填充 / 智能绘图**：对象模型层面就没有接口，只能用鼠标
 
@@ -213,11 +218,11 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ```powershell
 python -m pytest -q                # 43 项纯逻辑测试，任何平台可跑
-python scripts/live_smoke.py       # 31 项端到端，需要 CorelDRAW X8
+python scripts/live_smoke.py       # 33 项端到端，需要 CorelDRAW X8
 python scripts/live_smoke.py --keep   # 保留文档方便肉眼看效果
 ```
 
-联调覆盖：页面预设 → 多图元创建 → 文字排版 → 投影/描边 → weld/fillet → 框选/组合/解组 → 对齐 → 图层 → 查找 → 分页/预设 → 四格式导出（含 DPI 倍增校验）→ 导入 → 文字替换 → 存盘 → 撤销 → 过期 token 拒绝 → 关闭。
+联调覆盖：页面预设 → 多图元创建 → 文字排版 → 投影/描边 → **虚线+箭头** → **文字沿路径** → weld/fillet → 框选/组合/解组 → 对齐 → 图层 → 查找 → 分页/预设 → 四格式导出（含 DPI 倍增校验）→ 导入 → 文字替换 → 存盘 → 撤销 → 过期 token 拒绝 → 关闭。
 
 ---
 

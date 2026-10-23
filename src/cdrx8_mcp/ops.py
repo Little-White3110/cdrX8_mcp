@@ -676,7 +676,7 @@ def _apply_style(doc: Any, shape: Any, spec: dict) -> None:
     outline = spec.get("outline")
     if outline is not None:
         try:
-            apply_outline(shape, outline)
+            apply_outline(doc, shape, outline)
         except Exception:
             pass
 
@@ -732,8 +732,13 @@ def apply_fill(doc: Any, shape: Any, spec: Any) -> str:
     return "uniform"
 
 
-def apply_outline(shape: Any, spec: Any) -> None:
-    """描边：数字=宽度；或者 {width, color, caps, join, behind_fill}。"""
+def apply_outline(doc: Any, shape: Any, spec: Any) -> None:
+    """描边：数字=宽度；或者 {width, color, caps, join, behind_fill, dash, start_arrow, end_arrow}。
+
+    `dash` / `start_arrow` / `end_arrow` 传**索引**（CorelDRAW 线条样式库 / 箭头库的下标）。
+    实测：`Outline.Style = 1` 会「类型不匹配」，必须赋 `app.OutlineStyles.Item(n)` 对象；
+    箭头同理要赋 `app.ArrowHeads.Item(n)` 对象。
+    """
     if spec in (None, "none"):
         shape.Outline.SetNoOutline()
         return
@@ -746,6 +751,8 @@ def apply_outline(shape: Any, spec: Any) -> None:
     if spec.get("none"):
         shape.Outline.SetNoOutline()
         return
+
+    app = None
     if "width" in spec:
         shape.Outline.Width = float(spec["width"])
     if "color" in spec:
@@ -757,6 +764,16 @@ def apply_outline(shape: Any, spec: Any) -> None:
                 setattr(shape.Outline, attr, spec[key])
             except Exception:
                 pass
+
+    if spec.get("dash") is not None:
+        app = app or _app_of(doc)
+        shape.Outline.Style = app.OutlineStyles.Item(int(spec["dash"]))
+    if spec.get("start_arrow") is not None:
+        app = app or _app_of(doc)
+        shape.Outline.StartArrow = app.ArrowHeads.Item(int(spec["start_arrow"]))
+    if spec.get("end_arrow") is not None:
+        app = app or _app_of(doc)
+        shape.Outline.EndArrow = app.ArrowHeads.Item(int(spec["end_arrow"]))
 
 
 def _outline_color(shape: Any, color: Any) -> None:
@@ -855,7 +872,7 @@ def _apply_changes(doc: Any, shape: Any, changes: dict) -> dict:
 
     if "outline" in changes:
         try:
-            apply_outline(shape, changes["outline"])
+            apply_outline(doc, shape, changes["outline"])
             applied.append("outline")
         except Exception as exc:  # noqa: BLE001
             warnings.append(f"描边失败：{exc}")
@@ -895,6 +912,21 @@ def _apply_changes(doc: Any, shape: Any, changes: dict) -> dict:
             applied.append("text")
         except Exception as exc:  # noqa: BLE001
             warnings.append(f"改文字失败（该对象可能不是文字）：{exc}")
+
+    if changes.get("fit_to_path"):
+        try:
+            path_shape = find_shape(doc, doc.ActivePage, changes["fit_to_path"])
+            shape.Text.FitToPath(path_shape)
+            applied.append("fit_to_path")
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"文字沿路径失败：{exc}")
+
+    if changes.get("fit_frame"):
+        try:
+            shape.Text.FitTextToFrame()
+            applied.append("fit_frame")
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"文本适应文本框失败：{exc}")
 
     for key, prop in (("font", "Font"), ("size", "Size"), ("bold", "Bold"),
                       ("italic", "Italic"), ("underline", "Underline"),
@@ -1085,6 +1117,7 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
              font: str | None = None, size: float | None = None, bold: bool | None = None,
              italic: bool | None = None, underline: bool | None = None,
              alignment: str | None = None, to_curves: bool = False,
+             fit_to_path: dict | None = None, fit_frame: bool = False,
              label: str = "cdr_text") -> dict:
     with mm_units(doc):
         page = _page(doc, page_index)
@@ -1113,6 +1146,19 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
                     applied.append("alignment")
                 except Exception as exc:  # noqa: BLE001
                     warnings.append(f"对齐设置失败（X8 该文字对象不支持）：{exc}")
+            if fit_to_path:
+                try:
+                    path_shape = find_shape(doc, _page(doc, page_index), fit_to_path)
+                    shape.Text.FitToPath(path_shape)
+                    applied.append("fit_to_path")
+                except Exception as exc:  # noqa: BLE001
+                    warnings.append(f"文字沿路径失败：{exc}")
+            if fit_frame:
+                try:
+                    shape.Text.FitTextToFrame()
+                    applied.append("fit_frame")
+                except Exception as exc:  # noqa: BLE001
+                    warnings.append(f"文本适应文本框失败：{exc}")
             if to_curves:
                 shape.ConvertToCurves()
                 applied.append("to_curves")

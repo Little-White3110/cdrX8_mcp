@@ -26,6 +26,9 @@
 | 加标题文字、改字体字号 | `cdr_create(type="text")` / `cdr_text` |
 | 换配色、上渐变 | `cdr_modify(changes={"fill":{...}})` |
 | 加投影、轮廓图、封套 | `cdr_modify(changes={"drop_shadow"/"contour"/"envelope"})` |
+| 虚线、加箭头 | `cdr_modify(changes={"outline":{"dash":5,"start_arrow":2,"end_arrow":3}})` |
+| 文字沿曲线 | `cdr_text(target=文字, fit_to_path={"name":"曲线对象"})` |
+| 段落文字溢出 | `cdr_text(target=文字, fit_frame=true)` |
 | 两个形状焊接/修剪/相交 | `cdr_shape_ops(op="weld"/"trim"/"intersect", target, other)` |
 | 组合/解组 | `cdr_select` → `cdr_shape_ops(op="group"/"combine")`；解组用 `op="ungroup"` + `target` |
 | 圆角/倒角/扇贝 | `cdr_shape_ops(op="fillet"/"chamfer"/"scallop", radius=...)` |
