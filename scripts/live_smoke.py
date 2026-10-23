@@ -86,15 +86,17 @@ def main() -> int:
         {"type": "line", "x1": 10, "y1": 60, "x2": 90, "y2": 60},
         {"type": "bezier", "x1": 100, "y1": 60, "c1x": 120, "c1y": 80,
          "c2x": 140, "c2y": 40, "x2": 160, "y2": 60},
+        {"type": "polyline", "points": [[10, 70], [50, 70], [50, 85], [10, 85]],
+         "closed": True, "fill": "#E0B000"},
         {"type": "text", "x": 10, "y": 90, "text": "CorelDRAW X8", "font": "Arial",
          "size": 24, "bold": True, "fill": "#000000"},
         {"type": "guide", "x1": 0, "y1": 120, "x2": 210, "y2": 120},
     ]
     cre = server.cdr_create(doc_id, items, expected_revision=state["revision"],
                             snapshot_token=state["snapshot_token"])
-    if not no_error("cdr_create(7 项)", cre):
+    if not no_error("cdr_create(8 项)", cre):
         return 1
-    check("创建 7 项", cre.get("count") == 7, str(cre.get("count")))
+    check("创建 8 项", cre.get("count") == 8, str(cre.get("count")))
     state = cre["state"]
 
     insp = server.cdr_inspect(doc_id)

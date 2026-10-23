@@ -726,7 +726,7 @@ def selection_range(doc: Any) -> Any:
 # --------------------------------------------------------------------------- #
 CREATABLE = (
     "rectangle", "ellipse", "polygon", "spiral", "grid", "line", "bezier",
-    "text", "paragraph_text", "guide",
+    "polyline", "text", "paragraph_text", "guide",
 )
 
 
@@ -804,6 +804,21 @@ def _create_one(doc: Any, layer: Any, item: dict) -> Any:
             float(g("c2x", 7)), float(g("c2y", 7)),
             float(g("x2", 10)), float(g("y2", 10)),
         )
+    elif kind in {"polyline", "points", "path"}:
+        pts = item.get("points") or []
+        if len(pts) < 2:
+            raise CdrBadArgument("polyline 需要 points：[[x,y], [x,y], ...] 至少 2 个点")
+        x0, y0 = float(pts[0][0]), float(pts[0][1])
+        # X8 没有"创建空曲线"的入口（CreateCurve 必须给 Source），
+        # 所以用一个**退化线段**（起止点重合）当载体，再往里加子路径。
+        shape = layer.CreateCurveSegment2(x0, y0, x0, y0, x0, y0, x0, y0)
+        sub = shape.Curve.CreateSubPath(x0, y0)
+        for point in pts[1:]:
+            sub.AppendLineSegment(float(point[0]), float(point[1]))
+        closed = bool(item.get("closed", True))
+        if closed:
+            sub.AppendLineSegment(x0, y0)
+        sub.Closed = closed
     elif kind in {"text", "artistic_text"}:
         shape = layer.CreateArtisticText(
             float(g("x", 0)), float(g("y", 0)), str(g("text", "")),

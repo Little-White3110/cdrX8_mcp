@@ -109,6 +109,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 | `grid` | `left,top,right,bottom,cols,rows`（生成的是曲线组合体） |
 | `line` | `x1,y1,x2,y2` |
 | `bezier` | `x1,y1,c1x,c1y,c2x,c2y,x2,y2` |
+| `polyline` | `points:[[x,y],…]` + `closed`（默认 true）—— 任意多边形/折线，逐点连线 |
 | `text` | `x,y,text[,font,size,bold,italic,underline,align]` |
 | `paragraph_text` | `x,y,x2,y2,text[,…]` |
 | `guide` | `x1,y1,x2,y2`（参考线，不算图形） |

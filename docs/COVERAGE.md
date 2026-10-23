@@ -25,7 +25,7 @@
 | `IVGFill` | 13 | 已用：ApplyUniformFill / ApplyFountainFill / ApplyTextureFill / ApplyNoFill；Pattern·PostScript·Hatch 需外部文件或库 |
 | `IVGOutline` | 9 | 已用：Width / Color / Style(赋对象) / StartArrow·EndArrow(赋对象) / LineCaps / LineJoin / BehindFill / ScaleWithShape / SetNoOutline |
 | `IVGCurve` | 37 | 已用：Length / Area / SubPaths / Contour / CreateSubPath / GetCopy |
-| `IVGSubPath` | 39 | 只读能力未封装（曲线点集在 pywin32 里取不回来，见下文） |
+| `IVGSubPath` | 39 | 已用：CreateSubPath / AppendLineSegment / Closed（用于 `cdr_create(type="polyline")` 逐点构建任意多边形）；求交/等分等未用 |
 | `IVGNode` | 19 | **未覆盖**：类型库中没有任何 `.Nodes` 访问器，拿不到节点集合 |
 | `IVGText` | 30 | 已用：Story / GetSpaceProperties / SetSpaceProperties / GetAlignProperties / SetAlignProperties / FitToPath / FitTextToFrame |
 | `IVGTextRange` | 35 | 已用：Text / Font / Size / Bold / Italic / Underline / ChangeCase / ApplyBulletEffect / ApplyDropCapEffect / ApplyNoEffect / InsertBefore / InsertAfter |

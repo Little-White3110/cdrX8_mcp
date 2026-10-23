@@ -258,6 +258,7 @@ def cdr_create(document_id: str, items: list[dict],
       * grid:      left,top,right,bottom,cols,rows
       * line:      x1,y1,x2,y2
       * bezier:    x1,y1,c1x,c1y,c2x,c2y,x2,y2
+      * polyline:  points:[[x,y],…][,closed] —— 任意多边形/折线（逐点连线）
       * text:      x,y,text[,font,size,bold,italic,underline,align]
       * paragraph_text: x,y,x2,y2,text[,font,size,align]
       * guide:     x1,y1,x2,y2（参考线，不是形状）
