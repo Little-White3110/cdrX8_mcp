@@ -1,0 +1,22 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- 本地产物 ---
+out/
+*.log
+cdr_out_*/
+_discovery.py
+
+# --- 编辑器 ---
+.vscode/
+.idea/
+.DS_Store

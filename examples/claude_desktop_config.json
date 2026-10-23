@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "coreldraw-x8": {
+      "command": "C:\\Python311\\python.exe",
+      "args": ["-m", "cdrx8_mcp"],
+      "env": {
+        "CDR_ALLOWED_ROOTS": "D:\\design\\out",
+        "CDR_STRICT_REVISION": "1",
+        "CDR_TIMEOUT": "60"
+      }
+    }
+  }
+}

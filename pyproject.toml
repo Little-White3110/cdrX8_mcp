@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cdrx8-mcp"
+version = "0.1.0"
+description = "MCP server that lets AI agents drive CorelDRAW X8 (v18) through its COM object model"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "cdrX8_mcp contributors" }]
+keywords = ["mcp", "coreldraw", "com", "automation", "agent", "windows"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Operating System :: Microsoft :: Windows",
+  "Topic :: Multimedia :: Graphics",
+]
+dependencies = [
+  "mcp>=1.2.0",
+  "pywin32>=306; sys_platform == 'win32'",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[project.scripts]
+cdrx8-mcp = "cdrx8_mcp.server:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
