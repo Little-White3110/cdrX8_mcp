@@ -1,52 +1,69 @@
-"""CorelDRAW X8（v18）实测常量。
+"""CorelDRAW **X8 (v18)** 实测常量。
 
-本文件里的每个数字都是在 CorelDRAW Graphics Suite X8 18.0.0.450 上实跑得出的，
-**不要凭 CorelDRAW 新版文档或网络示例修改**——X8 与 2024+ 的差异见 README「X8 差异」。
+本文件所有数字都来自 18.0.0.450 真机实测（并已与 vgcoreauto.tlb 反解结果核对），
+**不要照 CorelDRAW 新版文档改**。详见 README「X8 差异」。
+
+实测来源摘要：
+* 单位枚举：以 A4(210x297mm) 默认文档标定 —— 1=in, 2=ft, 3=mm, 4=cm, 5=px, 7=m
+* 形状类型：CreateRectangle2→1, CreateEllipse2→2,
+  CreateCurveSegment2/CreateLineSegment/CreateSpiral→3,
+  CreatePolygon2→4, CreateArtisticText→6, CreateGridBoxes→7
+* 导出过滤器：802=PNG, 774=JPG, 1345=SVG 可用；EPS/AI/CDR 无可用 ID
 """
 
 from __future__ import annotations
 
-# ProgID 探测顺序：先无版本号（跟随最后注册者），再逐个主版本回退。
-# X8 = 18。范围覆盖 X6(16) ~ 2026(27)，便于同一份代码跨机使用。
 PROGIDS: tuple[str, ...] = ("CorelDRAW.Application",) + tuple(
     f"CorelDRAW.Application.{v}" for v in range(27, 15, -1)
 )
 
 # ---- 单位 ----
-# 实测标定（以 A4 = 210×297mm 的默认文档为基准）：
-#   1 -> 8.27×11.69  英寸
-#   2 -> 0.689×0.974 英尺      ← 不是毫米！误用会让尺寸放大 304.8 倍
-#   3 -> 210×297     毫米      ← 本项目统一使用
-#   4 -> 21×29.7     厘米      ← 误用会让尺寸放大 10 倍
-#   5 -> 2480×3507   像素(300dpi)
-#   7 -> 0.21×0.297  米
 UNIT_MM = 3
 UNIT_NAMES: dict[int, str] = {1: "in", 2: "ft", 3: "mm", 4: "cm", 5: "px", 6: "unknown", 7: "m"}
 
-# ---- 导出过滤器 ID ----
-# 实测可用：802=PNG、1345=SVG。CDR 本身没有可用的 ExportEx 过滤器
-# （500/501/399 均返回「指定的过滤器 ID 无效」），存盘必须走 Document.SaveAs。
+# ---- 导出过滤器（实测可用）----
 FILTER_PNG = 802
+FILTER_JPG = 774
 FILTER_SVG = 1345
-FILTER_UNSUPPORTED = {500, 501, 399}
+EXPORT_FILTERS: dict[str, int] = {"png": FILTER_PNG, "jpg": FILTER_JPG, "svg": FILTER_SVG}
+EXPORT_RANGE_CURRENT_PAGE = 1
+EXPORT_RANGE_SELECTION = 2
 
 # ---- 形状类型 ----
-# 实测：矩形=1、椭圆=2、艺术字与段落文字都是 6。
 SHAPE_TYPES: dict[int, str] = {
     1: "rectangle",
     2: "ellipse",
     3: "curve",
-    4: "line",
-    5: "polygon",
+    4: "polygon",
     6: "text",
+    7: "group",     # 实测：组合体与「图纸网格」都是 7（网格本质就是一组曲线）
+    9: "guide",
 }
 TEXT_TYPE = 6
 
-# ---- 导出范围 ----
-EXPORT_RANGE_CURRENT_PAGE = 1
+# ---- 常用页面尺寸（CorelDRAW 内置名称；"名片" 实测可用）----
+PAGE_PRESETS: dict[str, str] = {
+    "a0": "A0", "a1": "A1", "a2": "A2", "a3": "A3", "a4": "A4", "a5": "A5",
+    "letter": "Letter", "legal": "Legal", "tabloid": "Tabloid",
+    "card": "名片", "business_card": "名片",
+}
+
+# ---- 对齐方法 ID（ShapeRange.AlignAndDistribute 的 MethodH / MethodV）----
+ALIGN_NONE = 0
+ALIGN_MIN = 1      # 左 / 下
+ALIGN_CENTER = 2   # 居中
+ALIGN_MAX = 3      # 右 / 上
+ALIGN_SPACE = 4    # 等间距分布
+ALIGN_TO_SELECTION = 0
+ALIGN_TO_PAGE = 1
+
+# ---- 效果 ----
+DROP_SHADOW_FLAT = 1
+ENVELOPE_PRESET_MIN = 1
+ENVELOPE_PRESET_MAX = 39
 
 # ---- 默认值 ----
-DEFAULT_TIMEOUT_S = 60.0       # 单次 COM 调用超时
-DEFAULT_STARTUP_TIMEOUT_S = 180.0  # 启动 CorelDRAW + 建文档可能较慢
-DEFAULT_EXPORT_TIMEOUT_S = 180.0   # PDF 首次发布实测 11~20s，留足余量
+DEFAULT_TIMEOUT_S = 60.0
+DEFAULT_STARTUP_TIMEOUT_S = 180.0
+DEFAULT_EXPORT_TIMEOUT_S = 180.0
 NAME_PREFIX = "cdr_"
