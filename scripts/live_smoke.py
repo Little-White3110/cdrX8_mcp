@@ -157,6 +157,76 @@ def main() -> int:
                       f"applied={onpath.get('applied')} warns={onpath.get('warnings')}")
                 state = onpath["state"]
 
+    # ---------------- 5c. 透明度 / 翻转 / 斜切 / 灰度 ----------------
+    print("\n[5c] 透明度 / 翻转 / 斜切 / 克隆 / 灰度色")
+    if rect:
+        extra = server.cdr_modify(doc_id, target={"name": rect["name"]},
+                                  changes={"transparency": 40, "flip": 0, "skew": {"x": 3},
+                                           "fill": {"gray": 30}},
+                                  expected_revision=state["revision"],
+                                  snapshot_token=state["snapshot_token"])
+        if no_error("cdr_modify(透明/翻转/斜切/灰度)", extra):
+            check("四项变换均生效",
+                  all(k in extra.get("applied", [])
+                      for k in ("transparency:uniform", "flip", "skew", "fill:uniform")),
+                  f"applied={extra.get('applied')}")
+            state = extra["state"]
+
+    # ---------------- 5d. 段落文字进阶 ----------------
+    print("\n[5d] 段落文字：大小写 / 行距 / 项目符号")
+    para = server.cdr_create(doc_id, items=[
+        {"type": "paragraph_text", "x": 120, "y": 20, "x2": 200, "y2": 90,
+         "text": "line one\nline two", "font": "Arial", "size": 10}],
+        expected_revision=state["revision"], snapshot_token=state["snapshot_token"])
+    if no_error("创建段落文字", para):
+        state = para["state"]
+        pname = para["created"][0]["name"]
+        t1 = server.cdr_text(doc_id, target={"name": pname}, change_case="upper",
+                             line_spacing=150, expected_revision=state["revision"],
+                             snapshot_token=state["snapshot_token"])
+        if no_error("cdr_text(大写+行距)", t1):
+            check("大小写/行距已应用",
+                  "change_case" in t1.get("applied", []) and "spacing" in t1.get("applied", []),
+                  f"applied={t1.get('applied')}")
+            check("文本确实变成大写", "LINE" in (t1.get("text") or "").upper(),
+                  (t1.get("text") or "")[:24])
+            state = t1["state"]
+        t2 = server.cdr_text(doc_id, target={"name": pname}, bullet="•",
+                             expected_revision=state["revision"],
+                             snapshot_token=state["snapshot_token"])
+        if no_error("cdr_text(项目符号)", t2):
+            check("项目符号已应用", "bullet" in t2.get("applied", []),
+                  f"applied={t2.get('applied')} warns={t2.get('warnings')}")
+            state = t2["state"]
+
+    # ---------------- 5e. 路径偏移 + 对象锁定 ----------------
+    print("\n[5e] 路径偏移 / 锁定")
+    if curve_s:
+        pi = server.cdr_path(doc_id, target={"name": curve_s["name"]}, action="info")
+        if no_error("cdr_path(info)", pi):
+            check("能读曲线长度与子路径", (pi.get("length") or 0) > 0,
+                  f"length={pi.get('length')} subpaths={pi.get('subpaths')}")
+        pc = server.cdr_path(doc_id, target={"name": curve_s["name"]}, action="contour",
+                             offset=2, expected_revision=state["revision"],
+                             snapshot_token=state["snapshot_token"])
+        if no_error("cdr_path(contour)", pc):
+            check("偏移出新曲线", pc.get("created") is not None, str(pc.get("created")))
+            state = pc["state"]
+    if rect:
+        lk = server.cdr_modify(doc_id, target={"name": rect["name"]},
+                               changes={"locked": True},
+                               expected_revision=state["revision"],
+                               snapshot_token=state["snapshot_token"])
+        if no_error("cdr_modify(locked)", lk):
+            check("锁定已应用", "locked" in lk.get("applied", []), str(lk.get("applied")))
+            state = lk["state"]
+            ul = server.cdr_modify(doc_id, target={"name": rect["name"]},
+                                   changes={"locked": False},
+                                   expected_revision=state["revision"],
+                                   snapshot_token=state["snapshot_token"])
+            if no_error("cdr_modify(unlock)", ul):
+                state = ul["state"]
+
     # ---------------- 6. 布尔运算与整形 ----------------
     print("\n[6] 布尔运算（weld / trim / intersect / fillet / to_curves）")
     seed = server.cdr_create(doc_id, items=[
@@ -262,6 +332,12 @@ def main() -> int:
         check("A5 = 148x210mm", pres.get("width_mm") == 148.0 and pres.get("height_mm") == 210.0,
               f"{pres.get('width_mm')}x{pres.get('height_mm')}")
         state = pres["state"]
+    guides = server.cdr_pages(doc_id, action="guides", page_index=1)
+    if no_error("cdr_pages:guides", guides):
+        check("能列出参考线", "count" in guides, f"count={guides.get('count')}")
+    bounds = server.cdr_pages(doc_id, action="bounds", page_index=1)
+    if no_error("cdr_pages:bounds", bounds):
+        check("能读对象总包围盒", bool(bounds.get("bbox")), str(bounds.get("bbox")))
 
     # ---------------- 12. 导出（含 DPI） ----------------
     print("\n[12] 导出（切回第 1 页，png@150dpi / jpg / svg / pdf）")
@@ -302,6 +378,27 @@ def main() -> int:
             check("导入增加了对象", imp.get("shapes_added", 0) >= 1,
                   str(imp.get("shapes_added")))
             state = imp["state"]
+            # 位图：先找出 type_id=5 的对象
+            bmp = server.cdr_find(doc_id, type_id=5)
+            if bmp.get("count"):
+                bname = bmp["shapes"][0]["name"]
+                bi = server.cdr_bitmap(doc_id, target={"name": bname}, action="info")
+                if no_error("cdr_bitmap(info)", bi):
+                    check("读到位图信息", bool(bi.get("dpi") or bi.get("pixels")),
+                          f"pixels={bi.get('pixels')} dpi={bi.get('dpi')} mode={bi.get('mode')}")
+                bc = server.cdr_bitmap(doc_id, target={"name": bname}, action="convert",
+                                       mode="gray", expected_revision=state["revision"],
+                                       snapshot_token=state["snapshot_token"])
+                if no_error("cdr_bitmap(convert gray)", bc):
+                    check("转灰度成功", bc.get("mode") == 3, f"mode={bc.get('mode')}")
+                    state = bc["state"]
+                br = server.cdr_bitmap(doc_id, target={"name": bname}, action="resample",
+                                       width=300, height=300, dpi=150,
+                                       expected_revision=state["revision"],
+                                       snapshot_token=state["snapshot_token"])
+                if no_error("cdr_bitmap(resample)", br):
+                    check("重采样成功", bool(br.get("pixels")), f"pixels={br.get('pixels')}")
+                    state = br["state"]
 
     # ---------------- 14. 替换文字 ----------------
     print("\n[14] 全文档文字替换")
@@ -321,6 +418,9 @@ def main() -> int:
     un = server.cdr_undo(doc_id, steps=1)
     if no_error("cdr_undo", un):
         check("撤销成功", un.get("undone", 0) >= 1, str(un.get("undone")))
+    rd = server.cdr_undo(doc_id, steps=1, redo=True)
+    if no_error("cdr_undo(redo)", rd):
+        check("重做成功", rd.get("redone", 0) >= 1, str(rd.get("redone")))
 
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")

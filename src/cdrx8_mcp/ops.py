@@ -189,16 +189,16 @@ def save_as(doc: Any, path: str) -> dict:
     }
 
 
-def undo(doc: Any, steps: int = 1) -> dict:
+def undo(doc: Any, steps: int = 1, *, redo: bool = False) -> dict:
     n = max(1, int(steps))
     done = 0
     for _ in range(n):
         try:
-            doc.Undo()
+            doc.Redo(1) if redo else doc.Undo()
             done += 1
         except Exception:
             break
-    return {"undone": done}
+    return {"redone" if redo else "undone": done}
 
 
 def close_document(doc: Any, save: bool = False) -> dict:
@@ -299,6 +299,190 @@ def add_pages(doc: Any, count: int = 1) -> dict:
 def delete_page(doc: Any, index: int) -> dict:
     doc.DeletePages(int(index), 1)
     return {"pages": _n(lambda: int(doc.Pages.Count))}
+
+
+def list_guides(doc: Any, page_index: int | None = None) -> dict:
+    """列出参考线（X8 的 GetGuides 返回对象，这里尽量解析成坐标）。"""
+    with mm_units(doc):
+        page = _page(doc, page_index)
+        guides = page.GetGuides(0)
+        out: list[dict] = []
+        count = _n(lambda: int(guides.Count), 0)
+        for i in range(1, count + 1):
+            item = _s(lambda i=i: guides.Item(i))
+            if item is None:
+                continue
+            out.append({
+                "index": i,
+                "horizontal": _s(lambda it=item: bool(it.Horizontal)),
+                "position": _round(_s(lambda it=item: float(it.Position))),
+                "type": _s(lambda it=item: int(it.Type)),
+            })
+        return {"count": len(out), "guides": out}
+
+
+def unlock_all(doc: Any, page_index: int | None = None) -> dict:
+    with mm_units(doc):
+        page = _page(doc, page_index)
+        page.UnlockAllShapes()
+        return {"unlocked": True}
+
+
+def objects_bounds(doc: Any, page_index: int | None = None,
+                   selected_only: bool = False) -> dict:
+    """本页所有对象（或当前选中对象）的总包围盒。
+
+    实测：`Page.GetObjectsBoundingBox()` 返回的是 `IVGRect` 对象，而 `IVGRect.GetRect()`
+    的四个出参 pywin32 取不回来，所以这里直接遍历对象自己求并集，结果可预期。
+    """
+    with mm_units(doc):
+        page = _page(doc, page_index)
+        boxes: list[dict] = []
+        if selected_only:
+            sel = doc.Selection().Shapes
+            for i in range(1, int(sel.Count) + 1):
+                box = _bbox(sel.Item(i))
+                if box:
+                    boxes.append(box)
+        else:
+            for _idx, _li, _j, shape in _iter_page_shapes(page):
+                box = _bbox(shape)
+                if box:
+                    boxes.append(box)
+        if not boxes:
+            return {"bbox": None, "count": 0}
+        left = min(b["x"] for b in boxes)
+        bottom = min(b["y"] for b in boxes)
+        right = max(b["x"] + b["width"] for b in boxes)
+        top = max(b["y"] + b["height"] for b in boxes)
+        return {
+            "count": len(boxes),
+            "bbox": {
+                "x": _round(left), "y": _round(bottom),
+                "width": _round(right - left), "height": _round(top - bottom),
+            },
+        }
+
+
+# --------------------------------------------------------------------------- #
+# 位图
+# --------------------------------------------------------------------------- #
+BITMAP_MODES = {"rgb": 1, "cmyk": 2, "gray": 3, "grayscale": 3, "bw": 4, "blackwhite": 4}
+BITMAP_ACTIONS = ("info", "convert", "resample", "crop", "reset_crop")
+
+
+def _bitmap_of(shape: Any) -> Any:
+    try:
+        bmp = shape.Bitmap
+        if bmp is not None:
+            return bmp
+    except Exception:
+        pass
+    raise CdrBadArgument("目标不是位图对象（type_id 应为 5）")
+
+
+def bitmap_action(doc: Any, page_index: int | None, target: dict, action: str, *,
+                  mode: str | None = None, width: float | None = None,
+                  height: float | None = None, dpi: float | None = None,
+                  anti_alias: bool = True, label: str = "cdr_bitmap") -> dict:
+    """位图处理。
+
+    实测可用：ConvertTo（RGB/CMYK/灰度/黑白）、Resample（尺寸+分辨率）、Crop、ResetCropEnvelope。
+    **PowerTRACE（Bitmap.Trace）不提供**：实测会让 CorelDRAW 卡成「无响应」（模态对话框），
+    COM 无法中断，会把调用方一起拖死。
+    """
+    act = (action or "info").lower()
+    if act not in BITMAP_ACTIONS:
+        raise CdrBadArgument(f"未知 action {action!r}；可用：{', '.join(BITMAP_ACTIONS)}")
+
+    with mm_units(doc):
+        page = _page(doc, page_index)
+        shape = find_shape(doc, page, target)
+        bmp = _bitmap_of(shape)
+
+        def info() -> dict:
+            return {
+                "bbox": _bbox(shape),
+                "pixels": [_round(_s(lambda: float(bmp.SizeWidth))),
+                           _round(_s(lambda: float(bmp.SizeHeight)))],
+                "dpi": _round(_s(lambda: float(bmp.ResolutionX))),
+                "mode": _n(lambda: int(bmp.Mode)),
+            }
+
+        if act == "info":
+            return {"action": act, **info()}
+
+        with atomic(doc, label):
+            if act == "convert":
+                key = str(mode or "").lower().replace("-", "").replace("_", "")
+                if key not in BITMAP_MODES:
+                    raise CdrBadArgument(
+                        f"未知颜色模式 {mode!r}；可用 rgb / cmyk / gray / bw")
+                bmp.ConvertTo(BITMAP_MODES[key])
+            elif act == "resample":
+                bmp.Resample(float(width or 0), float(height or 0), bool(anti_alias),
+                             float(dpi or 0), float(dpi or 0))
+            elif act == "crop":
+                bmp.Crop()
+            elif act == "reset_crop":
+                bmp.ResetCropEnvelope()
+    return {"action": act, **info()}
+
+
+# --------------------------------------------------------------------------- #
+# 路径（曲线）
+# --------------------------------------------------------------------------- #
+PATH_ACTIONS = ("info", "contour", "add_subpath", "polyline")
+
+
+def path_ops(doc: Any, page_index: int | None, target: dict, action: str, *,
+             offset: float = 1.0, direction: int = 0, x: float | None = None,
+             y: float | None = None, precision: int = 50,
+             label: str = "cdr_path") -> dict:
+    """曲线级操作：读长度/面积/子路径、偏移轮廓（做刀模/切割线）、追加子路径、取折线点。"""
+    act = (action or "info").lower()
+    if act not in PATH_ACTIONS:
+        raise CdrBadArgument(f"未知 action {action!r}；可用：{', '.join(PATH_ACTIONS)}")
+
+    with mm_units(doc):
+        page = _page(doc, page_index)
+        shape = find_shape(doc, page, target)
+        curve = _s(lambda: shape.Curve)
+        if curve is None:
+            raise CdrBadArgument("目标不是曲线对象（可先用 cdr_shape_ops(op='to_curves') 转曲）")
+
+        def info() -> dict:
+            return {
+                "length": _round(_s(lambda: float(curve.Length))),
+                "area": _round(_s(lambda: float(curve.Area))),
+                "subpaths": _n(lambda: int(curve.SubPaths.Count)),
+                "bbox": _bbox(shape),
+            }
+
+        if act == "info":
+            return {"action": act, **info()}
+        if act == "polyline":
+            try:
+                pts = tuple(curve.GetPolyline(int(precision)))
+                return {"action": act, "points": [_round(p) for p in pts[:200]],
+                        "count": len(pts)}
+            except Exception:
+                return {"action": act, "points": [],
+                        "note": "该曲线无法取折线点（pywin32 取不到变体数组）"}
+        with atomic(doc, label):
+            if act == "contour":
+                # 实测：Curve.Contour 返回的是一条**未绑定到页面的曲线**，
+                # 必须再用 Layer.CreateCurve(源) 才会变成页面上的对象。
+                new_curve = curve.Contour(float(offset))
+                new_shape = _active_layer(page).CreateCurve(new_curve)
+                return {"action": act, "offset": offset,
+                        "created": _s(lambda: str(new_shape.Name)) if new_shape is not None else None,
+                        "bbox": _bbox(new_shape) if new_shape is not None else None}
+            if act == "add_subpath":
+                if x is None or y is None:
+                    raise CdrBadArgument("add_subpath 需要 x 与 y")
+                curve.CreateSubPath(float(x), float(y))
+    return {"action": act, **info()}
 
 
 # --------------------------------------------------------------------------- #
@@ -797,8 +981,17 @@ def _outline_color(shape: Any, color: Any) -> None:
 
 
 def _color(doc: Any, spec: Any) -> Any:
+    """支持 #RRGGBB / {c,m,y,k} / {r,g,b} / {gray} / {lab} / {hls} / "registration"。
+
+    X8 实测可用：CreateRGBColor / CreateCMYKColor / CreateGrayColor / CreateLabColor /
+    CreateHLSColor / CreateRegistrationColor。**专色（CreateSpotColor）需要本机调色板 ID，
+    没有可靠入口，故不支持。**
+    """
     app = _app_of(doc)
     if isinstance(spec, str):
+        s = spec.strip().lower()
+        if s in {"registration", "套版色", "#registration"}:
+            return app.CreateRegistrationColor()
         r, g, b = _hex_to_rgb(spec)
         return app.CreateRGBColor(r, g, b)
     if isinstance(spec, dict):
@@ -807,7 +1000,46 @@ def _color(doc: Any, spec: Any) -> Any:
                 int(spec["c"]), int(spec["m"]), int(spec["y"]), int(spec["k"]))
         if all(k in spec for k in ("r", "g", "b")):
             return app.CreateRGBColor(int(spec["r"]), int(spec["g"]), int(spec["b"]))
-    raise CdrBadArgument('颜色需为 "#RRGGBB" 或 {c,m,y,k} 或 {r,g,b}')
+        if "gray" in spec:
+            return app.CreateGrayColor(float(spec["gray"]))
+        lab = spec.get("lab")
+        if isinstance(lab, (list, tuple)) and len(lab) == 3:
+            return app.CreateLabColor(float(lab[0]), float(lab[1]), float(lab[2]))
+        if all(k in spec for k in ("l", "a", "b")):
+            return app.CreateLabColor(float(spec["l"]), float(spec["a"]), float(spec["b"]))
+        hls = spec.get("hls")
+        if isinstance(hls, (list, tuple)) and len(hls) == 3:
+            return app.CreateHLSColor(float(hls[0]), float(hls[1]), float(hls[2]))
+        if all(k in spec for k in ("h", "l", "s")):
+            return app.CreateHLSColor(float(spec["h"]), float(spec["l"]), float(spec["s"]))
+    raise CdrBadArgument(
+        '颜色需为 "#RRGGBB" / {c,m,y,k} / {r,g,b} / {"gray":50} / {"lab":[l,a,b]} / '
+        '{"hls":[h,l,s]} / "registration"')
+
+
+def _apply_transparency(doc: Any, shape: Any, spec: Any) -> str:
+    """透明：数字=均匀透明度；{type:"fountain",start,end,...} 或 "none"。"""
+    if spec in (None, "none", 0):
+        shape.Transparency.ApplyNoTransparency()
+        return "none"
+    if isinstance(spec, (int, float)):
+        shape.Transparency.ApplyUniformTransparency(int(spec))
+        return "uniform"
+    if isinstance(spec, dict):
+        if spec.get("type") in {"fountain", "gradient"}:
+            shape.Transparency.ApplyFountainTransparency(
+                int(spec.get("start", 0)), int(spec.get("end", 100)),
+                int(spec.get("gradient_type", 1)), float(spec.get("angle", 0)),
+                int(spec.get("steps", 256)), float(spec.get("edge_pad", 0)),
+                float(spec.get("mid_point", 50)),
+                float(spec.get("center_x", 0)), float(spec.get("center_y", 0)),
+            )
+            return "fountain"
+        if "value" in spec:
+            shape.Transparency.ApplyUniformTransparency(int(spec["value"]))
+            return "uniform"
+    raise CdrBadArgument(
+        'transparency 需为数字（0~100）、"none" 或 {type:"fountain",start,end,angle}')
 
 
 def _hex_to_rgb(text: str) -> tuple[int, int, int]:
@@ -876,6 +1108,76 @@ def _apply_changes(doc: Any, shape: Any, changes: dict) -> dict:
             applied.append("outline")
         except Exception as exc:  # noqa: BLE001
             warnings.append(f"描边失败：{exc}")
+
+    if "transparency" in changes:
+        try:
+            applied.append("transparency:" + _apply_transparency(
+                doc, shape, changes["transparency"]))
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"透明度失败：{exc}")
+
+    if changes.get("flip") is not None:
+        try:
+            shape.Flip(int(changes["flip"]))
+            applied.append("flip")
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"翻转失败：{exc}")
+
+    if changes.get("skew"):
+        try:
+            s = changes["skew"]
+            if isinstance(s, dict):
+                shape.Skew(float(s.get("x", 0)), float(s.get("y", 0)))
+            else:
+                shape.Skew(float(s), 0.0)
+            applied.append("skew")
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"斜切失败：{exc}")
+
+    if "locked" in changes:
+        try:
+            shape.Locked = bool(changes["locked"])
+            applied.append("locked")
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"锁定设置失败：{exc}")
+
+    if "matrix" in changes:
+        try:
+            m = list(changes["matrix"])
+            if len(m) == 6:
+                shape.TransformMatrix(float(m[0]), float(m[1]), float(m[2]),
+                                      float(m[3]), float(m[4]), float(m[5]))
+                applied.append("matrix")
+            else:
+                warnings.append("matrix 需要 6 个数字 [d11,d12,d21,d22,tx,ty]")
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"变换矩阵失败：{exc}")
+
+    if changes.get("clone"):
+        try:
+            c = changes["clone"] if isinstance(changes["clone"], dict) else {}
+            new_shape = shape.Clone(float(c.get("dx", 5)), float(c.get("dy", -5)))
+            applied.append("clone")
+            if new_shape is not None:
+                new_name = _s(lambda: str(new_shape.Name))
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"克隆失败：{exc}")
+
+    if changes.get("align_to_page"):
+        try:
+            shape.AlignToPage(int(changes["align_to_page"]), 0)
+            applied.append("align_to_page")
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"对齐到页面失败：{exc}")
+
+    if changes.get("align_to_shape"):
+        try:
+            spec = changes["align_to_shape"]
+            other = find_shape(doc, doc.ActivePage, spec.get("target", spec))
+            shape.AlignToShape(int(spec.get("type", 1)), other, 0)
+            applied.append("align_to_shape")
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"对齐到对象失败：{exc}")
 
     if "drop_shadow" in changes and changes["drop_shadow"]:
         s = changes["drop_shadow"] if isinstance(changes["drop_shadow"], dict) else {}
@@ -986,14 +1288,15 @@ def _set_text_align(shape: Any, value: Any) -> None:
 # --------------------------------------------------------------------------- #
 SHAPE_OPS = (
     "group", "ungroup", "weld", "trim", "intersect", "combine", "break_apart",
-    "fillet", "chamfer", "scallop", "to_curves", "powerclip",
+    "fillet", "chamfer", "scallop", "to_curves", "powerclip", "to_symbol",
 )
 
 
 def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = None,
              other: dict | None = None, *, radius: float = 0, distance_a: float = 0,
              distance_b: float = 0, leave_source: bool = True, leave_target: bool = True,
-             center_in_container: bool = True, label: str = "cdr_shape_ops") -> dict:
+             center_in_container: bool = True, symbol_name: str | None = None,
+             label: str = "cdr_shape_ops") -> dict:
     op = (op or "").lower().replace("-", "_")
     if op not in SHAPE_OPS:
         raise CdrBadArgument(f"未知操作 {op!r}；可用：{', '.join(SHAPE_OPS)}")
@@ -1056,6 +1359,10 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
         if op == "to_curves":
             shape.ConvertToCurves()
             return {"op": op, "name": _s(lambda: str(shape.Name)), "bbox": _bbox(shape)}
+        if op == "to_symbol":
+            shape.ConvertToSymbol(str(symbol_name or "Symbol 1"))
+            return {"op": op, "symbol": str(symbol_name or "Symbol 1"),
+                    "name": _s(lambda: str(shape.Name))}
         if op == "fillet":
             shape.Fillet(float(radius), True)
             return {"op": op, "radius": radius, "bbox": _bbox(shape)}
@@ -1113,11 +1420,28 @@ def align_shapes(doc: Any, page_index: int | None = None, horizontal: str = "non
 # --------------------------------------------------------------------------- #
 # 文字
 # --------------------------------------------------------------------------- #
+CASE_MODES = {"sentence": 0, "lower": 1, "lowercase": 1, "upper": 2, "uppercase": 2,
+              "title": 3, "toggle": 4}
+
+
+def _case_index(value: Any) -> int:
+    if isinstance(value, int):
+        return value
+    key = str(value).lower()
+    if key not in CASE_MODES:
+        raise CdrBadArgument(f"未知大小写模式 {value!r}；可用 sentence/lower/upper/title/toggle")
+    return CASE_MODES[key]
+
+
 def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None = None,
              font: str | None = None, size: float | None = None, bold: bool | None = None,
              italic: bool | None = None, underline: bool | None = None,
              alignment: str | None = None, to_curves: bool = False,
              fit_to_path: dict | None = None, fit_frame: bool = False,
+             change_case: Any = None, bullet: Any = None, drop_cap: Any = None,
+             no_effect: bool = False, line_spacing: float | None = None,
+             char_spacing: float | None = None, word_spacing: float | None = None,
+             insert_before: str | None = None, insert_after: str | None = None,
              label: str = "cdr_text") -> dict:
     with mm_units(doc):
         page = _page(doc, page_index)
@@ -1146,6 +1470,57 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
                     applied.append("alignment")
                 except Exception as exc:  # noqa: BLE001
                     warnings.append(f"对齐设置失败（X8 该文字对象不支持）：{exc}")
+            if change_case is not None:
+                try:
+                    story.ChangeCase(_case_index(change_case))
+                    applied.append("change_case")
+                except Exception as exc:  # noqa: BLE001
+                    warnings.append(f"大小写转换失败：{exc}")
+            if bullet is not None:
+                try:
+                    sym = bullet if isinstance(bullet, str) else "\u2022"
+                    story.ApplyBulletEffect(sym, "", 0, 0, 0, 0)
+                    applied.append("bullet")
+                except Exception as exc:  # noqa: BLE001
+                    warnings.append(f"项目符号失败（需段落文字）：{exc}")
+            if drop_cap:
+                try:
+                    lines = int(drop_cap) if not isinstance(drop_cap, bool) else 2
+                    story.ApplyDropCapEffect(lines, 0, 0)
+                    applied.append("drop_cap")
+                except Exception as exc:  # noqa: BLE001
+                    warnings.append(f"首字下沉失败（需段落文字）：{exc}")
+            if no_effect:
+                try:
+                    story.ApplyNoEffect()
+                    applied.append("no_effect")
+                except Exception as exc:  # noqa: BLE001
+                    warnings.append(f"清除文字效果失败：{exc}")
+            if insert_before:
+                try:
+                    story.InsertBefore(str(insert_before), 0, 0, "")
+                    applied.append("insert_before")
+                except Exception as exc:  # noqa: BLE001
+                    warnings.append(f"前置插入失败：{exc}")
+            if insert_after:
+                try:
+                    story.InsertAfter(str(insert_after), 0, 0, "")
+                    applied.append("insert_after")
+                except Exception as exc:  # noqa: BLE001
+                    warnings.append(f"后置插入失败：{exc}")
+            if any(v is not None for v in (line_spacing, char_spacing, word_spacing)):
+                try:
+                    props = shape.Text.GetSpaceProperties(0)
+                    if line_spacing is not None:
+                        props.LineSpacing = float(line_spacing)
+                    if char_spacing is not None:
+                        props.CharacterSpacing = float(char_spacing)
+                    if word_spacing is not None:
+                        props.WordSpacing = float(word_spacing)
+                    shape.Text.SetSpaceProperties(0, props)
+                    applied.append("spacing")
+                except Exception as exc:  # noqa: BLE001
+                    warnings.append(f"间距设置失败：{exc}")
             if fit_to_path:
                 try:
                     path_shape = find_shape(doc, _page(doc, page_index), fit_to_path)

@@ -140,7 +140,7 @@ def cdr_status() -> dict:
             info.update({"running": False, "probe_error": str(exc)})
         except Exception as exc:  # noqa: BLE001
             info.update({"running": False, "probe_error": f"{type(exc).__name__}: {exc}"})
-        info["tools"] = 20
+        info["tools"] = 22
         return info
 
     return _guard(_run)
@@ -289,10 +289,14 @@ def cdr_modify(document_id: str, target: dict, changes: dict,
       fill（纯色/渐变/纹理/"none"）｜outline（宽度或
         {width,color,caps,join,behind_fill,dash,start_arrow,end_arrow}）
       drop_shadow {opacity,offset_x,offset_y,color}｜contour {offset,steps}｜envelope 1..39
+      transparency（0~100 均匀透明度 / {type:"fountain",start,end,angle} / "none"）
+      flip（0 水平 / 1 垂直）｜skew {x,y}｜clone {dx,dy}
+      align_to_page 1~3｜align_to_shape {target,type}
       text｜font｜size｜bold｜italic｜underline｜alignment
       fit_to_path（{"name":"曲线对象"}）｜fit_frame（文本适应文本框）
       name｜to_front｜to_back｜duplicate[,dup_dx,dup_dy]｜delete
 
+    颜色额外支持 {"gray":50} / {"lab":[l,a,b]} / {"hls":[h,l,s]} / "registration"。
     注：outline 的 dash / start_arrow / end_arrow 传的是 CorelDRAW 线条样式库与
     箭头库的**索引**（实测 Outline.Style=数字会类型不匹配，必须赋对象）。
     """
@@ -315,13 +319,23 @@ def cdr_text(document_id: str, target: dict, text: str | None = None,
              italic: bool | None = None, underline: bool | None = None,
              alignment: str | None = None, to_curves: bool = False,
              fit_to_path: dict | None = None, fit_frame: bool = False,
+             change_case: str | None = None, bullet: str | None = None,
+             drop_cap: int | None = None, no_effect: bool = False,
+             line_spacing: float | None = None, char_spacing: float | None = None,
+             word_spacing: float | None = None,
+             insert_before: str | None = None, insert_after: str | None = None,
              expected_revision: int | None = None, snapshot_token: str | None = None,
              page_index: int | None = None) -> dict:
-    """文字的排版级操作：改内容、字体、字号、粗斜体、下划线、对齐、沿路径、转曲。
+    """文字的排版级操作：内容、字体、字号、粗斜体、下划线、对齐、大小写、项目符号、
+    首字下沉、行距/字距/词距、前后插入、沿路径、文本框自适应、转曲。
 
     Args:
-        fit_to_path: 让文字沿某条曲线排布，如 {"name": "cdr_ab12"}（指向一个曲线对象）
-        fit_frame: 段落文本内容超出文本框时，自动收缩字号以适配
+        change_case: sentence / lower / upper / title / toggle（实测枚举 0~4）
+        bullet: 项目符号字符（如 "•"），**需要段落文字**
+        drop_cap: 首字下沉行数（**需要段落文字**）
+        line_spacing / char_spacing / word_spacing: 百分比，如 150
+        fit_to_path: 让文字沿曲线排布，如 {"name": "cdr_ab12"}
+        fit_frame: 段落文本溢出时自动收缩字号
         to_curves: 转成曲线（发排前必做）
     """
     def _run():
@@ -330,7 +344,11 @@ def cdr_text(document_id: str, target: dict, text: str | None = None,
         result = _com(lambda _b: ops.set_text(
             doc, page_index, target, text=text, font=font, size=size, bold=bold,
             italic=italic, underline=underline, alignment=alignment, to_curves=to_curves,
-            fit_to_path=fit_to_path, fit_frame=fit_frame,
+            fit_to_path=fit_to_path, fit_frame=fit_frame, change_case=change_case,
+            bullet=bullet, drop_cap=drop_cap, no_effect=no_effect,
+            line_spacing=line_spacing, char_spacing=char_spacing,
+            word_spacing=word_spacing, insert_before=insert_before,
+            insert_after=insert_after,
         ), label="cdr_text")
         return _commit(doc, sess, result, warnings)
 
@@ -385,6 +403,7 @@ def cdr_shape_ops(document_id: str, op: str, target: dict | None = None,
                   other: dict | None = None, radius: float = 0,
                   distance_a: float = 0, distance_b: float = 0,
                   leave_source: bool = True, leave_target: bool = True,
+                  symbol_name: str | None = None,
                   expected_revision: int | None = None,
                   snapshot_token: str | None = None,
                   page_index: int | None = None) -> dict:
@@ -393,9 +412,10 @@ def cdr_shape_ops(document_id: str, op: str, target: dict | None = None,
     op 取值：
       weld / trim / intersect  需要 target + other（两个对象）
       powerclip                把 target 放进 other 这个容器
-      group / ungroup / combine 作用于**当前选择集**（先 cdr_select）
+      group / ungroup / combine 作用于**当前选择集**（ungroup 用 target 指定组合体）
       break_apart              打散 target
       to_curves                转曲
+      to_symbol                把 target 转成符号（需 symbol_name）
       fillet（radius）/ chamfer（distance_a,distance_b）/ scallop（radius）
     """
     def _run():
@@ -405,6 +425,7 @@ def cdr_shape_ops(document_id: str, op: str, target: dict | None = None,
             doc, page_index, op, target=target, other=other, radius=radius,
             distance_a=distance_a, distance_b=distance_b,
             leave_source=leave_source, leave_target=leave_target,
+            symbol_name=symbol_name,
         ), label="cdr_shape_ops")
         return _commit(doc, sess, result, warnings)
 
@@ -497,6 +518,9 @@ def cdr_pages(document_id: str, action: str = "list",
       delete（page_index）          删页
       size（width_mm,height_mm）    自定义尺寸
       preset（preset="A4"/"card"）  用内置纸张尺寸
+      guides                        列出参考线
+      unlock                        解锁本页所有对象
+      bounds                        读取本页所有对象的总包围盒
     """
     def _run():
         doc, sess = _with_doc(document_id)
@@ -508,8 +532,16 @@ def cdr_pages(document_id: str, action: str = "list",
                 "active": ops._n(lambda: int(doc.ActivePage.Index), 1),
                 "presets": sorted(ops.PAGE_PRESETS),
             }, label="cdr_pages")
+        if act == "guides":
+            return _com(lambda _b: ops.list_guides(doc, page_index), label="cdr_pages:guides")
+        if act == "bounds":
+            return _com(lambda _b: ops.objects_bounds(doc, page_index), label="cdr_pages:bounds")
 
         warnings = _check_view(sess, expected_revision, snapshot_token, doc)
+        if act == "unlock":
+            result = _com(lambda _b: ops.unlock_all(doc, page_index),
+                          label="cdr_pages:unlock")
+            return _commit(doc, sess, result, warnings)
         if act == "add":
             result = _com(lambda _b: ops.add_pages(doc, count), label="cdr_pages:add")
         elif act == "activate":
@@ -532,8 +564,39 @@ def cdr_pages(document_id: str, action: str = "list",
                           label="cdr_pages:preset")
         else:
             return {"error": "bad_argument",
-                    "message": f"未知 action：{act}；可用 list/add/activate/delete/size/preset"}
+                    "message": f"未知 action：{act}；可用 list/add/activate/delete/size/"
+                               f"preset/guides/unlock/bounds"}
 
+        return _commit(doc, sess, result, warnings)
+
+    return _guard(_run)
+
+
+@mcp.tool()
+def cdr_path(document_id: str, target: dict, action: str = "info",
+             offset: float = 1.0, direction: int = 0,
+             x: float | None = None, y: float | None = None,
+             expected_revision: int | None = None,
+             snapshot_token: str | None = None,
+             page_index: int | None = None) -> dict:
+    """曲线级操作（对象需是曲线，可先 `cdr_shape_ops(op="to_curves")` 转曲）。
+
+    action:
+      info          读长度、面积、子路径数、包围盒
+      contour       沿曲线偏移出一条新轮廓（做刀模线/切割线、外扩描边），offset 毫米
+      add_subpath   在 (x, y) 新建一条子路径
+      polyline      取折线近似点（X8 该接口常取不到变体数组，取不到会返回空并说明）
+    """
+    def _run():
+        act = (action or "info").lower()
+        doc, sess = _with_doc(document_id)
+        if act == "info":
+            return _com(lambda _b: ops.path_ops(doc, page_index, target, "info"),
+                        label="cdr_path")
+        warnings = _check_view(sess, expected_revision, snapshot_token, doc)
+        result = _com(lambda _b: ops.path_ops(
+            doc, page_index, target, act, offset=offset, direction=direction, x=x, y=y,
+        ), label="cdr_path")
         return _commit(doc, sess, result, warnings)
 
     return _guard(_run)
@@ -613,12 +676,53 @@ def cdr_save(document_id: str, path: str, overwrite: bool = False) -> dict:
 
 
 @mcp.tool()
-def cdr_undo(document_id: str, steps: int = 1) -> dict:
-    """撤销最近 N 步（一步 = 一次工具调用，因为每次变更都做成了原子 undo 组）。"""
+def cdr_undo(document_id: str, steps: int = 1, redo: bool = False) -> dict:
+    """撤销（或重做）最近 N 步。
+
+    Args:
+        steps: 步数；一次工具调用 = 一步（每次变更都做成了原子 undo 组）。
+        redo: true 时改为**重做**。
+    """
     def _run():
         doc, sess = _with_doc(document_id)
-        result = _com(lambda _b: ops.undo(doc, steps), label="cdr_undo")
+        result = _com(lambda _b: ops.undo(doc, steps, redo=bool(redo)), label="cdr_undo")
         return _commit(doc, sess, result)
+
+    return _guard(_run)
+
+
+@mcp.tool()
+def cdr_bitmap(document_id: str, target: dict, action: str = "info",
+               mode: str | None = None, width: float | None = None,
+               height: float | None = None, dpi: float | None = None,
+               anti_alias: bool = True,
+               expected_revision: int | None = None,
+               snapshot_token: str | None = None,
+               page_index: int | None = None) -> dict:
+    """位图处理（只对 type_id=5 的位图对象有效，例如 cdr_import 导入的图片）。
+
+    action:
+      info          读取尺寸、像素、分辨率、颜色模式
+      convert       改颜色模式，mode = rgb / cmyk / gray / bw
+      resample      重采样，width/height 目标像素、dpi 目标分辨率
+      crop          执行裁剪
+      reset_crop    取消裁剪
+
+    ⚠️ **不提供 PowerTRACE（位图自动转矢量）**：实测 `Bitmap.Trace` 会让 CorelDRAW
+    卡成「无响应」（弹出模态对话框），而 COM 调用无法中断，会把调用方一起拖死。
+    需要描摹请在 CorelDRAW 里手动做，或改用位图→SVG 的外部工具。
+    """
+    def _run():
+        act = (action or "info").lower()
+        doc, sess = _with_doc(document_id)
+        if act == "info":
+            return _com(lambda _b: ops.bitmap_action(doc, page_index, target, "info"),
+                        label="cdr_bitmap")
+        warnings = _check_view(sess, expected_revision, snapshot_token, doc)
+        result = _com(lambda _b: ops.bitmap_action(
+            doc, page_index, target, act, mode=mode, width=width, height=height,
+            dpi=dpi, anti_alias=anti_alias), label="cdr_bitmap")
+        return _commit(doc, sess, result, warnings)
 
     return _guard(_run)
 

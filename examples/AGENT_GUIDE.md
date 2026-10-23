@@ -29,6 +29,13 @@
 | 虚线、加箭头 | `cdr_modify(changes={"outline":{"dash":5,"start_arrow":2,"end_arrow":3}})` |
 | 文字沿曲线 | `cdr_text(target=文字, fit_to_path={"name":"曲线对象"})` |
 | 段落文字溢出 | `cdr_text(target=文字, fit_frame=true)` |
+| 改大小写 / 加项目符号 | `cdr_text(target=文字, change_case="upper", bullet="•")` |
+| 调行距字距 | `cdr_text(target=文字, line_spacing=150, char_spacing=110)` |
+| 半透明色块 | `cdr_modify(changes={"transparency": 40})` 或渐变透明 |
+| 翻转 / 斜切 | `cdr_modify(changes={"flip":0})` / `{"skew":{"x":10}}` |
+| 锁定对象防误改 | `cdr_modify(changes={"locked":True})` |
+| 做刀模线/外扩轮廓 | `cdr_path(target=曲线, action="contour", offset=2)` |
+| 图片转 CMYK / 重采样 | `cdr_bitmap(target=位图, action="convert", mode="cmyk")` |
 | 两个形状焊接/修剪/相交 | `cdr_shape_ops(op="weld"/"trim"/"intersect", target, other)` |
 | 组合/解组 | `cdr_select` → `cdr_shape_ops(op="group"/"combine")`；解组用 `op="ungroup"` + `target` |
 | 圆角/倒角/扇贝 | `cdr_shape_ops(op="fillet"/"chamfer"/"scallop", radius=...)` |

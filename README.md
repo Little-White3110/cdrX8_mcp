@@ -7,8 +7,9 @@
 
 > **已在真机验证**：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）+ Python 3.11.9 64 位
 > - 单元测试 **43 项通过**
-> - 端到端联调（真实 CorelDRAW）**33/33 通过**
-> - 能力边界来自对 `vgcoreauto.tlb` 的反解（692 个接口 / 6789 个方法）+ 逐项实跑
+> - 端到端联调（真实 CorelDRAW）**46/46 通过**
+> - 能力边界来自对 `vgcoreauto.tlb` 的反解（692 个类型 / 6789 个方法声明）+ 逐项实跑
+> - **完整覆盖清单见 [docs/COVERAGE.md](docs/COVERAGE.md)**（哪些能用、哪些不能用、为什么）
 
 ---
 
@@ -44,7 +45,7 @@ python -m cdrx8_mcp              # 启动 MCP 服务器（stdio）
 
 ---
 
-## 工具一览（20 个）
+## 工具一览（22 个）
 
 ### 会话与文档
 
@@ -52,11 +53,11 @@ python -m cdrx8_mcp              # 启动 MCP 服务器（stdio）
 |---|---|
 | `cdr_status` | 运行状态、版本、服务配置（无副作用） |
 | `cdr_connect` | 附着已运行实例；`launch=true` 才允许启动 |
-| `cdr_documents` | 列出打开的文桇，给出 `document_id` |
+| `cdr_documents` | 列出打开的文档，给出 `document_id` |
 | `cdr_open` | 打开 `.cdr`，或按毫米尺寸 / 页面预设新建 |
 | `cdr_inspect` | 读视图：页面、图层、`revision`、`snapshot_token`、每个对象 |
 | `cdr_save` | 另存为 `.cdr`（默认不覆盖） |
-| `cdr_undo` | 撤销最近 N 步 |
+| `cdr_undo` | 撤销 / 重做最近 N 步 |
 | `cdr_close` | 关闭文档（默认丢弃未保存改动） |
 
 ### 绘制与修改
@@ -64,20 +65,22 @@ python -m cdrx8_mcp              # 启动 MCP 服务器（stdio）
 | 工具 | 作用 |
 |---|---|
 | `cdr_create` | 批量创建：矩形（含圆角）/ 椭圆（含圆弧、扇形）/ 多边形 / 星形 / 螺旋 / 网格 / 直线 / 贝塞尔 / 文字 / 段落文字 / 参考线 |
-| `cdr_modify` | 移动、缩放、旋转、填充（纯色/渐变/纹理/无色）、描边（含**虚线**与**箭头**）、投影、轮廓图、封套、改字、层级、复制、删除 |
-| `cdr_text` | 排版级文字操作：内容 / 字体 / 字号 / 粗斜体 / 下划线 / 对齐 / **沿路径** / 文本框自适应 / **转曲** |
+| `cdr_modify` | 移动、缩放、旋转、翻转、斜切、矩阵变换、克隆、锁定；填充（纯色/渐变/纹理/无色）；描边（含**虚线**与**箭头**）；**透明度**；投影、轮廓图、封套；层级、复制、删除 |
+| `cdr_text` | 排版级：内容 / 字体 / 字号 / 粗斜体 / 下划线 / 对齐 / **大小写** / **项目符号** / **首字下沉** / **行距字距** / 前后插入 / **沿路径** / 文本框自适应 / **转曲** |
 | `cdr_replace_text` | 全文档文字替换（底层用 X8 原生 `Page.TextReplace`） |
 | `cdr_select` | 按名字 / 类型 / 矩形框选，加入选择集 |
-| `cdr_shape_ops` | **布尔与整形**：weld / trim / intersect / combine / group / ungroup / break_apart / to_curves / powerclip / fillet / chamfer / scallop |
+| `cdr_shape_ops` | **布尔与整形**：weld / trim / intersect / combine / group / ungroup / break_apart / to_curves / to_symbol / powerclip / fillet / chamfer / scallop |
 | `cdr_align` | 对齐与分布（左中右 / 上下中 / 等间距，对齐对象或页面） |
 | `cdr_find` | 按名字或类型查找（跨图层） |
+| `cdr_path` | 曲线级：读长度/面积/子路径、**偏移轮廓**（刀模线）、追加子路径 |
+| `cdr_bitmap` | 位图：信息 / 转色彩模式（rgb·cmyk·gray·bw）/ 重采样 / 裁剪 |
 
 ### 图层 / 页面 / 文件
 
 | 工具 | 作用 |
 |---|---|
 | `cdr_layers` | 图层列表 / 新建 / 激活 / 显隐 / 锁定 / 打印 / 移动 / 删除 |
-| `cdr_pages` | 页面列表 / 新增 / 切页 / 删除 / 自定义尺寸 / **内置纸张预设**（A4、A3、名片…） |
+| `cdr_pages` | 页面列表 / 新增 / 切页 / 删除 / 自定义尺寸 / **纸张预设** / **参考线列表** / **解锁全部** / **对象总包围盒** |
 | `cdr_import` | 导入 png / jpg / svg / pdf / ai / eps / dxf 等 |
 | `cdr_export` | 导出 **png / jpg / svg / pdf**，位图可指定 DPI，可只导选区 |
 
@@ -172,7 +175,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ---
 
-## X8 特有问题（15 条，全部实测）
+## X8 特有问题（20 条，全部实测）
 
 这些是 **X8 与 2024+ 的差异**，也是本项目存在的主要理由。
 
@@ -193,6 +196,11 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 | 13 | CDR 没有可用的 `ExportEx` 过滤器 | 存盘只能 `SaveAs` | "指定的过滤器 ID 无效" |
 | 14 | 没有 `SetActivePage` | `doc.Pages.Item(i).Activate()` | AttributeError |
 | 15 | **`Outline.Style` / 箭头不能直接给数字** | 赋 `app.OutlineStyles.Item(n)` / `app.ArrowHeads.Item(n)` 对象 | 类型不匹配 |
+| 16 | **`Curve.Contour` 返回的是未绑定曲线** | 还要 `Layer.CreateCurve(该曲线)` 才会变成页面对象 | 偏移后页面上什么都没多 |
+| 17 | **`Page.GetObjectsBoundingBox` 返回 `IVGRect`** | `IVGRect.GetRect()` 的 4 个出参 pywin32 取不回，自己遍历求和 | 拿不到包围盒 |
+| 18 | **`Bitmap.Trace` 会把 CorelDRAW 卡死** | 不要调用（弹模态框、进程无响应、COM 无法中断） | 调用方一起挂起 |
+| 19 | **节点集合没有访问入口** | 类型库全库无 `.Nodes`，节点级编辑不可用 | — |
+| 20 | `Document` 上没有 `Copy/Paste/SnapTo*`；`Page` 没有 `Background` | 这些能力不存在 | AttributeError |
 
 改代码前请先读 [`src/cdrx8_mcp/constants.py`](src/cdrx8_mcp/constants.py) 里的注释。
 
@@ -201,11 +209,18 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 ## 已知限制（诚实清单）
 
 **做不到：**
-* **立体化 / 透镜 / 尺寸标注 / 连接线 / 符号**：`CreateExtrude` / `CreateLens` /
-  `CreateLinearDimension` / `CreateConnector` / `CreateSymbol` 全部卡在
-  `TypeError: Python instance can not be converted to a COM object` ——
-  它们需要 pywin32 无法从 Python 原生类型构造的结构体/枚举参数（实测 5 组参数组合均失败）。
-  投影、轮廓图、封套、虚线、箭头这些**都已打通**
+* **位图自动转矢量（PowerTRACE）**：`Bitmap.Trace` 实测会让 CorelDRAW 进程变成
+  **无响应**（弹模态框、`Responding=False`、必须强杀进程），而 COM 调用无法中断——
+  暴露它等于给 Agent 埋一个必挂的雷，所以**故意不实现**
+* **节点级编辑**：类型库全库搜不到任何 `.Nodes` 访问器，拿不到节点集合
+* **对象样式 / 符号插入**：样式类别常量试了 0~8 全部报「未找到类别」；`app.SymbolLibraries`
+  存在但本机 `Count=0`（未装符号库），所以只能把形状转成符号（`to_symbol`），不能插入库内符号
+* **立体化 / 透镜 / 尺寸标注 / 连接线 / 符号插入 / 对象样式 / 专色 / 图案填充**：
+  `CreateExtrude` `CreateLens` `CreateLinearDimension` `CreateConnector` `CreateSymbol`
+  全部卡在 `TypeError: Python instance can not be converted to a COM object`
+  （需要 pywin32 无法构造的结构体/枚举参数）；专色需要本机调色板 ID；图案填充需要 .pat 文件
+
+> 每一条的实测证据都记在 [docs/COVERAGE.md](docs/COVERAGE.md) 的「明确不可用」表里。
 * **图案填充需要图案文件**：`ApplyPatternFill` 无文件时报错
 * **尺寸标注 / 表格 / 字形 / 刀刻 / 橡皮 / 网格填充 / 智能绘图**：对象模型层面就没有接口，只能用鼠标
 
@@ -222,13 +237,19 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ```powershell
 python -m pytest -q                # 43 项纯逻辑测试，任何平台可跑
-python scripts/live_smoke.py       # 33 项端到端，需要 CorelDRAW X8
+python scripts/live_smoke.py       # 46 项端到端，需要 CorelDRAW X8
 python scripts/live_smoke.py --keep   # 保留文档方便肉眼看效果
 ```
 
 联调产物默认写到 `tmp/live_smoke/`（已在 `.gitignore` 内，可随时整个删掉）。
 
-联调覆盖：页面预设 → 多图元创建 → 文字排版 → 投影/描边 → **虚线+箭头** → **文字沿路径** → weld/fillet → 框选/组合/解组 → 对齐 → 图层 → 查找 → 分页/预设 → 四格式导出（含 DPI 倍增校验）→ 导入 → 文字替换 → 存盘 → 撤销 → 过期 token 拒绝 → 关闭。
+联调覆盖：页面预设 → 多图元创建 → 文字排版 → 投影/描边 → 虚线+箭头 → 文字沿路径 →
+透明/翻转/斜切/灰度 → 段落文字大小写/行距/项目符号 → 路径偏移 → 锁定 →
+weld/fillet → 框选/组合/解组 → 对齐 → 图层 → 查找 → 分页/预设/参考线/包围盒 →
+四格式导出（含 DPI 倍增校验）→ 导入 → 位图转模式/重采样 → 文字替换 → 存盘 → 撤销/重做 →
+过期 token 拒绝 → 关闭。
+
+完整能力矩阵见 [docs/COVERAGE.md](docs/COVERAGE.md)。
 
 ---
 
