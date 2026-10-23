@@ -14,9 +14,9 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-import tempfile
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "src"))
 
 from cdrx8_mcp import server  # noqa: E402
 
@@ -39,9 +39,10 @@ def no_error(label: str, result: dict) -> bool:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--keep", action="store_true")
-    ap.add_argument("-o", "--out", default=None)
+    ap.add_argument("-o", "--out", default=None,
+                    help="产物目录，默认 <repo>/tmp/live_smoke（已在 gitignore 内）")
     args = ap.parse_args()
-    out = args.out or tempfile.mkdtemp(prefix="cdrx8_smoke_")
+    out = args.out or os.path.join(ROOT, "tmp", "live_smoke")
     os.makedirs(out, exist_ok=True)
     print(f"\n输出目录：{out}\n")
 

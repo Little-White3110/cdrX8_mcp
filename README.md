@@ -201,7 +201,11 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 ## 已知限制（诚实清单）
 
 **做不到：**
-* **立体化 / 透镜 不可用**：`CreateExtrude` / `CreateLens` 参数组合没试通；轮廓图、封套、投影、虚线、箭头均已验证可用
+* **立体化 / 透镜 / 尺寸标注 / 连接线 / 符号**：`CreateExtrude` / `CreateLens` /
+  `CreateLinearDimension` / `CreateConnector` / `CreateSymbol` 全部卡在
+  `TypeError: Python instance can not be converted to a COM object` ——
+  它们需要 pywin32 无法从 Python 原生类型构造的结构体/枚举参数（实测 5 组参数组合均失败）。
+  投影、轮廓图、封套、虚线、箭头这些**都已打通**
 * **图案填充需要图案文件**：`ApplyPatternFill` 无文件时报错
 * **尺寸标注 / 表格 / 字形 / 刀刻 / 橡皮 / 网格填充 / 智能绘图**：对象模型层面就没有接口，只能用鼠标
 
@@ -221,6 +225,8 @@ python -m pytest -q                # 43 项纯逻辑测试，任何平台可跑
 python scripts/live_smoke.py       # 33 项端到端，需要 CorelDRAW X8
 python scripts/live_smoke.py --keep   # 保留文档方便肉眼看效果
 ```
+
+联调产物默认写到 `tmp/live_smoke/`（已在 `.gitignore` 内，可随时整个删掉）。
 
 联调覆盖：页面预设 → 多图元创建 → 文字排版 → 投影/描边 → **虚线+箭头** → **文字沿路径** → weld/fillet → 框选/组合/解组 → 对齐 → 图层 → 查找 → 分页/预设 → 四格式导出（含 DPI 倍增校验）→ 导入 → 文字替换 → 存盘 → 撤销 → 过期 token 拒绝 → 关闭。
 
