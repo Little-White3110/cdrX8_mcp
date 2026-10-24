@@ -284,7 +284,8 @@ DOC_ACTIONS = ("info", "clear_selection", "clear_undo", "palette", "arrowhead",
                "palette_open_fixed", "palette_colors", "spot_color",
                "pattern_canvas", "textures", "metadata", "set_metadata",
                "palette_create", "data_fields", "add_data_field", "object_data",
-               "color_context", "outline_styles", "settings", "set_settings")
+               "color_context", "outline_styles", "settings", "set_settings",
+               "revert", "app_info")
 
 
 def doc_ops(doc: Any, action: str, *, target: dict | None = None,
@@ -749,6 +750,30 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
             result["applied"] = applied
             result["warnings"] = warnings
         return result
+    if act == "revert":
+        doc.Revert()
+        return {"action": act, "reverted": True,
+                "name": _s(lambda: str(doc.Name)),
+                "file_name": _s(lambda: str(doc.FileName)) or None,
+                "dirty": bool(_s(lambda: bool(doc.Dirty), False)),
+                "pages": _n(lambda: int(doc.Pages.Count)),
+                "shapes": total_shapes(doc)}
+    if act == "app_info":
+        app = _app_of(doc)
+        features = _s(lambda: list(app.GetSupportedOpenTypeFeatures()), []) or []
+        needle = str(query or "").strip().lower()
+        matched = [str(f) for f in features if not needle or needle in str(f).lower()]
+        cap = max(1, min(int(limit), 400))
+        return {"action": act,
+                "open_type_features": matched[:cap],
+                "feature_count": len(features),
+                "feature_matched": len(matched),
+                "platform_checks": {str(v): bool(_s(
+                    lambda v=v: bool(app.CheckPlatformVersion(int(v), 0)), False))
+                    for v in (16, 17, 18)},
+                "ui_language": {str(lang): bool(_s(
+                    lambda lang=lang: bool(app.IsUILanguageAvailable(int(lang))), False))
+                    for lang in (1033, 2052)}}
     # arrowhead
     with mm_units(doc):
         page = _page(doc, page_index)
@@ -1039,7 +1064,7 @@ def objects_bounds(doc: Any, page_index: int | None = None,
 # --------------------------------------------------------------------------- #
 BITMAP_MODES = {"rgb": 1, "cmyk": 2, "gray": 3, "grayscale": 3, "bw": 4, "blackwhite": 4}
 BITMAP_ACTIONS = ("info", "convert", "resample", "crop", "reset_crop", "bw", "inflate",
-                  "pixel", "image_info", "duotone", "paletted")
+                  "pixel", "image_info", "duotone", "paletted", "replace_image")
 
 
 def _bitmap_of(shape: Any) -> Any:
@@ -1061,6 +1086,10 @@ def bitmap_action(doc: Any, page_index: int | None, target: dict, action: str, *
                   duotone_type: int | None = None, ink_colors: list | None = None,
                   preset: str | None = None, palette_type: int = 3,
                   num_colors: int = 256, palette_index: int | None = None,
+                  image_color: Any = "#FFFFFF", image_pixels_w: int = 16,
+                  image_pixels_h: int = 16, image_fills: list | None = None,
+                  image_pixels: list | None = None, offset_x: int = 0,
+                  offset_y: int = 0,
                   label: str = "cdr_bitmap") -> dict:
     """位图处理。
 
@@ -1172,6 +1201,23 @@ def bitmap_action(doc: Any, page_index: int | None, target: dict, action: str, *
                                           16777215, 500, 300, 300, 100, palette)
                 else:
                     bmp.ConvertToPaletted(pt, 0, 100, 0, int(num_colors))
+            elif act == "replace_image":
+                px_w = max(1, min(int(image_pixels_w), 8192))
+                px_h = max(1, min(int(image_pixels_h), 8192))
+                image = doc.CreateImage(4, px_w, px_h, _color(doc, image_color))
+                for area in (image_fills or []):
+                    if not isinstance(area, dict):
+                        continue
+                    image.FillArea(int(area.get("x", 0)), int(area.get("y", 0)),
+                                   int(area.get("width", 1)), int(area.get("height", 1)),
+                                   _color(doc, area.get("color", "#000000")))
+                for px in (image_pixels or []):
+                    if not isinstance(px, (list, tuple)) or len(px) < 3:
+                        continue
+                    image.FillArea(int(px[0]), int(px[1]), int(px[0]), int(px[1]),
+                                   _color(doc, px[2]))
+                # ImageAlpha 必须传 None（传 0 会 TypeError）
+                bmp.SetImageData(image, None, int(offset_x), int(offset_y))
     return {"action": act, **info()}
 
 
@@ -3757,6 +3803,30 @@ def _text_hyphenation_info(shape: Any) -> dict | None:
     }
 
 
+def _text_runs(shape: Any) -> list[dict]:
+    """列出文本的格式段（EnumRanges(-1)）：文字/字体/字号/粗斜体/区间。"""
+    ranges = _s(lambda: shape.Text.Story.EnumRanges(-1))
+    if ranges is None:
+        return []
+    count = _n(lambda: int(ranges.Count), 0)
+    out: list[dict] = []
+    for i in range(1, min(count, 300) + 1):
+        r = _s(lambda i=i: ranges.Item(i))
+        if r is None:
+            continue
+        out.append({
+            "text": _s(lambda r=r: str(r.Text)),
+            "font": _s(lambda r=r: str(r.Font)) or None,
+            "size": _round(_s(lambda r=r: float(r.Size))),
+            "bold": bool(_s(lambda r=r: bool(r.Bold), False)),
+            "italic": bool(_s(lambda r=r: bool(r.Italic), False)),
+            "underline": bool(_s(lambda r=r: bool(r.Underline), False)),
+            "start": _n(lambda r=r: int(r.Start)),
+            "end": _n(lambda r=r: int(r.End)),
+        })
+    return out
+
+
 def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None = None,
              font: str | None = None, size: float | None = None, bold: bool | None = None,
              italic: bool | None = None, underline: bool | None = None,
@@ -3778,7 +3848,7 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
              read_font: bool = False, read_hyphenation: bool = False,
              range_delete: bool = False, range_copy: bool = False,
              range_paste: bool = False, range_straighten: bool = False,
-             find_query: str | None = None,
+             find_query: str | None = None, runs: bool = False,
              label: str = "cdr_text") -> dict:
     with mm_units(doc):
         page = _page(doc, page_index)
@@ -3827,6 +3897,8 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
                 except Exception as exc:  # noqa: BLE001
                     result["find_ranges"] = {"query": str(find_query),
                                              "error": str(exc)}
+            if runs:
+                result["runs"] = _text_runs(shape)
             if read_font:
                 info = _text_font_info(shape)
                 if info is not None:
@@ -4058,6 +4130,8 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
                 except Exception as exc:  # noqa: BLE001
                     reading["find_ranges"] = {"query": str(find_query),
                                               "error": str(exc)}
+            if runs:
+                reading["runs"] = _text_runs(shape)
             if read_font:
                 info = _text_font_info(shape)
                 if info is not None:

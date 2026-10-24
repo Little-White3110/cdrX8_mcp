@@ -1831,6 +1831,77 @@ def main() -> int:
             check("格式查询无匹配返回 0", fr2.get("count") == 0,
                   f"count={fr2.get('count')}")
 
+    # ---------------- 15t. 第十四波：位图内容替换 / 文本格式段 / 应用信息 / 文档回滚 ----------------
+    print("\n[15t] 第十四波：位图替换 + 文本格式段 + 应用信息 + 文档回滚")
+    fresh14 = server.cdr_inspect(doc_id)
+    if "state" in fresh14:
+        state = fresh14["state"]
+    w14 = server.cdr_create(doc_id, items=[
+        {"type": "bitmap", "x": 20, "y": 120, "width": 24, "height": 24,
+         "color": "#FF0000", "pixels_w": 16, "pixels_h": 16},
+        {"type": "paragraph_text", "x": 20, "y": 150, "x2": 170, "y2": 180,
+         "text": "Alpha Beta Gamma", "font": "Arial", "size": 12},
+    ], expected_revision=state["revision"], snapshot_token=state["snapshot_token"])
+    if no_error("创建第十四波测试对象", w14):
+        state = w14["state"]
+        b14 = w14["created"][0]["name"]
+        t14 = w14["created"][1]["name"]
+
+        # --- 位图内容替换 ---
+        ri = server.cdr_bitmap(doc_id, {"name": b14}, action="replace_image",
+                               image_color="#0000FF", image_pixels_w=16,
+                               image_pixels_h=16,
+                               image_fills=[{"x": 0, "y": 0, "width": 7,
+                                             "height": 7, "color": "#00FF00"}],
+                               expected_revision=state["revision"],
+                               snapshot_token=state["snapshot_token"])
+        if no_error("cdr_bitmap(replace_image)", ri):
+            check("位图内容替换成功", (ri.get("pixels") or [0])[0] == 16
+                  and ri.get("mode") == 4,
+                  f"pixels={ri.get('pixels')} mode={ri.get('mode')}")
+            state = ri["state"]
+        pg = server.cdr_bitmap(doc_id, {"name": b14}, action="pixel",
+                               x_px=1, y_px=1)
+        if no_error("cdr_bitmap(pixel 替换后绿块)", pg):
+            check("替换后像素为绿", pg.get("name") == "绿", str(pg.get("color")))
+        pb = server.cdr_bitmap(doc_id, {"name": b14}, action="pixel",
+                               x_px=10, y_px=10)
+        if no_error("cdr_bitmap(pixel 替换后蓝底)", pb):
+            check("替换后像素为蓝", pb.get("name") == "蓝", str(pb.get("color")))
+
+        # --- 文本格式段 ---
+        rn = server.cdr_text(doc_id, {"name": t14}, runs=True)
+        if no_error("cdr_text(runs)", rn):
+            runs = rn.get("runs") or []
+            check("文本格式段可列出", (len(runs) >= 1
+                  and (runs[0].get("font") == "Arial")
+                  and (runs[0].get("size") or 0) > 0),
+                  f"runs={runs[:1]}")
+
+        # --- 应用信息 ---
+        ai = server.cdr_doc(doc_id, "app_info", limit=5)
+        if no_error("cdr_doc(app_info)", ai):
+            check("应用信息可读", (ai.get("feature_count") or 0) > 0
+                  and len(ai.get("platform_checks") or {}) == 3,
+                  f"features={ai.get('feature_count')} platform={ai.get('platform_checks')}")
+
+    # --- 文档回滚（在已保存副本上验证：修改 -> Revert -> 恢复） ---
+    saved = os.path.join(out, "smoke.cdr")
+    if os.path.exists(saved):
+        d14 = server.cdr_open(path=saved)
+        if no_error("cdr_open(回滚测试文档)", d14):
+            did = d14["document_id"]
+            before = len((server.cdr_inspect(did).get("shapes") or []))
+            server.cdr_create(did, [{"type": "line", "x1": 0, "y1": 0,
+                                     "x2": 10, "y2": 10}])
+            mid = len((server.cdr_inspect(did).get("shapes") or []))
+            rv = server.cdr_doc(did, "revert")
+            after = len((server.cdr_inspect(did).get("shapes") or []))
+            if no_error("cdr_doc(revert)", rv):
+                check("文档回滚恢复到上次保存", mid == before + 1 and after == before,
+                      f"{before} -> {mid} -> {after}")
+            no_error("关闭回滚测试文档", server.cdr_close(did))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

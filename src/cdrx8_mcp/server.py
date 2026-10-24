@@ -382,7 +382,7 @@ def cdr_text(document_id: str, target: dict, text: str | None = None,
              read_font: bool = False, read_hyphenation: bool = False,
              range_delete: bool = False, range_copy: bool = False,
              range_paste: bool = False, range_straighten: bool = False,
-             find_query: str | None = None,
+             find_query: str | None = None, runs: bool = False,
              expected_revision: int | None = None, snapshot_token: str | None = None,
              page_index: int | None = None) -> dict:
     """文字的排版级操作。
@@ -400,6 +400,7 @@ def cdr_text(document_id: str, target: dict, text: str | None = None,
               read_font（读字体属性：名称/字号/样式/下划线…）/
               read_hyphenation（读断字设置；实测 X8 断字设置写回无效，只读）
               find_query（按格式查询文本区间，如 "@font = 'Arial'" / "@bold = true"）
+              runs（列出格式段：每段的文字/字体/字号/粗斜体/起止位置）
     区间操作：range_delete / range_copy / range_paste / range_straighten
               （作用于 range_start..range_end，0 基；copy/paste 走系统剪贴板）
     OpenType：opentype={"liga":true,"kern":false,...}（实测 SetOpenTypeFeature 可用）
@@ -440,7 +441,7 @@ def cdr_text(document_id: str, target: dict, text: str | None = None,
             read_font=read_font, read_hyphenation=read_hyphenation,
             range_delete=range_delete, range_copy=range_copy,
             range_paste=range_paste, range_straighten=range_straighten,
-            find_query=find_query,
+            find_query=find_query, runs=runs,
         ), label="cdr_text")
         if not mutating:
             return result
@@ -1020,6 +1021,8 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
                        curve_precision,resolution,preserve_selection,
                        shape_enum_direction,world_scale,facing_pages,
                        first_page_on_right_side}
+      revert           丢弃未保存修改、回到上次保存状态（**破坏性**，会撤销当前改动）
+      app_info         读应用信息（OpenType 特性列表、平台版本检查、UI 语言可用性）
     """
     def _run():
         doc, sess = _with_doc(document_id)
@@ -1047,7 +1050,7 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
                       "palette_colors", "spot_color", "pattern_canvas",
                       "textures", "metadata", "palette_create", "data_fields",
                       "object_data", "color_context", "outline_styles",
-                      "settings"}:
+                      "settings", "app_info"}:
             return _com(lambda _b: ops.doc_ops(doc, action, **kwargs), label="cdr_doc")
         warnings = _check_view(sess, expected_revision, snapshot_token, doc)
         result = _com(lambda _b: ops.doc_ops(doc, action, **kwargs), label="cdr_doc")
@@ -1189,6 +1192,10 @@ def cdr_bitmap(document_id: str, target: dict, action: str = "info",
                duotone_type: int | None = None, ink_colors: list | None = None,
                preset: str | None = None, palette_type: int = 3,
                num_colors: int = 256, palette_index: int | None = None,
+               image_color: Any = "#FFFFFF", image_pixels_w: int = 16,
+               image_pixels_h: int = 16, image_fills: list | None = None,
+               image_pixels: list | None = None, offset_x: int = 0,
+               offset_y: int = 0,
                expected_revision: int | None = None,
                snapshot_token: str | None = None,
                page_index: int | None = None) -> dict:
@@ -1205,6 +1212,10 @@ def cdr_bitmap(document_id: str, target: dict, action: str = "info",
                       5=grayscale 6=system 7=IE 8=Netscape；9=自定义，需 palette_index）
       duotone       转双色调：duotone_type 0~3（单/双/三/四色调），ink_colors 给各墨色；
                     也可 preset 指定 .cpd 预设文件路径
+      replace_image 用新像素缓冲区替换位图内容：image_color + image_pixels_w/h +
+                    image_fills=[{x,y,width,height,color}] +
+                    image_pixels=[[x,y,color],…] + offset_x/y
+                    （实测 SetImageData 必须把 Alpha 传 None）
       resample      重采样，width/height 目标像素、dpi 目标分辨率
       inflate       四周扩边，inflate_x / inflate_y 毫米
       crop          执行裁剪
@@ -1229,7 +1240,10 @@ def cdr_bitmap(document_id: str, target: dict, action: str = "info",
             inflate_x=inflate_x, inflate_y=inflate_y,
             duotone_type=duotone_type, ink_colors=ink_colors, preset=preset_path,
             palette_type=palette_type, num_colors=num_colors,
-            palette_index=palette_index), label="cdr_bitmap")
+            palette_index=palette_index, image_color=image_color,
+            image_pixels_w=image_pixels_w, image_pixels_h=image_pixels_h,
+            image_fills=image_fills, image_pixels=image_pixels,
+            offset_x=offset_x, offset_y=offset_y), label="cdr_bitmap")
         return _commit(doc, sess, result, warnings)
 
     return _guard(_run)
