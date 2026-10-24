@@ -1770,6 +1770,67 @@ def main() -> int:
                   f"index={ah.get('index')} count={ah.get('arrowheads')}")
             state = ah["state"]
 
+    # ---------------- 15s. 第十三波：图案画布变换/图案微调/文本格式查询 ----------------
+    print("\n[15s] 第十三波：图案画布变换 + 图案微调 + 文本格式查询")
+    fresh13 = server.cdr_inspect(doc_id)
+    if "state" in fresh13:
+        state = fresh13["state"]
+    w13 = server.cdr_create(doc_id, items=[
+        {"type": "rectangle", "x": 20, "y": 150, "width": 50, "height": 20,
+         "fill": "#CC0000"},
+        {"type": "paragraph_text", "x": 20, "y": 180, "x2": 170, "y2": 210,
+         "text": "Alpha Beta Gamma Delta", "font": "Arial", "size": 12},
+    ], expected_revision=state["revision"], snapshot_token=state["snapshot_token"])
+    if no_error("创建第十三波测试对象", w13):
+        state = w13["state"]
+        r13 = w13["created"][0]["name"]
+        t13 = w13["created"][1]["name"]
+
+        # --- 图案画布 + 区域变换 ---
+        pcv13 = server.cdr_doc(doc_id, "pattern_canvas",
+                               pattern_fills=[[0, 0, 15, 15]],
+                               pattern_pixels=[[20, 20]],
+                               copy_areas=[[0, 0, 7, 7, 16, 16]],
+                               rotate_areas=[[0, 0, 15, 15, 45]],
+                               flip_areas=[[0, 0, 15, 15, 1]])
+        cidx = None
+        if no_error("cdr_doc(pattern_canvas 变换)", pcv13):
+            cidx = pcv13.get("canvas_index")
+            check("图案画布区域变换可用", bool(cidx) and (pcv13.get("drawn") or 0) >= 5,
+                  f"index={cidx} drawn={pcv13.get('drawn')}")
+        if cidx:
+            pf13 = server.cdr_modify(doc_id, {"name": r13}, {
+                "fill": {"type": "pattern", "canvas_index": cidx,
+                         "front": "#000000", "end": "#FFFFFF"}},
+                expected_revision=state["revision"],
+                snapshot_token=state["snapshot_token"])
+            if no_error("cdr_modify(fill pattern)", pf13):
+                check("图案填充应用成功", "fill:pattern" in (pf13.get("applied") or []),
+                      str(pf13.get("applied")))
+                state = pf13["state"]
+            pt13 = server.cdr_modify(doc_id, {"name": r13}, {
+                "pattern_fill": {"rotation_angle": 30, "origin_x": 2,
+                                 "tile_width": 8, "mirror_fill": True,
+                                 "front_color": "#00FF00", "skew_angle": 5}},
+                expected_revision=state["revision"],
+                snapshot_token=state["snapshot_token"])
+            if no_error("cdr_modify(pattern_fill 微调)", pt13):
+                check("图案填充微调生效", "pattern_fill" in (pt13.get("applied") or []),
+                      str(pt13.get("applied")))
+                state = pt13["state"]
+
+        # --- 文本格式查询 ---
+        fq = server.cdr_text(doc_id, {"name": t13}, find_query="@bold = false")
+        if no_error("cdr_text(find_query bold=false)", fq):
+            fr = fq.get("find_ranges") or {}
+            check("按格式查询文本区间", (fr.get("count") or 0) >= 1,
+                  f"count={fr.get('count')} texts={fr.get('texts')}")
+        fq2 = server.cdr_text(doc_id, {"name": t13}, find_query="@bold = true")
+        if no_error("cdr_text(find_query bold=true)", fq2):
+            fr2 = fq2.get("find_ranges") or {}
+            check("格式查询无匹配返回 0", fr2.get("count") == 0,
+                  f"count={fr2.get('count')}")
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

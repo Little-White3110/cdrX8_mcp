@@ -303,7 +303,8 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
             palette_path: str | None = None, palette_colors: list | None = None,
             overwrite: bool = False, field_name: str | None = None,
             field_format: str = "0", settings: dict | None = None,
-            register: bool = False) -> dict:
+            register: bool = False, copy_areas: list | None = None,
+            rotate_areas: list | None = None, flip_areas: list | None = None) -> dict:
     """文档级操作。
 
     action:
@@ -536,6 +537,24 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
                 continue
             state = bool(px[2]) if len(px) > 2 else True
             canvas.SetPixel(int(px[0]), int(px[1]), state)
+            drawn += 1
+        for area in (copy_areas or []):
+            if not isinstance(area, (list, tuple)) or len(area) < 6:
+                continue
+            canvas.CopyArea(int(area[0]), int(area[1]), int(area[2]),
+                            int(area[3]), int(area[4]), int(area[5]))
+            drawn += 1
+        for area in (rotate_areas or []):
+            if not isinstance(area, (list, tuple)) or len(area) < 5:
+                continue
+            canvas.RotateArea(int(area[0]), int(area[1]), int(area[2]),
+                              int(area[3]), float(area[4]))
+            drawn += 1
+        for area in (flip_areas or []):
+            if not isinstance(area, (list, tuple)) or len(area) < 5:
+                continue
+            canvas.FlipArea(int(area[0]), int(area[1]), int(area[2]),
+                            int(area[3]), int(area[4]))
             drawn += 1
         index = int(app.PatternCanvases.Add(canvas))
         return {"action": act, "canvas_index": index,
@@ -2929,6 +2948,33 @@ def _apply_changes(doc: Any, shape: Any, changes: dict) -> dict:
         except Exception as exc:  # noqa: BLE001
             warnings.append(f"填充失败：{exc}")
 
+    if isinstance(changes.get("pattern_fill"), dict) and changes["pattern_fill"]:
+        try:
+            pf = _s(lambda: shape.Fill.Pattern)
+            if pf is None:
+                raise CdrBadArgument("对象当前不是图案填充")
+            spec = changes["pattern_fill"]
+            mapping = {
+                "rotation_angle": "RotationAngle", "skew_angle": "SkewAngle",
+                "origin_x": "OriginX", "origin_y": "OriginY",
+                "tile_width": "TileWidth", "tile_height": "TileHeight",
+                "tile_offset": "TileOffset", "tile_offset_type": "TileOffsetType",
+                "mirror_fill": "MirrorFill", "mirror_fill_x": "MirrorFillX",
+                "mirror_fill_y": "MirrorFillY",
+                "transform_with_shape": "TransformWithShape",
+                "canvas_index": "Canvas", "pattern_type": "Type",
+            }
+            for key, attr in mapping.items():
+                if key in spec and spec[key] is not None:
+                    setattr(pf, attr, spec[key])
+            for key, attr in (("front_color", "FrontColor"),
+                              ("back_color", "BackColor")):
+                if spec.get(key) is not None:
+                    setattr(pf, attr, _color(doc, spec[key]))
+            applied.append("pattern_fill")
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"图案填充微调失败：{exc}")
+
     if "outline" in changes:
         try:
             apply_outline(doc, shape, changes["outline"])
@@ -3732,6 +3778,7 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
              read_font: bool = False, read_hyphenation: bool = False,
              range_delete: bool = False, range_copy: bool = False,
              range_paste: bool = False, range_straighten: bool = False,
+             find_query: str | None = None,
              label: str = "cdr_text") -> dict:
     with mm_units(doc):
         page = _page(doc, page_index)
@@ -3769,6 +3816,17 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
                                         int(export_count), 0)
                 result["applied"].append("export_text")
                 result["exported"] = str(export_path)
+            if find_query:
+                try:
+                    ranges = shape.Text.Story.FindRanges(str(find_query))
+                    count = _n(lambda: int(ranges.Count), 0)
+                    result["find_ranges"] = {
+                        "query": str(find_query), "count": count,
+                        "texts": [_s(lambda i=i: str(ranges.Item(i).Text))
+                                  for i in range(1, min(count, 20) + 1)]}
+                except Exception as exc:  # noqa: BLE001
+                    result["find_ranges"] = {"query": str(find_query),
+                                             "error": str(exc)}
             if read_font:
                 info = _text_font_info(shape)
                 if info is not None:
@@ -3989,6 +4047,17 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
                     reading["exported"] = str(export_path)
                 except Exception as exc:  # noqa: BLE001
                     warnings.append(f"导出文本失败（StartIndex 需 >=1）：{exc}")
+            if find_query:
+                try:
+                    ranges = shape.Text.Story.FindRanges(str(find_query))
+                    count = _n(lambda: int(ranges.Count), 0)
+                    reading["find_ranges"] = {
+                        "query": str(find_query), "count": count,
+                        "texts": [_s(lambda i=i: str(ranges.Item(i).Text))
+                                  for i in range(1, min(count, 20) + 1)]}
+                except Exception as exc:  # noqa: BLE001
+                    reading["find_ranges"] = {"query": str(find_query),
+                                              "error": str(exc)}
             if read_font:
                 info = _text_font_info(shape)
                 if info is not None:

@@ -309,6 +309,8 @@ def cdr_modify(document_id: str, target: dict, changes: dict,
       fill（纯色/渐变/纹理/图案/"none"）｜fill_from（复制另一对象的填充：{"name":"..."}）
       图案填充：fill={"type":"pattern","canvas_index":1,"front":"#000","end":"#fff"}
       （canvas_index 来自 cdr_doc(action="pattern_canvas")）
+      图案微调：pattern_fill={"rotation_angle":30,"origin_x":2,"tile_width":8,
+                "mirror_fill":true,"front_color":"#0F0"}（作用于已有图案填充）
       专色填充：fill={"type":"spot","palette_index":1,"color_index":10,"tint":100}
       （先 cdr_doc(action="palette_open_fixed", palette_id=3) 打开 PANTONE 调色板）
       outline（宽度或 {width,color,caps,join,behind_fill,dash,start_arrow,end_arrow}）
@@ -380,6 +382,7 @@ def cdr_text(document_id: str, target: dict, text: str | None = None,
              read_font: bool = False, read_hyphenation: bool = False,
              range_delete: bool = False, range_copy: bool = False,
              range_paste: bool = False, range_straighten: bool = False,
+             find_query: str | None = None,
              expected_revision: int | None = None, snapshot_token: str | None = None,
              page_index: int | None = None) -> dict:
     """文字的排版级操作。
@@ -396,6 +399,7 @@ def cdr_text(document_id: str, target: dict, text: str | None = None,
               export_path（导出纯文本，export_start 从 1 起）
               read_font（读字体属性：名称/字号/样式/下划线…）/
               read_hyphenation（读断字设置；实测 X8 断字设置写回无效，只读）
+              find_query（按格式查询文本区间，如 "@font = 'Arial'" / "@bold = true"）
     区间操作：range_delete / range_copy / range_paste / range_straighten
               （作用于 range_start..range_end，0 基；copy/paste 走系统剪贴板）
     OpenType：opentype={"liga":true,"kern":false,...}（实测 SetOpenTypeFeature 可用）
@@ -436,6 +440,7 @@ def cdr_text(document_id: str, target: dict, text: str | None = None,
             read_font=read_font, read_hyphenation=read_hyphenation,
             range_delete=range_delete, range_copy=range_copy,
             range_paste=range_paste, range_straighten=range_straighten,
+            find_query=find_query,
         ), label="cdr_text")
         if not mutating:
             return result
@@ -970,7 +975,8 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
             palette_path: str | None = None, palette_colors: list | None = None,
             overwrite: bool = False, field_name: str | None = None,
             field_format: str = "0", settings: dict | None = None,
-            register: bool = False,
+            register: bool = False, copy_areas: list | None = None,
+            rotate_areas: list | None = None, flip_areas: list | None = None,
             expected_revision: int | None = None, snapshot_token: str | None = None,
             page_index: int | None = None) -> dict:
     """文档级操作。
@@ -994,7 +1000,10 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
       palette_colors   列调色板颜色名（query 过滤、limit 截断）
       spot_color       创建专色：palette_index + color_index（或 spot_name）+ tint
       pattern_canvas   新建 32x32 图案画布并登记：pattern_fills=[[x1,y1,x2,y2],…] /
-                       pattern_pixels=[[x,y],…] / pattern_lines=[[x1,y1,x2,y2],…]；
+                       pattern_pixels=[[x,y],…] / pattern_lines=[[x1,y1,x2,y2],…] /
+                       copy_areas=[[x1,y1,x2,y2,dx,dy],…] /
+                       rotate_areas=[[x1,y1,x2,y2,angle],…] /
+                       flip_areas=[[x1,y1,x2,y2,axes],…]；
                        返回 canvas_index，供 cdr_modify 图案填充/图案透明使用
       textures         列出 Corel 纹理库名称（供 fill={"type":"texture","name":...}）
       metadata         读文档元数据（Title/Author/Subject/Keywords/Notes/Copyright…）
@@ -1028,7 +1037,9 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
                       palette_path=resolved_palette_path,
                       palette_colors=palette_colors, overwrite=overwrite,
                       field_name=field_name, field_format=field_format,
-                      settings=settings, register=register)
+                      settings=settings, register=register,
+                      copy_areas=copy_areas, rotate_areas=rotate_areas,
+                      flip_areas=flip_areas)
         if action == "info":
             return _com(lambda _b: ops.doc_ops(doc, "info", **kwargs), label="cdr_doc")
         if action in {"clear_selection", "units", "sample_color", "fonts",

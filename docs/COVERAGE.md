@@ -2,7 +2,7 @@
 
 > 目的：证明"还有多少没探"。每一行要么有对应的工具，要么有实测失败证据。
 > 环境：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）/ Python 3.11.9 64 位
-> 最近更新：2026-10-25 第十二波（文档设置读写 / 文本区间编辑 / 自定义箭头登记）
+> 最近更新：2026-10-25 第十三波（图案画布变换 / 图案填充微调 / 文本格式查询）
 
 ## 怎么得出这份清单
 
@@ -31,7 +31,7 @@
 | `IVGSubPath` | 39 | 已用：CreateSubPath / AppendLineSegment / AppendCurveSegment2 / Closed / **Nodes / Segments / StartNode / EndNode / GetPointAt / GetPointPositionAt / GetTangentVectorAt / GetPerpendicularVectorAt / GetCurveSpeedAt / GetIntersections / ReverseDirection / Next / Previous / Extract / GetCopy**；求交/等分/切向已打通，点集数组仍取不回 |
 | `IVGNode` | 19 | **已覆盖（第五波纠正）**：`curve.Nodes` / `curve.SubPaths.Item(i).Nodes` 是**属性**；`GetPosition/SetPosition/Move/Type/Index/SubPathIndex/IsEnding/Selected/Delete/CreateSelection` 均可用；范围操作走 `curve.Nodes.Range(a,b)` → `IVGNodeRange`（Fillet/Chamfer/Scallop/Smoothen/SetType/Move/Rotate/Skew/Stretch/BreakApart/GetBoundingBox）；`app.CreateNodeRange()` 返回空集合 |
 | `IVGText` | 30 | 已用：Story（**Font / Size / Bold / Italic / Underline 读取**）/ GetSpaceProperties / SetSpaceProperties / GetAlignProperties / SetAlignProperties / FitToPath / FitTextToFrame / **GetContents / Range / ExportToFile / GetHyphenationSettings**；GetFontProperties 结构体返回默认值不可信 |
-| `IVGTextRange` | 35 | 已用：Text / Font / Size / Bold / Italic / Underline / ChangeCase / ApplyBulletEffect / ApplyDropCapEffect / ApplyNoEffect / InsertBefore / InsertAfter / **SetOpenTypeFeature / GetOpenTypeFeature / Delete / Copy / Paste / Straighten** |
+| `IVGTextRange` | 35 | 已用：Text / Font / Size / Bold / Italic / Underline / ChangeCase / ApplyBulletEffect / ApplyDropCapEffect / ApplyNoEffect / InsertBefore / InsertAfter / **SetOpenTypeFeature / GetOpenTypeFeature / Delete / Copy / Paste / Straighten / FindRanges**；ApplyStyle 调用不报错但未观测到效果 |
 | `IVGColor` | 44 | 通过 Create*Color 间接使用（RGB/CMYK/Gray/Lab/HLS/Registration）；**ToString / GetName / CopyAppearance / StringAssign / IsSame / BlendWith / GetColorDistanceFrom** 均已实测 |
 | `IVGBitmap` | 16 | 已用：ConvertTo / ConvertToBW / **ConvertToPaletted（0~9） / ConvertToDuotone** / Resample / Crop / ResetCropEnvelope / Inflate / Mode / ResolutionX / Size / **Image / Duotone**；**Trace 禁用**（见下） |
 | `IVGFountainFill` | 7 | 通过 ApplyFountainFill 设置，未做二次编辑 |
@@ -47,7 +47,8 @@
 | `IVGPalettes` / `IVGPalette` | 8 / 15 | **新打通**：`Palettes.OpenFixed(id)` 可打开 PANTONE 匹配系统（946 色）等内置调色板；`Create/AddColor/SaveAs/Color/ColorCount/Identifier/FindColor` 可用；`CreatePaletteColor(Identifier GUID, index)`、`CreateSpotColorByName(Identifier, 名称, tint)` 可用 |
 | `IVGFontList` | 3 | **新打通**：`app.FontList.Count / Item(i)` 返回字体名字符串（本机 2068 个） |
 | `IVGSnapPoint` | 9 | **新打通**：`Page.FindClosestSnapPoint(TypeSet,x,y,hot)` 返回吸附点；`PositionX/PositionY/Type/Direction/UsesDirection/IsSelectable/IsMovable/IsDeletable` 可读（TypeSet 1/16/32 会报错，2/4/8 及组合可用） |
-| `IVGPatternCanvas` / `IVGPatternCanvases` | 13 / 8 | **新打通（第八波）**：`app.CreatePatternCanvas()` 生成 32×32 单色画布；`Clear / FillArea(x1,y1,x2,y2,State) / SetPixel / Line / Pixel / Data` 可用；`PatternCanvases.Add(canvas)` 登记后 `Fill.ApplyPatternFill(0,"",index,front,end,transform)` 即可图案填充，`Transparency.ApplyPatternTransparency(...)` 图案透明 |
+| `IVGPatternCanvas` / `IVGPatternCanvases` | 13 / 8 | **新打通（第八/十三波）**：`CreatePatternCanvas()` 生成 32×32 单色画布；`Clear / FillArea / SetPixel / Line / CopyArea / RotateArea / FlipArea / PutCopy / Select / Data` 可用；`PatternCanvases.Add(canvas)` 登记后 `Fill.ApplyPatternFill(0,"",index,front,end,transform)` 即可图案填充，`Transparency.ApplyPatternTransparency(...)` 图案透明 |
+| `IVGPatternFill` | 18 | **新打通（第十三波）**：已有图案填充可微调 `FrontColor/BackColor/TileWidth/TileHeight/OriginX·Y/RotationAngle/SkewAngle/MirrorFill/MirrorFillX·Y/TransformWithShape/TileOffset/Canvas/Type`（全部可写且回读正确） |
 
 ---
 
@@ -57,11 +58,11 @@
 |---|---|---|
 | 会话/文档/状态 | `cdr_status` `cdr_connect` `cdr_documents` `cdr_open`（含**从模板创建**） `cdr_inspect` `cdr_save` `cdr_close` | ✅ |
 | 绘图 | `cdr_create`（矩形含圆角 / 椭圆含圆弧扇形 / 多边形 / 星形 / 螺旋 / 网格 / 直线 / 贝塞尔 / 文字 / 段落文字 / 参考线 / 任意折线 / **内存位图（纯色 + 像素色块）**） | ✅ |
-| 样式 | `cdr_modify`（纯色/渐变/纹理/图案（画布）/专色/无色、描边含虚线箭头/**自定义虚线线型**、投影、轮廓图、封套、透明/图案透明、冻结/解冻透明度） | ✅ |
+| 样式 | `cdr_modify`（纯色/渐变/纹理/图案（画布）/专色/无色、描边含虚线箭头/自定义虚线线型、投影、轮廓图、封套、透明/图案透明、冻结/解冻透明度、**图案填充微调**） | ✅ |
 | 变换 | `cdr_modify`（移动/尺寸/旋转/翻转/斜切/矩阵/克隆/层级/**层级相对调整**/**清除变换**/**旋转中心**/复制/删除/锁定） | ✅ |
 | **对象样式** | `cdr_style`（列出/从对象创建/派生/套用/改名/删除/读定义/改属性/**样式表 .cdst 导入导出**/**颜色样式与颜色协调**） | ✅ 第六/七/九波 |
 | **节点/线段** | `cdr_node`（列节点/列线段/移动/选中/删除/圆角/倒角/scallop/平滑/拉伸/旋转/斜切/断开/加节点/断线/控制点/按坐标查找） | ✅ 第五波 |
-| 文字排版 | `cdr_text`（字体字号粗斜体下划线 / 对齐 / 大小写 / 项目符号 / 首字下沉 / 行距字距 / 前后插入 / 沿路径 / 自适应 / 转曲 / 读取全文·区间·导出纯文本 / 字体属性读取·断字设置读取 / **区间删除·复制·粘贴·拉直** / OpenType 特性） | ✅ |
+| 文字排版 | `cdr_text`（字体字号粗斜体下划线 / 对齐 / 大小写 / 项目符号 / 首字下沉 / 行距字距 / 前后插入 / 沿路径 / 自适应 / 转曲 / 读取全文·区间·导出纯文本 / 字体属性读取·断字设置读取 / 区间删除·复制·粘贴·拉直 / **按格式查询区间（@font/@bold…）** / OpenType 特性） | ✅ |
 | 布尔与整形 | `cdr_shape_ops`（weld/trim/intersect/combine/group/ungroup/break_apart/to_curves/to_symbol/powerclip/fillet/chamfer/scallop/step_repeat/distribute/boundary/perspective/separate/parallel_curves/rasterize/batch_outline_to_curves/fill_mode/pixel_aligned/range_boundary/envelope_from_shape/compare/project/unproject/**to_document（提取为新文档）**） | ✅ |
 | 对齐 | `cdr_align`（左中右/上下中/等间距，对齐对象或页面）+ `cdr_modify(align_to_shape/align_to_page)` | ✅ |
 | 选择与查找 | `cdr_select`（加入/**移除/清空**）`cdr_find` | ✅ |
@@ -71,7 +72,7 @@
 | 位图 | `cdr_bitmap`（信息/转色彩模式/重采样/裁剪/取消裁剪/取像素色·图像缓冲信息·调色板模式 0~9·双色调） | ✅（Trace 除外） |
 | 路径 | `cdr_path`（长度面积/偏移轮廓/追加子路径/折线点/反转方向·焊子路径·去重叠·参数取点·切/法向量·速度·交点·找节点/线段） | ✅ |
 | 导入导出 | `cdr_import` `cdr_export`（png/jpg/svg/pdf，可指定 DPI，可只导选区） | ✅ |
-| 文档 | `cdr_doc`（概况/清选区/清撤销栈/调色板/箭头/**箭头登记**/单位换算·取色·显示隐藏·版式·重复操作/字体列表·调色板列表·调色板取色/固定调色板打开·颜色枚举·专色创建/图案画布创建/纹理库列表/文档元数据读写/自定义调色板创建/数据字段·对象数据·色彩管理·线型样式/**文档设置读写**） | ✅ |
+| 文档 | `cdr_doc`（概况/清选区/清撤销栈/调色板/箭头/箭头登记/单位换算·取色·显示隐藏·版式·重复操作/字体列表·调色板列表·调色板取色/固定调色板打开·颜色枚举·专色创建/图案画布创建（**含区域变换**）/纹理库列表/文档元数据读写/自定义调色板创建/数据字段·对象数据·色彩管理·线型样式/文档设置读写） | ✅ |
 | **对象数据** | `cdr_modify(changes={"data":{...}})` + `cdr_doc(action="object_data"/"data_fields"/"add_data_field")` | ✅ 第十一波 |
 | 视图 | `cdr_view`（刷新/激活/文档↔屏幕坐标/屏幕↔文档距离） | ✅ 第五波 |
 | 历史 | `cdr_undo`（撤销/重做） | ✅ |
@@ -95,6 +96,8 @@
 | HTML 兼容文本 | `Text.MakeHTMLCompatible(HTML)` | 返回 False，未见效果 | 不封装 |
 | 断字设置写入 | `Text.SetHyphenationSettings(Frames, struct)` | 调用不报错但值不生效（读回仍是默认） | 只读暴露，写入不提供 |
 | 字体结构体读取 | `Text.GetFontProperties(Frames)` | 返回**默认结构体**（Name=''、Size≈1e-38）；UI 字体实际值要用 `Text.Story.Font/Size` | 已改用 Story 读取 |
+| 文本区间套样式 | `TextRange.ApplyStyle(样式名)` | 调用不报错，但实测 `Bold/Size` 未变化（字符样式未生效或需其他条件） | 不推荐；整体样式用 `Shape.ApplyStyle` |
+| 文本格式查询的尺寸比较 | `TextRange.FindRanges("@size > 10")` | 报 `Incompatible unit powers of the operands: 'pt' and 'pt^0'`；`@size > 10pt` 解析失败 | 尺寸条件暂不可用；`@font = 'Arial'`、`@bold = true` 可用 |
 | 图案填充（文件型） | `Fill.ApplyPatternFill(Type=1/2, FileName=…)` | 提示「无法装入以下图样文件」 | 需要图案图像文件；**内存画布型（Type=0 + PatternCanvas）已可用** |
 | 影线填充 | `Fill.ApplyHatchFill` / `Document.HatchLibraries` | `HatchLibraries.Count = 0`、`ActiveLibrary = None`（本机未装 Hatch 库） | 需要先安装 Corel 的 Hatch 填充库 |
 | 曲线贴到笔触 | `Curve.CreateCurveMappedToStroke` | `com_error(-2147352571, 类型不匹配)`（Stroke 参数不是普通 Curve） | 需要 Artistic Media 的笔触对象，暂不封装 |
@@ -148,6 +151,11 @@
 >   FacingPages / FirstPageOnRightSide / Layout / DrawingOriginX·Y` 等均为可写属性。
 > * 文本区间 **可编辑**：`TextRange.Delete/Copy/Paste/Straighten` 实测可用（copy/paste 走系统剪贴板）。
 > * 自定义箭头 **可登记**：`CreateArrowHead(curve)` → `Application.ArrowHeads.Add()` 进全局箭头库。
+> * 文本格式查询 **可用（第十三波）**：`TextRange.FindRanges("@font = 'Arial'")`、
+>   `"@bold = true"` 返回 `IVGTextRanges`；尺寸比较因单位语法暂不可用。
+> * 图案填充微调 **可用**：`Fill.Pattern` 的 RotationAngle / TileWidth / Origin / MirrorFill /
+>   FrontColor 等 15 个属性可写且回读正确。
+> * 图案画布区域变换 **可用**：`CopyArea / RotateArea / FlipArea / PutCopy`。
 
 ---
 
@@ -179,7 +187,7 @@
 
 ```powershell
 python -m pytest -q              # 55 项纯逻辑
-python scripts/live_smoke.py     # 201 项端到端（真实 CorelDRAW）
+python scripts/live_smoke.py     # 206 项端到端（真实 CorelDRAW）
 ```
 
 联调断言覆盖了上表所有 ✅ 项。反解脚本属于过程产物，已按要求放在 `tmp/` 并在完成时清理；
@@ -187,14 +195,14 @@ python scripts/live_smoke.py     # 201 项端到端（真实 CorelDRAW）
 
 ---
 
-## 六、量化覆盖率（2026-10-25 第十二波实测）
+## 六、量化覆盖率（2026-10-25 第十三波实测）
 
 方法：反解类型库拿到 196 个自动化类 / **1619** 个方法（已剔除 `QueryInterface` 等 COM 基础设施）；
 用 AST 扫描 `src/cdrx8_mcp/*.py`，收集所有 `.方法名(` 调用与 `setattr/getattr` 的属性名，
 与主干接口的方法名求交集。**注意：属性名（如 `curve.Nodes`）也会被计入**，所以本波数字含真实属性访问。
 
-**全局：674 / 1619 = 41.6%**（21.2% → … → 41.4% → 41.6%）
-**主干 20 接口：400 / 743 = 53.8%**
+**全局：679 / 1619 = 41.9%**（21.2% → … → 41.6% → 本轮 41.9%）
+**主干 20 接口：401 / 743 = 54.0%**
 
 复现命令：`python scripts/coverage_audit.py`（会临时展开类型库到 `tmp/gen_py`，跑完自动清理）
 
@@ -207,7 +215,7 @@ python scripts/live_smoke.py     # 201 项端到端（真实 CorelDRAW）
 | `IVGPage` | 21 | 19 | **90%** |
 | `IVGCurve` | 36 | 22 | 61% |
 | `IVGLayer` | 49 | 22 | 45% |
-| `IVGTextRange` | 31 | 20 | **65%** |
+| `IVGTextRange` | 31 | 21 | **68%** |
 | `IVGApplication` | 78 | 18 | 23% |
 | `IVGText` | 29 | 16 | **55%** |
 | `IVGNode` | 18 | 9 | 50% |
@@ -220,10 +228,10 @@ python scripts/live_smoke.py     # 201 项端到端（真实 CorelDRAW）
 | `IVGTransparency` | 8 | 6 | **75%** |
 | `IVGStyle` | 15 | 8 | **53%** |
 | `IVGColorContext` | 6 | 1 | 17% |
-| **合计** | **743** | **400** | **53.8%** |
+| **合计** | **743** | **401** | **54.0%** |
 
 > **怎么读这两个数**：
-> 1. 全局 41.6% 覆盖 1619 个方法（含变体与重复）；主干 20 接口 53.8%。
+> 1. 全局 41.9% 覆盖 1619 个方法（含变体与重复）；主干 20 接口 54.0%。
 > 2. 它是**方法/属性名匹配**的近似值，同名方法会跨接口误计。
 > 3. `IVGColor` 的 21% 是**故意的**：实测不暴露分量属性，色彩运算在纯 Python 完成。
 > 4. 未调用方法多为变体（Wide/Ex/2/3 后缀）与事件订阅、CorelScriptTools/MathUtils。
@@ -385,6 +393,17 @@ python scripts/live_smoke.py     # 201 项端到端（真实 CorelDRAW）
 | 保存/恢复设置 | `Document.SaveSettings/RestoreSettings(Tag)` | ⚠️ 调用不报错，但实测未恢复 EditAcrossLayers（是否覆盖全部设置未确认），暂不封装 |
 | 位图链接 | `Bitmap.ResolveLink/UpdateLink` | ⚠️ 非外部链接位图报「未外部链接到文件」，本机无链接位图可测 |
 
+## 七之十一、第十三波已接入（2026-10-25，图案画布变换、图案填充微调、文本格式查询）
+
+| 能力 | 落地位置 | 实测 |
+|---|---|---|
+| **图案画布区域变换** | `cdr_doc(pattern_canvas, copy_areas/rotate_areas/flip_areas)` | ✅ `CopyArea/RotateArea/FlipArea` 各调用一次 + 填充/像素 → drawn=5；`PutCopy/SetItem/Select` 也可用 |
+| **图案填充微调** | `cdr_modify(pattern_fill={rotation_angle, origin_x, tile_width, mirror_fill, front_color, skew_angle})` | ✅ 15 个 PatternFill 属性可写且回读正确（RotationAngle=45、TileWidth=10、FrontColor=HSB 等） |
+| **文本格式查询** | `cdr_text(find_query="@font = 'Arial'")` / `"@bold = true"` | ✅ 返回 `IVGTextRanges`；font 查询命中整段、bold=true 命中 0；单引号字符串语法可用 |
+| 文本尺寸查询 | `FindRanges("@size > 10")` | ❌ 报 `Incompatible unit powers: 'pt' and 'pt^0'`；`10pt` 又解析失败 |
+| 文本区间套样式 | `TextRange.ApplyStyle("样式名")` | ⚠️ 调用不报错，但 Bold/Size 未变化，效果不可观测 |
+| 自定义箭头/文档设置 | 见第十二波 | ✅ |
+
 ## 七之二、仍未接入（第三轮候选）
 
 | 能力 | 接口 | 为什么还没做 |
@@ -406,14 +425,14 @@ python scripts/live_smoke.py     # 201 项端到端（真实 CorelDRAW）
 
 ## 八、一句话总结
 
-* **能力域覆盖**：32 个能力域 / 27 个工具，日常出图闭环完整；节点编辑、对象样式、专色、
+* **能力域覆盖**：34 个能力域 / 27 个工具，日常出图闭环完整；节点编辑、对象样式、专色、
   图案/纹理填充、跨文档复制、模板/样式表/颜色样式、文档元数据、对象数据字段、自定义虚线、
-  文档设置、文本区间编辑、自定义箭头都已补上。
-* **方法级覆盖**：全局 41.6%（674/1619），主干 20 接口 53.8%（400/743）。
+  文档设置、文本区间编辑、自定义箭头、图案微调、文本格式查询都已补上。
+* **方法级覆盖**：全局 41.9%（679/1619），主干 20 接口 54.0%（401/743）。
 * **明确不可用**：位图描摹、文本导入、点集数组建曲线、混合（CreateBlend）、
   立体化/透镜/尺寸/连接线、符号库、文件型图案/影线填充（本机无库）、曲线贴笔触、
-  OpenDocumentAsCopy、HTML 兼容文本、断字写入、填充字符串。
-* **第十二波修正的历史结论**：文档设置可读写；文本区间可删除/复制/粘贴/拉直；
-  自定义箭头可登记进全局箭头库；Document.Keywords/Notes 可直接写（读走 Metadata）。
+  OpenDocumentAsCopy、HTML 兼容文本、断字写入、填充字符串、文本尺寸查询。
+* **第十三波修正的历史结论**：图案画布可做区域变换；PatternFill 15 个属性可微调；
+  `FindRanges` 支持 `@font/@bold` 单引号查询。
 
 
