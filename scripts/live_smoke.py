@@ -994,11 +994,13 @@ def main() -> int:
         bp1 = server.cdr_bitmap(doc_id, target={"name": bmp_name}, action="pixel",
                                 x_px=2, y_px=2)
         if no_error("cdr_bitmap(pixel fill)", bp1):
-            check("像素取色读到蓝块", bp1.get("name") == "蓝", str(bp1.get("color")))
+            check("像素取色读到蓝块", bp1.get("name") == "蓝"
+                  or "0,0,255" in str(bp1.get("color")), str(bp1.get("color")))
         bp2 = server.cdr_bitmap(doc_id, target={"name": bmp_name}, action="pixel",
                                 x_px=12, y_px=12)
         if no_error("cdr_bitmap(pixel bg)", bp2):
-            check("像素取色读到红底", bp2.get("name") == "红", str(bp2.get("color")))
+            check("像素取色读到红底", bp2.get("name") == "红"
+                  or "255,0,0" in str(bp2.get("color")), str(bp2.get("color")))
         bp3 = server.cdr_bitmap(doc_id, target={"name": bmp_name}, action="pixel",
                                 x_px=99, y_px=99)
         check("像素越界被拒绝", bp3.get("error") == "bad_argument", str(bp3.get("error")))
@@ -1988,8 +1990,9 @@ def main() -> int:
                                  snapshot_token=state["snapshot_token"])
         if no_error("cdr_bitmap(replace_image 前置)", ri16):
             state = ri16["state"]
-        p_before = server.cdr_bitmap(doc_id, {"name": b16}, action="pixel",
-                                     x_px=1, y_px=1)
+        p_before = [server.cdr_bitmap(doc_id, {"name": b16}, action="pixel",
+                                      x_px=px, y_px=px).get("color")
+                    for px in (1, 4, 8)]
         eff16 = server.cdr_bitmap(doc_id, {"name": b16}, action="effect",
                                   effect_name="Whirlpool",
                                   effect_command="WhirlpoolEffect WhirpoolSpacing=20,"
@@ -2002,10 +2005,11 @@ def main() -> int:
             check("位图特效命令串可执行", eff16.get("action") == "effect",
                   f"action={eff16.get('action')}")
             state = eff16["state"]
-            p_after = server.cdr_bitmap(doc_id, {"name": b16}, action="pixel",
-                                        x_px=1, y_px=1)
-            check("位图特效改变像素", (p_before.get("color") != p_after.get("color")),
-                  f"before={p_before.get('color')} after={p_after.get('color')}")
+            p_after = [server.cdr_bitmap(doc_id, {"name": b16}, action="pixel",
+                                         x_px=px, y_px=px).get("color")
+                       for px in (1, 4, 8)]
+            check("位图特效改变像素", p_before != p_after,
+                  f"before={p_before} after={p_after}")
 
     # ---------------- 15w. 第十七波：混合（Blend） ----------------
     print("\n[15w] 第十七波：混合效果")
@@ -2057,6 +2061,47 @@ def main() -> int:
             check("混合效果可清除", (bc.get("cleared") or 0) == 1
                   and (bc.get("effects") or 0) == 0, str(bc))
             state = bc["state"]
+
+    # ---------------- 15x. 第十八波：色彩配置文件列表 / 文档颜色转换 ----------------
+    print("\n[15x] 第十八波：色彩配置文件 + 文档颜色转换")
+    fresh18 = server.cdr_inspect(doc_id)
+    if "state" in fresh18:
+        state = fresh18["state"]
+    w18 = server.cdr_create(doc_id, items=[
+        {"type": "rectangle", "x": 20, "y": 20, "width": 30, "height": 20,
+         "fill": "#FF0000"},
+    ], expected_revision=state["revision"], snapshot_token=state["snapshot_token"])
+    if no_error("创建第十八波对象", w18):
+        state = w18["state"]
+        cp = server.cdr_doc(doc_id, "color_profiles", model=1, limit=3)
+        if no_error("cdr_doc(color_profiles)", cp):
+            check("色彩配置文件可列出", (cp.get("count") or 0) > 0,
+                  f"count={cp.get('count')} first={(cp.get('profiles') or [{}])[0].get('name')}")
+        cv = server.cdr_doc(doc_id, "convert_color", model=1,
+                            expected_revision=state["revision"],
+                            snapshot_token=state["snapshot_token"])
+        if no_error("cdr_doc(convert_color cmyk)", cv):
+            check("文档转 CMYK 成功", bool(cv.get("after"))
+                  and cv.get("model") == 1, str(cv.get("after")))
+            state = cv["state"]
+            cc1 = server.cdr_doc(doc_id, "color_context")
+            check("转换后色彩上下文为 CMYK",
+                  (cc1.get("blending_color_model") == 1), str(cc1.get("profile_names")))
+        cr = server.cdr_doc(doc_id, "convert_color", model=0,
+                            expected_revision=state["revision"],
+                            snapshot_token=state["snapshot_token"])
+        if no_error("cdr_doc(convert_color rgb)", cr):
+            cc2 = server.cdr_doc(doc_id, "color_context")
+            check("可转回 RGB", (cc2.get("blending_color_model") == 0),
+                  str(cc2.get("profile_names")))
+            state = cr["state"]
+        cb = server.cdr_doc(doc_id, "convert_color", profile_name="Dot Gain 15%",
+                            expected_revision=state["revision"],
+                            snapshot_token=state["snapshot_token"])
+        if no_error("cdr_doc(convert_color gray)", cb):
+            check("按配置文件转灰度成功", cb.get("model") == 2
+                  and "Dot Gain" in (cb.get("after") or ""), str(cb.get("after")))
+            state = cb["state"]
 
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")

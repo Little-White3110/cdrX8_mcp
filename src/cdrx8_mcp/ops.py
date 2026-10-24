@@ -285,7 +285,7 @@ DOC_ACTIONS = ("info", "clear_selection", "clear_undo", "palette", "arrowhead",
                "pattern_canvas", "textures", "metadata", "set_metadata",
                "palette_create", "data_fields", "add_data_field", "object_data",
                "color_context", "outline_styles", "settings", "set_settings",
-               "revert", "app_info")
+               "revert", "app_info", "color_profiles", "convert_color")
 
 
 def doc_ops(doc: Any, action: str, *, target: dict | None = None,
@@ -305,7 +305,9 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
             overwrite: bool = False, field_name: str | None = None,
             field_format: str = "0", settings: dict | None = None,
             register: bool = False, copy_areas: list | None = None,
-            rotate_areas: list | None = None, flip_areas: list | None = None) -> dict:
+            rotate_areas: list | None = None, flip_areas: list | None = None,
+            model: int | str | None = None, profile_name: str | None = None,
+            rendering_intent: int | None = None) -> dict:
     """文档级操作。
 
     action:
@@ -774,6 +776,102 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
                 "ui_language": {str(lang): bool(_s(
                     lambda lang=lang: bool(app.IsUILanguageAvailable(int(lang))), False))
                     for lang in (1033, 2052)}}
+    if act in {"color_profiles", "convert_color"}:
+        app = _app_of(doc)
+        cm = _s(lambda: app.ColorManager)
+        if cm is None:
+            raise CdrBadArgument("Application.ColorManager 不可用")
+        def _norm_model(value):
+            if value is None:
+                return None
+            if isinstance(value, str):
+                aliases = {"rgb": 0, "cmyk": 1, "gray": 2, "grayscale": 2,
+                           "grey": 2, "lab": 3}
+                key = value.strip().lower()
+                if key in aliases:
+                    return aliases[key]
+                raise CdrBadArgument("model 可用：0=RGB, 1=CMYK, 2=Grayscale, 3=Lab")
+            return int(value)
+        model_id = _norm_model(model)
+        if act == "color_profiles":
+            if model_id is None:
+                coll = _s(lambda: cm.ColorProfiles)
+            else:
+                coll = _s(lambda: cm.GetProfilesByColorModel(model_id))
+            count = _n(lambda: int(coll.Count), 0) if coll is not None else 0
+            cap = max(1, min(int(limit), 400))
+            items = []
+            for i in range(1, min(count, cap) + 1):
+                p = _s(lambda i=i: coll.Item(i))
+                if p is None:
+                    continue
+                items.append({
+                    "name": _s(lambda p=p: str(p.Name)),
+                    "model": _n(lambda p=p: int(p.ColorModel)),
+                    "generic": bool(_s(lambda p=p: bool(p.Generic), False)),
+                    "installed": bool(_s(lambda p=p: bool(p.Installed), False)),
+                    "manufacturer": _s(lambda p=p: str(p.Manufacturer)),
+                    "file_name": _s(lambda p=p: str(p.FileName)) or None,
+                })
+            default_ctx = _s(lambda: cm.DefaultColorContext)
+            return {"action": act, "count": count, "model": model_id,
+                    "profiles": items,
+                    "default_context": _s(
+                        lambda: str(default_ctx.ColorProfileNameList))
+                    if default_ctx is not None else None}
+        # convert_color
+        target = None
+        if profile_name:
+            needle = str(profile_name).strip().casefold()
+            all_profiles = _s(lambda: cm.ColorProfiles)
+            count = _n(lambda: int(all_profiles.Count), 0) if all_profiles is not None else 0
+            for i in range(1, count + 1):
+                p = _s(lambda i=i: all_profiles.Item(i))
+                if p is None:
+                    continue
+                name = str(_s(lambda p=p: str(p.Name), ""))
+                if name.casefold() == needle:
+                    target = p
+                    break
+                if target is None and needle in name.casefold():
+                    target = p
+        if target is None:
+            if model_id is None:
+                raise CdrBadArgument("convert_color 需要 model 或 profile_name")
+            coll = _s(lambda: cm.GetProfilesByColorModel(model_id))
+            count = _n(lambda: int(coll.Count), 0) if coll is not None else 0
+            if count < 1:
+                raise CdrBadArgument(f"没有 model={model_id} 的已安装配置文件")
+            prefer = {0: ("srgb iec61966-2.1", "adobe rgb (1998)"),
+                      1: ("japan color 2001 coated", "coated fogra39"),
+                      2: ("dot gain 15%", "dot gain 20%")}.get(model_id, ())
+            for needle in prefer:
+                for i in range(1, count + 1):
+                    p = _s(lambda i=i: coll.Item(i))
+                    if p is None:
+                        continue
+                    if needle in str(_s(lambda p=p: str(p.Name), "")).casefold():
+                        target = p
+                        break
+                if target is not None:
+                    break
+            if target is None:
+                target = coll.Item(1)
+        if target is None:
+            raise CdrBadArgument("找不到指定配置文件")
+        context = target.CreateColorContext()
+        if context is None:
+            raise CdrBadArgument("CreateColorContext 返回空")
+        if rendering_intent is not None:
+            context.RenderingIntent = int(rendering_intent)
+        before = _s(lambda: str(doc.ColorContext.ColorProfileNameList))
+        doc.ConvertToColorContext(context)
+        after = _s(lambda: str(doc.ColorContext.ColorProfileNameList))
+        return {"action": act,
+                "profile": _s(lambda: str(target.Name)),
+                "model": _n(lambda: int(target.ColorModel)),
+                "rendering_intent": _n(lambda: int(context.RenderingIntent)),
+                "before": before, "after": after}
     # arrowhead
     with mm_units(doc):
         page = _page(doc, page_index)

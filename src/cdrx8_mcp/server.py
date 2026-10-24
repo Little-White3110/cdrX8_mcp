@@ -1014,6 +1014,8 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
             field_format: str = "0", settings: dict | None = None,
             register: bool = False, copy_areas: list | None = None,
             rotate_areas: list | None = None, flip_areas: list | None = None,
+            model: int | str | None = None, profile_name: str | None = None,
+            rendering_intent: int | None = None,
             expected_revision: int | None = None, snapshot_token: str | None = None,
             page_index: int | None = None) -> dict:
     """文档级操作。
@@ -1059,6 +1061,9 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
                        first_page_on_right_side}
       revert           丢弃未保存修改、回到上次保存状态（**破坏性**，会撤销当前改动）
       app_info         读应用信息（OpenType 特性列表、平台版本检查、UI 语言可用性）
+      color_profiles   列出已安装色彩配置文件（可按 model 0=RGB/1=CMYK/2=Gray/3=Lab）
+      convert_color    把文档颜色转换到指定配置文件：model 或 profile_name，
+                       rendering_intent 可选（0~3）
     """
     def _run():
         doc, sess = _with_doc(document_id)
@@ -1078,7 +1083,9 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
                       field_name=field_name, field_format=field_format,
                       settings=settings, register=register,
                       copy_areas=copy_areas, rotate_areas=rotate_areas,
-                      flip_areas=flip_areas)
+                      flip_areas=flip_areas, model=model,
+                      profile_name=profile_name,
+                      rendering_intent=rendering_intent)
         if action == "info":
             return _com(lambda _b: ops.doc_ops(doc, "info", **kwargs), label="cdr_doc")
         if action in {"clear_selection", "units", "sample_color", "fonts",
@@ -1086,7 +1093,7 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
                       "palette_colors", "spot_color", "pattern_canvas",
                       "textures", "metadata", "palette_create", "data_fields",
                       "object_data", "color_context", "outline_styles",
-                      "settings", "app_info"}:
+                      "settings", "app_info", "color_profiles"}:
             return _com(lambda _b: ops.doc_ops(doc, action, **kwargs), label="cdr_doc")
         warnings = _check_view(sess, expected_revision, snapshot_token, doc)
         result = _com(lambda _b: ops.doc_ops(doc, action, **kwargs), label="cdr_doc")

@@ -7,9 +7,9 @@
 
 > **已在真机验证**：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）+ Python 3.11.9 64 位
 > - 单元测试 **55 项通过**
-> - 端到端联调（真实 CorelDRAW）**223/223 通过**
+> - 端到端联调（真实 CorelDRAW）**228/228 通过**
 > - 能力边界来自对 `vgcoreauto.tlb` 的反解（196 个自动化类 / 1619 个方法）+ 逐项实跑
-> - 方法级覆盖 **42.6%**（主干 20 接口 55.3%），可用 `python scripts/coverage_audit.py` 复现
+> - 方法级覆盖 **42.8%**（主干 20 接口 55.6%），可用 `python scripts/coverage_audit.py` 复现
 > - 完整清单见 [docs/COVERAGE.md](docs/COVERAGE.md)
 
 ---
@@ -78,7 +78,7 @@ python -m cdrx8_mcp              # 启动 MCP 服务器（stdio）
 | `cdr_node` | **节点/线段级编辑（第五波打通）**：列节点·列线段 / 移动·选中·删除 / 圆角·倒角· scallop·平滑 / 拉伸·旋转·斜切·断开 / 加节点·断线 / 读写贝塞尔控制点 / 按坐标找节点与线段 |
 | `cdr_bitmap` | 位图：信息 / 转色彩模式（rgb·cmyk·gray·bw）/ **阈值二值化** / **调色板模式 0~9（9=自定义调色板）** / **双色调 0~3（可给 .cpd 预设）** / **取像素颜色** / 图像缓冲信息 / 重采样 / **扩边** / 裁剪 / **内容替换（SetImageData，支持色块/像素绘制）** / **位图特效命令串（ApplyBitmapEffect）** |
 | `cdr_color` | **颜色运算（纯 Python）**：解析成 HEX/RGB/CMYK/Gray/HLS/Lab、转换、两色混合 |
-| `cdr_doc` | **文档级**：概况 / 清空选择集 / 清撤销栈 / **登记调色板** / **用曲线生成自定义箭头（可登记全局箭头库）** / **单位换算** / **取色（点/区域）** / **字体列表** / **调色板列表·取色·固定调色板打开·颜色枚举·专色创建·自定义调色板创建** / **图案画布创建（含区域变换）** / **纹理库列表** / **文档元数据读写** / **数据字段·对象数据·色彩管理·线型样式** / **文档设置读写** / **应用信息·文档回滚** / **显示隐藏对象** / **页面版式** / **重复上一操作** |
+| `cdr_doc` | **文档级**：概况 / 清空选择集 / 清撤销栈 / **登记调色板** / **用曲线生成自定义箭头（可登记全局箭头库）** / **单位换算** / **取色（点/区域）** / **字体列表** / **调色板列表·取色·固定调色板打开·颜色枚举·专色创建·自定义调色板创建** / **图案画布创建（含区域变换）** / **纹理库列表** / **文档元数据读写** / **数据字段·对象数据·色彩管理·线型样式** / **文档设置读写** / **应用信息·文档回滚** / **色彩配置文件·文档颜色转换** / **显示隐藏对象** / **页面版式** / **重复上一操作** |
 | `cdr_view` | **视图**：刷新重绘 / 激活窗口 / 文档↔屏幕坐标换算 / **屏幕距离↔文档距离** |
 
 ### 图层 / 页面 / 文件
@@ -183,7 +183,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ---
 
-## X8 特有问题（85 条，全部实测）
+## X8 特有问题（88 条，全部实测）
 
 这些是 **X8 与 2024+ 的差异**，也是本项目存在的主要理由。
 
@@ -274,6 +274,9 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 | 83 | **本机 `SymbolLibraries.Count=0`** | 没有符号库，`CreateSymbol` 无法取到符号名 | 需先安装符号库文件 |
 | 84 | **`CreateBlend` 必须传全参数且 `Path=None`** | 只传 2 个参数报 `TypeError: Python instance can not be converted to a COM object`（Path 默认 0 不是 IDispatch）；补全 12 个参数、Path=None 后成功 | 已封装 `cdr_shape_ops(op="blend")` |
 | 85 | **混合通过 `Effects.Item(i).Blend` 访问** | `IVGEffectBlend` 的 Steps/Spacing/Angle/ColorBlendType/Mode/Loop/RotateShapes/MapNodes/FuseStart/FuseEnd/ColorAcceleration/SpacingAcceleration/LinkAcceleration/AccelerateSize 可读写 | `blend_set` 可微调步数/间距等 |
+| 86 | **`Application.ColorManager` 提供 64 个色彩配置文件** | `ColorProfiles`、`GetProfilesByColorModel(0=RGB,1=CMYK,2=Gray,3=Lab)`、`DefaultColorContext` 均可用 | 本机配置文件来自 Windows/Corel 安装目录 |
+| 87 | **文档颜色转换可行，但灰度→RGB 会报错** | `profile.CreateColorContext()` → `Document.ConvertToColorContext()`；RGB→CMYK→RGB 成功，灰度→RGB 报「服务器出现意外情况」 | 转换前建议先 RGB→CMYK→RGB 路径 |
+| 88 | **`Application.CreateColorContext()` 直接调用不可用** | 无参/全参都 TypeError；必须用 `profile.CreateColorContext()` | 已封装 `cdr_doc(action="convert_color")` |
 
 改代码前请先读 [`src/cdrx8_mcp/constants.py`](src/cdrx8_mcp/constants.py) 里的注释。
 
@@ -323,7 +326,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ```powershell
 python -m pytest -q                # 55 项纯逻辑测试，任何平台可跑
-python scripts/live_smoke.py       # 223 项端到端，需要 CorelDRAW X8
+python scripts/live_smoke.py       # 228 项端到端，需要 CorelDRAW X8
 python scripts/live_smoke.py --keep   # 保留文档方便肉眼看效果
 python scripts/coverage_audit.py   # 覆盖率审计（复现 README/COVERAGE 里的数字）
 ```
@@ -353,6 +356,7 @@ weld/fillet → 框选/组合/解组 → 对齐 → 图层 → 查找 → 分页
 **立体化 → 立体化微调 → 透镜 → 效果枚举/清除** →
 **位图内容替换 → 位图 Whirlpool 特效（命令串）** →
 **混合（blend）→ 混合微调（blend_set）→ 清除** →
+**色彩配置文件列表 → 文档转 CMYK → 转回 RGB → 按名转灰度** →
 过期 token 拒绝 → 关闭。
 
 完整能力矩阵见 [docs/COVERAGE.md](docs/COVERAGE.md)。
