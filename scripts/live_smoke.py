@@ -909,6 +909,212 @@ def main() -> int:
             check("角度参考线已创建", ga.get("created") is True)
             state = ga["state"]
 
+    # ---------------- 15l. 第六波：对象样式 / 内存位图 / 页面插入 / 范围栅格 ----------------
+    print("\n[15l] 第六波：对象样式 + 内存位图 + 页面插入 + 范围操作")
+    fresh6 = server.cdr_inspect(doc_id)
+    if "state" in fresh6:
+        state = fresh6["state"]
+    w6 = server.cdr_create(doc_id, items=[
+        {"type": "rectangle", "x": 20, "y": 200, "width": 40, "height": 25,
+         "fill": "#CC0000", "outline": {"width": 1, "color": "#000000"}},
+        {"type": "rectangle", "x": 70, "y": 200, "width": 40, "height": 25,
+         "fill": "#00CC00"},
+        {"type": "polyline", "points": [[130, 200], [170, 200], [170, 230]],
+         "closed": False, "outline": {"width": 1, "color": "#000000"}},
+        {"type": "paragraph_text", "x": 20, "y": 240, "x2": 120, "y2": 270,
+         "text": "Wave Six Style", "font": "Arial", "size": 12},
+        {"type": "bitmap", "x": 180, "y": 240, "width": 30, "height": 30,
+         "color": "#FF0000", "pixels_w": 16, "pixels_h": 16,
+         "fills": [{"x": 0, "y": 0, "width": 8, "height": 8, "color": "#0000FF"}]},
+    ], expected_revision=state["revision"], snapshot_token=state["snapshot_token"])
+    if no_error("创建第六波测试对象", w6):
+        state = w6["state"]
+        r1, r2, cv1, tx1 = (w6["created"][i]["name"] for i in range(4))
+        bmp_name = w6["created"][4]["name"]
+
+        # --- 对象样式 ---
+        sl = server.cdr_style(doc_id, action="list")
+        if no_error("cdr_style(list)", sl):
+            check("初始样式列表可读", isinstance(sl.get("styles"), list),
+                  f"count={sl.get('count')}")
+        sc1 = server.cdr_style(doc_id, action="create", target={"name": r1},
+                               category="fill", style_name="W6Fill",
+                               expected_revision=state["revision"],
+                               snapshot_token=state["snapshot_token"])
+        if no_error("cdr_style(create fill)", sc1):
+            check("从对象创建填充样式", "W6Fill" in (sc1.get("created") or []),
+                  str(sc1.get("created")))
+            state = sc1["state"]
+        sc2 = server.cdr_style(doc_id, action="create", target={"name": r1},
+                               category="outline", style_name="W6Outline",
+                               expected_revision=state["revision"],
+                               snapshot_token=state["snapshot_token"])
+        if no_error("cdr_style(create outline)", sc2):
+            check("从对象创建轮廓样式", "W6Outline" in (sc2.get("created") or []),
+                  str(sc2.get("created")))
+            state = sc2["state"]
+        sa = server.cdr_style(doc_id, action="apply", target={"name": r2},
+                              style_name="W6Fill",
+                              expected_revision=state["revision"],
+                              snapshot_token=state["snapshot_token"])
+        if no_error("cdr_style(apply)", sa):
+            check("样式可按名套用", sa.get("applied") == "W6Fill", str(sa.get("applied")))
+            state = sa["state"]
+        sg = server.cdr_style(doc_id, action="get", style_name="W6Fill")
+        if no_error("cdr_style(get)", sg):
+            check("样式定义含属性清单", (sg.get("property_count") or 0) > 10,
+                  f"props={sg.get('property_count')}")
+        sren = server.cdr_style(doc_id, action="rename", style_name="W6Fill",
+                                new_name="W6FillRenamed",
+                                expected_revision=state["revision"],
+                                snapshot_token=state["snapshot_token"])
+        if no_error("cdr_style(rename)", sren):
+            check("样式改名成功", sren.get("renamed") is True, str(sren.get("renamed")))
+            state = sren["state"]
+        sdel = server.cdr_style(doc_id, action="delete", style_name="W6Outline",
+                                expected_revision=state["revision"],
+                                snapshot_token=state["snapshot_token"])
+        if no_error("cdr_style(delete)", sdel):
+            check("样式删除成功", sdel.get("deleted") is True, str(sdel.get("deleted")))
+            state = sdel["state"]
+        sct = server.cdr_style(doc_id, action="create", target={"name": tx1},
+                               category="character", style_name="W6Char",
+                               expected_revision=state["revision"],
+                               snapshot_token=state["snapshot_token"])
+        if no_error("cdr_style(create character)", sct):
+            check("文字对象可创建字符样式", "W6Char" in (sct.get("created") or []),
+                  str(sct.get("created")))
+            state = sct["state"]
+
+        # --- 内存位图：像素读取 / 调色板 / 双色调 ---
+        bi6 = server.cdr_bitmap(doc_id, target={"name": bmp_name}, action="image_info")
+        if no_error("cdr_bitmap(image_info)", bi6):
+            check("内存位图缓冲为 16x16", bi6.get("image_size") == [16, 16],
+                  str(bi6.get("image_size")))
+        bp1 = server.cdr_bitmap(doc_id, target={"name": bmp_name}, action="pixel",
+                                x_px=2, y_px=2)
+        if no_error("cdr_bitmap(pixel fill)", bp1):
+            check("像素取色读到蓝块", bp1.get("name") == "蓝", str(bp1.get("color")))
+        bp2 = server.cdr_bitmap(doc_id, target={"name": bmp_name}, action="pixel",
+                                x_px=12, y_px=12)
+        if no_error("cdr_bitmap(pixel bg)", bp2):
+            check("像素取色读到红底", bp2.get("name") == "红", str(bp2.get("color")))
+        bp3 = server.cdr_bitmap(doc_id, target={"name": bmp_name}, action="pixel",
+                                x_px=99, y_px=99)
+        check("像素越界被拒绝", bp3.get("error") == "bad_argument", str(bp3.get("error")))
+        bpal = server.cdr_bitmap(doc_id, target={"name": bmp_name}, action="paletted",
+                                 palette_type=3, expected_revision=state["revision"],
+                                 snapshot_token=state["snapshot_token"])
+        if no_error("cdr_bitmap(paletted)", bpal):
+            check("调色板模式转换成功（Mode=3）", bpal.get("mode") == 3,
+                  f"mode={bpal.get('mode')}")
+            state = bpal["state"]
+        bduo = server.cdr_bitmap(doc_id, target={"name": bmp_name}, action="duotone",
+                                 duotone_type=1, ink_colors=["#FF0000", "#0000FF"],
+                                 expected_revision=state["revision"],
+                                 snapshot_token=state["snapshot_token"])
+        if no_error("cdr_bitmap(duotone)", bduo):
+            check("双色调转换成功（Mode=6）", bduo.get("mode") == 6,
+                  f"mode={bduo.get('mode')}")
+            state = bduo["state"]
+
+        # --- 范围操作：并行曲线 / 栅格化 ---
+        pc = server.cdr_shape_ops(doc_id, "parallel_curves", target={"name": cv1},
+                                  curve_count=2, curve_distance=3,
+                                  expected_revision=state["revision"],
+                                  snapshot_token=state["snapshot_token"])
+        if no_error("cdr_shape_ops(parallel_curves)", pc):
+            check("并行曲线生成 2 条", pc.get("created") == 2, str(pc.get("created")))
+            state = pc["state"]
+        rz = server.cdr_shape_ops(doc_id, "rasterize", target={"name": r1},
+                                  resolution=150, expected_revision=state["revision"],
+                                  snapshot_token=state["snapshot_token"])
+        if no_error("cdr_shape_ops(rasterize)", rz):
+            check("选择集栅格化为位图", rz.get("created") is True
+                  and rz.get("type_id") == 5, f"type_id={rz.get('type_id')}")
+            state = rz["state"]
+
+        # --- 图层相邻/下移 ---
+        lc = server.cdr_layers(doc_id, action="create", name="W6Layer",
+                               expected_revision=state["revision"],
+                               snapshot_token=state["snapshot_token"])
+        if no_error("cdr_layers(create)", lc):
+            state = lc["state"]
+            la = server.cdr_layers(doc_id, action="above", name="W6Layer")
+            if no_error("cdr_layers(above)", la):
+                check("读取上方相邻图层", la.get("neighbor") is not None,
+                      str(la.get("neighbor")))
+            lb = server.cdr_layers(doc_id, action="below", name="W6Layer")
+            if no_error("cdr_layers(below)", lb):
+                check("读取下方相邻图层", lb.get("neighbor") is not None,
+                      str(lb.get("neighbor")))
+            lm = server.cdr_layers(doc_id, action="move_below", name="W6Layer",
+                                   move_below="图层 1",
+                                   expected_revision=state["revision"],
+                                   snapshot_token=state["snapshot_token"])
+            if no_error("cdr_layers(move_below)", lm):
+                check("图层下移生效", isinstance(lm.get("layers"), list),
+                      str([x["name"] for x in lm.get("layers") or []]))
+                state = lm["state"]
+
+        # --- 冻结/解冻透明度（冻结后对象变组合体并自动补名） ---
+        fz = server.cdr_modify(doc_id, {"name": r2}, {
+            "transparency": 40, "freeze_transparency": True},
+            expected_revision=state["revision"],
+            snapshot_token=state["snapshot_token"])
+        if no_error("cdr_modify(freeze_transparency)", fz):
+            check("冻结透明度产出可定位对象", bool(fz.get("name")),
+                  f"name={fz.get('name')}")
+            state = fz["state"]
+            fz_name = fz.get("name")
+            uz = server.cdr_modify(doc_id, {"name": fz_name},
+                                   {"freeze_transparency": False},
+                                   expected_revision=state["revision"],
+                                   snapshot_token=state["snapshot_token"])
+            if no_error("cdr_modify(unfreeze_transparency)", uz):
+                check("解冻透明度可用",
+                      "unfreeze_transparency" in (uz.get("applied") or []),
+                      str(uz.get("applied")))
+                state = uz["state"]
+
+        # --- 字体 / 调色板 ---
+        fo = server.cdr_doc(doc_id, "fonts", query="Americana", limit=5)
+        if no_error("cdr_doc(fonts)", fo):
+            check("字体列表可按需扫描", (fo.get("total") or 0) > 100
+                  and len(fo.get("fonts") or []) >= 1,
+                  f"total={fo.get('total')} scanned={fo.get('scanned')}")
+        pl = server.cdr_doc(doc_id, "palettes")
+        if no_error("cdr_doc(palettes)", pl):
+            check("调色板列表可读", (pl.get("count") or 0) >= 1
+                  and bool((pl.get("palettes") or [{}])[0].get("identifier")),
+                  f"count={pl.get('count')}")
+        pc2 = server.cdr_doc(doc_id, "palette_color", palette_index=1, color_index=1)
+        if no_error("cdr_doc(palette_color)", pc2):
+            check("调色板取色可用", bool(pc2.get("color")), str(pc2.get("color")))
+
+        # --- OpenType 特性 ---
+        ot = server.cdr_text(doc_id, {"name": tx1},
+                             opentype={"liga": True, "kern": False},
+                             range_start=0, range_end=5,
+                             expected_revision=state["revision"],
+                             snapshot_token=state["snapshot_token"])
+        if no_error("cdr_text(opentype)", ot):
+            check("OpenType 特性写入并回读",
+                  (ot.get("opentype") or {}).get("liga") == 1
+                  and (ot.get("opentype") or {}).get("kern") == 0,
+                  str(ot.get("opentype")))
+            state = ot["state"]
+
+        # --- 页面插入（放最后：插到第 1 页前面会切换活动页，后续按名查对象会"找不到"） ---
+        pg_before = (server.cdr_pages(doc_id, action="list").get("pages") or [])
+        pgi = server.cdr_pages(doc_id, action="insert", count=1, page_index=1,
+                               insert_before=True, expected_revision=state["revision"],
+                               snapshot_token=state["snapshot_token"])
+        if no_error("cdr_pages(insert)", pgi):
+            check("插入空白页成功", (pgi.get("pages") or 0) == len(pg_before) + 1,
+                  f"{len(pg_before)} -> {pgi.get('pages')}")
+            state = pgi["state"]
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

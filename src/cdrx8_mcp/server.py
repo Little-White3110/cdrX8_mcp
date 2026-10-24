@@ -140,7 +140,7 @@ def cdr_status() -> dict:
             info.update({"running": False, "probe_error": str(exc)})
         except Exception as exc:  # noqa: BLE001
             info.update({"running": False, "probe_error": f"{type(exc).__name__}: {exc}"})
-        info["tools"] = 26
+        info["tools"] = 27
         return info
 
     return _guard(_run)
@@ -259,6 +259,10 @@ def cdr_create(document_id: str, items: list[dict],
       * line:      x1,y1,x2,y2
       * bezier:    x1,y1,c1x,c1y,c2x,c2y,x2,y2
       * polyline:  points:[[x,y],…][,closed] —— 任意多边形/折线（逐点连线）
+      * bitmap:    x,y,width,height[,color,pixels_w,pixels_h,image_type,fills]
+                   —— 从内存像素缓冲区创建位图；
+                   fills=[{x,y,width,height,color},…] 按像素坐标涂色块；
+                   image_type: 4=RGB（默认）5=CMYK 2=灰度 0=黑白
       * text:      x,y,text[,font,size,bold,italic,underline,align]
       * paragraph_text: x,y,x2,y2,text[,font,size,align]
       * guide:     x1,y1,x2,y2（参考线，不是形状）
@@ -295,6 +299,8 @@ def cdr_modify(document_id: str, target: dict, changes: dict,
       outline_from（复制另一对象的描边：{"name":"..."}）
       drop_shadow {opacity,offset_x,offset_y,color}｜contour {offset,steps}｜envelope 1..39
       transparency（0~100 均匀透明度 / {type:"fountain",start,end,angle} / "none"）
+      freeze_transparency（true=冻结透明度并补一个新名字，false=解冻；
+                          实测冻结会把对象变成组合体并清空名字，已自动补名）
       gradient {angle, edge_pad, translate:[dx,dy], transformations:[d11,d12,d21,d22], opaque}
       effect {type:"bci"|"gamma"|"hsl"|"invert"|"posterize"|"color_balance", ...}
       flip（0 水平 / 1 垂直）｜skew {x,y}｜clone {dx,dy}｜locked true/false
@@ -347,7 +353,7 @@ def cdr_text(document_id: str, target: dict, text: str | None = None,
              read_contents: bool = False, range_start: int | None = None,
              range_end: int | None = None, export_path: str | None = None,
              export_start: int = 1, export_count: int = 0,
-             export_overwrite: bool = False,
+             export_overwrite: bool = False, opentype: dict | None = None,
              expected_revision: int | None = None, snapshot_token: str | None = None,
              page_index: int | None = None) -> dict:
     """文字的排版级操作。
@@ -362,6 +368,7 @@ def cdr_text(document_id: str, target: dict, text: str | None = None,
     输出：to_curves（转曲，发排前必做）
     读取/导出：read_contents（读全文）/ range_start+range_end（读指定区间，0 基）/
               export_path（导出纯文本，export_start 从 1 起）
+    OpenType：opentype={"liga":true,"kern":false,...}（实测 SetOpenTypeFeature 可用）
 
     注意：contents / replace_old / find 走的是段落文本接口，对艺术字会返回 warning。
     """
@@ -372,6 +379,7 @@ def cdr_text(document_id: str, target: dict, text: str | None = None,
             fit_to_path, change_case, bullet, drop_cap, line_spacing,
             char_spacing, word_spacing, insert_before, insert_after,
             contents, find, replace_old, replace_new, copy_attributes_from,
+            opentype,
         )) or any((to_curves, fit_frame, no_effect, to_paragraph, to_artistic,
                    select_all, align_to_baseline))
         warnings = _check_view(sess, expected_revision, snapshot_token, doc) \
@@ -393,6 +401,7 @@ def cdr_text(document_id: str, target: dict, text: str | None = None,
             read_contents=read_contents, range_start=range_start, range_end=range_end,
             export_path=str(target_path) if target_path else None,
             export_start=export_start, export_count=export_count,
+            opentype=opentype,
         ), label="cdr_text")
         if not mutating:
             return result
@@ -458,6 +467,9 @@ def cdr_shape_ops(document_id: str, op: str, target: dict | None = None,
                   x: float | None = None, y: float | None = None,
                   hx: float | None = None, hy: float | None = None,
                   vx: float | None = None, vy: float | None = None,
+                  curve_count: int = 2, curve_distance: float = 5.0,
+                  resolution: int = 72, grayscale: bool = False,
+                  transparent: bool = True,
                   expected_revision: int | None = None,
                   snapshot_token: str | None = None,
                   page_index: int | None = None) -> dict:
@@ -478,6 +490,8 @@ def cdr_shape_ops(document_id: str, op: str, target: dict | None = None,
       boundary（x,y,place_on_top,delete_source） 生成形状边界曲线
       perspective（可选 hx,hy,vx,vy）            透视效果（实测无参可用）
       separate                                   拆开 target 上的效果/组合
+      parallel_curves（curve_count,curve_distance）范围级：并行曲线（只支持曲线对象，先转曲）
+      rasterize（resolution,grayscale,transparent）范围级：把选择集栅格化成位图
     """
     def _run():
         doc, sess = _with_doc(document_id)
@@ -493,6 +507,8 @@ def cdr_shape_ops(document_id: str, op: str, target: dict | None = None,
             distribute_type=distribute_type, page_extent=page_extent,
             place_on_top=place_on_top, delete_source=delete_source,
             x=x, y=y, hx=hx, hy=hy, vx=vx, vy=vy,
+            curve_count=curve_count, curve_distance=curve_distance,
+            resolution=resolution, grayscale=grayscale, transparent=transparent,
         ), label="cdr_shape_ops")
         return _commit(doc, sess, result, warnings)
 
@@ -533,11 +549,14 @@ def cdr_layers(document_id: str, action: str = "list",
                page_index: int | None = None, visible: bool | None = None,
                editable: bool | None = None, printable: bool | None = None,
                move_above: str | None = None,
+               move_below: str | None = None,
                expected_revision: int | None = None,
                snapshot_token: str | None = None) -> dict:
     """图层管理。
 
-    action: list / create（给 name）/ activate / set（visible/editable/printable）/ move（move_above=目标图层名）/ delete
+    action: list / create（给 name）/ activate / set（visible/editable/printable）/
+            move（move_above=目标图层名）/ move_below（move_below=目标图层名）/
+            above / below（读相邻图层）/ paste（把系统剪贴板内容粘到该图层）/ delete
     layer_index 或 name 用来定位图层；都不给则作用于活动图层。
     """
     def _run():
@@ -546,11 +565,15 @@ def cdr_layers(document_id: str, action: str = "list",
         if act == "list":
             return _com(lambda _b: {"layers": ops.list_layers(doc, page_index)},
                         label="cdr_layers")
-        warnings = _check_view(sess, expected_revision, snapshot_token, doc)
+        warnings = _check_view(sess, expected_revision, snapshot_token, doc) if act not in {
+            "above", "below"} else []
         result = _com(lambda _b: ops.layer_action(
             doc, act, name=name, page_index=page_index, index=layer_index,
             visible=visible, editable=editable, printable=printable, move=move_above,
+            move_below=move_below,
         ), label="cdr_layers")
+        if act in {"above", "below"}:
+            return result
         return _commit(doc, sess, result, warnings)
 
     return _guard(_run)
@@ -628,6 +651,43 @@ def cdr_node(document_id: str, target: dict, action: str = "list",
 
 
 @mcp.tool()
+def cdr_style(document_id: str, action: str = "list",
+              target: dict | None = None, category: str = "fill",
+              style_name: str | None = None, new_name: str | None = None,
+              expected_revision: int | None = None, snapshot_token: str | None = None,
+              page_index: int | None = None) -> dict:
+    """对象样式（Object Styles）：列出 / 从对象创建 / 套用 / 改名 / 删除。
+
+    action:
+      list                       列出文档样式（名称、类别）
+      get（style_name）          读样式定义（属性名 + ToString JSON）
+      create（target, category, style_name）
+                                 从对象创建样式；category 实测可用：
+                                 fill / outline（图形），character / paragraph（文字）
+      apply（target, style_name）把样式套到对象
+      rename（style_name, new_name）
+      delete（style_name）
+
+    历史结论「样式类别常量 0~8 全失败」是误判：Category 是**字符串**不是数字。
+    套用必须用 `Shape.ApplyStyle("样式名")`（传 Style 对象会报「未找到样式」）。
+    """
+    def _run():
+        act = (action or "list").lower()
+        doc, sess = _with_doc(document_id)
+        kwargs = dict(target=target, category=category, name=style_name,
+                      new_name=new_name)
+        if act not in ops.STYLE_MUTATIONS:
+            return _com(lambda _b: ops.style_ops(doc, page_index, act, **kwargs),
+                        label="cdr_style")
+        warnings = _check_view(sess, expected_revision, snapshot_token, doc)
+        result = _com(lambda _b: ops.style_ops(doc, page_index, act, **kwargs),
+                      label="cdr_style")
+        return _commit(doc, sess, result, warnings)
+
+    return _guard(_run)
+
+
+@mcp.tool()
 def cdr_pages(document_id: str, action: str = "list",
               page_index: int | None = None, count: int = 1,
               width_mm: float | None = None, height_mm: float | None = None,
@@ -635,13 +695,16 @@ def cdr_pages(document_id: str, action: str = "list",
               x: float | None = None, y: float | None = None,
               text: str | None = None, move_to_index: int | None = None,
               hot_area: float = 2.0, angle: float = 45.0,
+              insert_before: bool = True,
               expected_revision: int | None = None,
               snapshot_token: str | None = None) -> dict:
     """页面管理。
 
     action:
       list                          列表（含图层与对象数）
-      add（count）                  新增页
+      add（count）                  末尾新增页
+      insert（count, page_index）   在第 page_index 页前/后插入空白页
+                                    （insert_before=true 插到前面；实测 Document.InsertPages）
       activate（page_index）        切页
       delete（page_index）          删页
       size（width_mm,height_mm）    自定义尺寸
@@ -689,6 +752,9 @@ def cdr_pages(document_id: str, action: str = "list",
             return _commit(doc, sess, result, warnings)
         if act == "add":
             result = _com(lambda _b: ops.add_pages(doc, count), label="cdr_pages:add")
+        elif act == "insert":
+            result = _com(lambda _b: ops.insert_pages(doc, count, insert_before, page_index),
+                          label="cdr_pages:insert")
         elif act == "activate":
             if page_index is None:
                 return {"error": "bad_argument", "message": "action=activate 需要 page_index"}
@@ -709,8 +775,8 @@ def cdr_pages(document_id: str, action: str = "list",
                           label="cdr_pages:preset")
         else:
             return {"error": "bad_argument",
-                    "message": f"未知 action：{act}；可用 list/add/activate/delete/size/"
-                               f"preset/guides/unlock/bounds"}
+                    "message": f"未知 action：{act}；可用 list/add/insert/activate/delete/size/"
+                               f"preset/guides/guide_angle/unlock/bounds"}
 
         return _commit(doc, sess, result, warnings)
 
@@ -803,6 +869,8 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
             to_unit: int | None = None, x: float | None = None,
             y: float | None = None, x2: float | None = None, y2: float | None = None,
             x_samples: int = 4, y_samples: int = 4, layout: int | None = None,
+            query: str | None = None, limit: int = 100,
+            palette_index: int | None = None, color_index: int = 1,
             expected_revision: int | None = None, snapshot_token: str | None = None,
             page_index: int | None = None) -> dict:
     """文档级操作。
@@ -819,15 +887,21 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
       show_all         显示所有隐藏对象
       layout           页面版式（layout 数字枚举，实测 1 可用）
       repeat           重复上一操作（等价 Ctrl+R，慎用）
+      fonts            列出已安装字体（query 过滤、limit 截断，实测 2000+ 字体）
+      palettes         列出调色板（名称/GUID/色数/是否默认）
+      palette_color    读调色板颜色：palette_index + color_index（1 基）
     """
     def _run():
         doc, sess = _with_doc(document_id)
         kwargs = dict(target=target, page_index=page_index, value=value,
                       from_unit=from_unit, to_unit=to_unit, x=x, y=y, x2=x2, y2=y2,
-                      x_samples=x_samples, y_samples=y_samples, layout=layout)
+                      x_samples=x_samples, y_samples=y_samples, layout=layout,
+                      query=query, limit=limit, palette_index=palette_index,
+                      color_index=color_index)
         if action == "info":
             return _com(lambda _b: ops.doc_ops(doc, "info", **kwargs), label="cdr_doc")
-        if action in {"clear_selection", "units", "sample_color"}:
+        if action in {"clear_selection", "units", "sample_color", "fonts",
+                      "palettes", "palette_color"}:
             return _com(lambda _b: ops.doc_ops(doc, action, **kwargs), label="cdr_doc")
         warnings = _check_view(sess, expected_revision, snapshot_token, doc)
         result = _com(lambda _b: ops.doc_ops(doc, action, **kwargs), label="cdr_doc")
@@ -965,6 +1039,10 @@ def cdr_bitmap(document_id: str, target: dict, action: str = "info",
                height: float | None = None, dpi: float | None = None,
                anti_alias: bool = True, threshold: float = 128.0,
                inflate_x: float = 2.0, inflate_y: float = 2.0,
+               x_px: int | None = None, y_px: int | None = None,
+               duotone_type: int | None = None, ink_colors: list | None = None,
+               preset: str | None = None, palette_type: int = 3,
+               num_colors: int = 256,
                expected_revision: int | None = None,
                snapshot_token: str | None = None,
                page_index: int | None = None) -> dict:
@@ -972,8 +1050,15 @@ def cdr_bitmap(document_id: str, target: dict, action: str = "info",
 
     action:
       info          读取尺寸、像素、分辨率、颜色模式
+      image_info    读图像缓冲区尺寸/类型/只读标记
+      pixel         取像素颜色：x_px,y_px（像素坐标，从 0 开始），返回颜色串与色名
       convert       改颜色模式，mode = rgb / cmyk / gray / bw
       bw            阈值二值化（threshold 0~255），适合做丝印/单色稿
+      paletted      转调色板模式，palette_type = 0~8
+                    （0=uniform 1=stdVGA 2=adaptive 3=optimized 4=blackbody
+                      5=grayscale 6=system 7=IE 8=Netscape）
+      duotone       转双色调：duotone_type 0~3（单/双/三/四色调），ink_colors 给各墨色；
+                    也可 preset 指定 .cpd 预设文件路径
       resample      重采样，width/height 目标像素、dpi 目标分辨率
       inflate       四周扩边，inflate_x / inflate_y 毫米
       crop          执行裁剪
@@ -986,14 +1071,18 @@ def cdr_bitmap(document_id: str, target: dict, action: str = "info",
     def _run():
         act = (action or "info").lower()
         doc, sess = _with_doc(document_id)
-        if act == "info":
-            return _com(lambda _b: ops.bitmap_action(doc, page_index, target, "info"),
-                        label="cdr_bitmap")
+        preset_path = str(resolve_read_path(preset)) if preset else None
+        if act in {"info", "image_info", "pixel"}:
+            return _com(lambda _b: ops.bitmap_action(
+                doc, page_index, target, act, x_px=x_px, y_px=y_px),
+                label="cdr_bitmap")
         warnings = _check_view(sess, expected_revision, snapshot_token, doc)
         result = _com(lambda _b: ops.bitmap_action(
             doc, page_index, target, act, mode=mode, width=width, height=height,
             dpi=dpi, anti_alias=anti_alias, threshold=threshold,
-            inflate_x=inflate_x, inflate_y=inflate_y), label="cdr_bitmap")
+            inflate_x=inflate_x, inflate_y=inflate_y,
+            duotone_type=duotone_type, ink_colors=ink_colors, preset=preset_path,
+            palette_type=palette_type, num_colors=num_colors), label="cdr_bitmap")
         return _commit(doc, sess, result, warnings)
 
     return _guard(_run)

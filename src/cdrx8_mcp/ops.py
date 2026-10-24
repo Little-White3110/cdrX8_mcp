@@ -279,7 +279,8 @@ def view_ops(doc: Any, action: str, *, x: float | None = None, y: float | None =
 
 
 DOC_ACTIONS = ("info", "clear_selection", "clear_undo", "palette", "arrowhead",
-               "units", "sample_color", "show_all", "layout", "repeat")
+               "units", "sample_color", "show_all", "layout", "repeat",
+               "fonts", "palettes", "palette_color")
 
 
 def doc_ops(doc: Any, action: str, *, target: dict | None = None,
@@ -288,7 +289,9 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
             x: float | None = None, y: float | None = None,
             x2: float | None = None, y2: float | None = None,
             x_samples: int = 4, y_samples: int = 4,
-            layout: int | None = None) -> dict:
+            layout: int | None = None, query: str | None = None,
+            limit: int = 100, palette_index: int | None = None,
+            color_index: int = 1) -> dict:
     """文档级操作。
 
     action:
@@ -368,6 +371,62 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
         doc.Repeat()
         return {"action": act, "done": True,
                 "shapes": total_shapes(doc)}
+    if act == "fonts":
+        app = _app_of(doc)
+        total = _n(lambda: int(app.FontList.Count), 0)
+        needle = str(query or "").strip().lower()
+        cap = max(1, min(int(limit), 2000))
+        # FontList.Item 每次都是一次 COM 调用（本机 2000+ 字体时全量扫描要 1~2 分钟），
+        # 所以按需扫描：默认最多扫 max(300, limit*10) 条，返回 scanned/truncated 说明。
+        scan_cap = min(total, max(300, cap * 10))
+        names: list[str] = []
+        scanned = 0
+        for i in range(1, scan_cap + 1):
+            try:
+                nm = str(app.FontList.Item(i))
+            except Exception:
+                continue
+            scanned += 1
+            if not needle or needle in nm.lower():
+                names.append(nm)
+                if len(names) >= cap:
+                    break
+        return {"action": act, "total": total, "matched": len(names),
+                "fonts": names, "scanned": scanned,
+                "truncated": len(names) >= cap or scanned < total,
+                "note": "按需扫描；要更多结果请增大 limit（全量扫描较慢）"}
+    if act == "palettes":
+        app = _app_of(doc)
+        count = _n(lambda: int(app.Palettes.Count), 0)
+        items = []
+        for i in range(1, count + 1):
+            palette = app.Palettes.Item(i)
+            items.append({
+                "index": i,
+                "name": _s(lambda p=palette: str(p.Name)),
+                "identifier": _s(lambda p=palette: str(p.Identifier)),
+                "palette_id": _n(lambda p=palette: int(p.PaletteID)),
+                "color_count": _n(lambda p=palette: int(p.ColorCount)),
+                "default": bool(_s(lambda p=palette: bool(p.Default), False)),
+                "type": _n(lambda p=palette: int(p.Type)),
+            })
+        return {"action": act, "count": count, "palettes": items}
+    if act == "palette_color":
+        app = _app_of(doc)
+        pi = int(palette_index if palette_index is not None else 1)
+        ci = int(color_index)
+        count = _n(lambda: int(app.Palettes.Count), 0)
+        if not 1 <= pi <= count:
+            raise CdrBadArgument(f"palette_index 越界：{pi}（共 {count} 个调色板）")
+        palette = app.Palettes.Item(pi)
+        color_count = _n(lambda: int(palette.ColorCount), 0)
+        if not 1 <= ci <= color_count:
+            raise CdrBadArgument(f"color_index 越界：{ci}（该调色板共 {color_count} 色）")
+        color = palette.Color(ci)
+        return {"action": act, "palette": _s(lambda: str(palette.Name)),
+                "palette_index": pi, "color_index": ci,
+                "color": _s(lambda: str(color.ToString())),
+                "name": _s(lambda: str(color.GetName())) or None}
     # arrowhead
     with mm_units(doc):
         page = _page(doc, page_index)
@@ -458,6 +517,22 @@ def activate_page(doc: Any, index: int) -> dict:
 def add_pages(doc: Any, count: int = 1) -> dict:
     doc.AddPages(max(1, int(count)))
     return {"pages": _n(lambda: int(doc.Pages.Count))}
+
+
+def insert_pages(doc: Any, count: int = 1, before: bool = True,
+                 page_index: int | None = None) -> dict:
+    """插入空白页（实测 `Document.InsertPages(count, before, pageIndex)`）。
+
+    第三个参数是**页码数字**，不是 Page 对象（传对象会 TypeError）。
+    """
+    idx = int(page_index if page_index is not None else 1)
+    with mm_units(doc):
+        created = doc.InsertPages(max(1, int(count)), bool(before), idx)
+        active = _n(lambda: int(doc.ActivePage.Index), 0)
+    return {"action": "insert", "count": max(1, int(count)), "before": bool(before),
+            "page": idx, "inserted": created is not None, "active_page": active,
+            "note": "插入到第 1 页前面会把新页设为活动页；后续操作请显式传 page_index",
+            "pages": _n(lambda: int(doc.Pages.Count))}
 
 
 def delete_page(doc: Any, index: int) -> dict:
@@ -605,7 +680,8 @@ def objects_bounds(doc: Any, page_index: int | None = None,
 # 位图
 # --------------------------------------------------------------------------- #
 BITMAP_MODES = {"rgb": 1, "cmyk": 2, "gray": 3, "grayscale": 3, "bw": 4, "blackwhite": 4}
-BITMAP_ACTIONS = ("info", "convert", "resample", "crop", "reset_crop", "bw", "inflate")
+BITMAP_ACTIONS = ("info", "convert", "resample", "crop", "reset_crop", "bw", "inflate",
+                  "pixel", "image_info", "duotone", "paletted")
 
 
 def _bitmap_of(shape: Any) -> Any:
@@ -623,11 +699,17 @@ def bitmap_action(doc: Any, page_index: int | None, target: dict, action: str, *
                   height: float | None = None, dpi: float | None = None,
                   anti_alias: bool = True, threshold: float = 128.0,
                   inflate_x: float = 2.0, inflate_y: float = 2.0,
+                  x_px: int | None = None, y_px: int | None = None,
+                  duotone_type: int | None = None, ink_colors: list | None = None,
+                  preset: str | None = None, palette_type: int = 3,
+                  num_colors: int = 256,
                   label: str = "cdr_bitmap") -> dict:
     """位图处理。
 
     实测可用：ConvertTo（RGB/CMYK/灰度/黑白）、ConvertToBW（阈值二值化）、
-    Resample（尺寸+分辨率）、Inflate（四周扩边）、Crop、ResetCropEnvelope。
+    Resample（尺寸+分辨率）、Inflate（四周扩边）、Crop、ResetCropEnvelope、
+    **GetPixel 取像素色**、**ConvertToDuotone（双色调/三色调/四色调）**、
+    **ConvertToPaletted（调色板模式 0~8）**。
     **PowerTRACE（Bitmap.Trace）不提供**：实测会让 CorelDRAW 卡成「无响应」（模态对话框），
     COM 无法中断，会把调用方一起拖死。
     """
@@ -651,6 +733,34 @@ def bitmap_action(doc: Any, page_index: int | None, target: dict, action: str, *
 
         if act == "info":
             return {"action": act, **info()}
+        if act == "image_info":
+            img = _s(lambda: bmp.Image)
+            if img is None:
+                raise CdrBadArgument("该位图没有图像缓冲区（可能是链接/嵌入异常）")
+            return {"action": act,
+                    "image_size": [_n(lambda: int(img.Width)), _n(lambda: int(img.Height))],
+                    "image_type": _n(lambda: int(img.Type)),
+                    "read_only": bool(_s(lambda: bool(img.ReadOnly), False)),
+                    **info()}
+        if act == "pixel":
+            img = _s(lambda: bmp.Image)
+            if img is None:
+                raise CdrBadArgument("该位图没有图像缓冲区")
+            if x_px is None or y_px is None:
+                raise CdrBadArgument("pixel 需要 x_px 与 y_px（像素坐标，从 0 开始）")
+            px, py = int(x_px), int(y_px)
+            width_px = _n(lambda: int(img.Width), 0)
+            height_px = _n(lambda: int(img.Height), 0)
+            if not (0 <= px < width_px and 0 <= py < height_px):
+                raise CdrBadArgument(
+                    f"像素越界：({px},{py})；图像为 {width_px}x{height_px}")
+            color = _s(lambda: img.Pixel(px, py))
+            if color is None:
+                raise CdrBadArgument("读取像素失败")
+            return {"action": act, "pixel": [px, py],
+                    "color": _s(lambda: str(color.ToString())),
+                    "name": _s(lambda: str(color.GetName())) or None,
+                    "image_size": [width_px, height_px], **info()}
 
         with atomic(doc, label):
             if act == "convert":
@@ -671,6 +781,28 @@ def bitmap_action(doc: Any, page_index: int | None, target: dict, action: str, *
                 bmp.ConvertToBW(0, 0, float(threshold), False, 0, 0)
             elif act == "inflate":
                 bmp.Inflate(float(inflate_x), float(inflate_y))
+            elif act == "duotone":
+                app = _app_of(doc)
+                duo = app.CreateDuotone()
+                if preset:
+                    duo.Load(str(preset))
+                else:
+                    dtype = int(duotone_type if duotone_type is not None else 1)
+                    if not 0 <= dtype <= 3:
+                        raise CdrBadArgument("duotone_type 可用 0~3（0=单色调 3=四色调）")
+                    duo.Type = dtype
+                inks = [c for c in (ink_colors or []) if c is not None]
+                ink_count = _n(lambda: int(duo.InkCount), 1)
+                for idx, spec in enumerate(inks[:ink_count], 1):
+                    duo.Inks(idx).Color = _color(doc, spec)
+                bmp.ConvertToDuotone(duo)
+            elif act == "paletted":
+                pt = int(palette_type)
+                if not 0 <= pt <= 8:
+                    raise CdrBadArgument(
+                        "palette_type 可用 0~8（0=uniform 1=stdVGA 2=adaptive 3=optimized "
+                        "4=blackbody 5=grayscale 6=system 7=IE 8=Netscape；9 自定义需调色板对象）")
+                bmp.ConvertToPaletted(pt, 0, 100, 0, int(num_colors))
     return {"action": act, **info()}
 
 
@@ -1295,6 +1427,117 @@ def node_ops(doc: Any, page_index: int | None, target: dict, action: str, *,
 
 
 # --------------------------------------------------------------------------- #
+# 对象样式（第六波实测打通）
+#
+# 历史结论「样式类别常量 0~8 全失败」也是误判：`CreateStyleFromShape` 的
+# Category 是**字符串**，不是数字常量。实测可用类别：
+#   fill / outline（图形）｜character / paragraph（文字）
+# 创建后可以用 `Shape.ApplyStyle("样式名")` 套用（传 Style 对象会报「未找到样式」），
+# 也可以 Rename / Delete / ToString 读定义。
+# --------------------------------------------------------------------------- #
+STYLE_ACTIONS = ("list", "get", "create", "apply", "rename", "delete")
+STYLE_MUTATIONS = {"create", "apply", "rename", "delete"}
+STYLE_CATEGORIES = ("fill", "outline", "character", "paragraph")
+
+
+def _find_style(doc: Any, name: str | None) -> Any:
+    if not name:
+        raise CdrBadArgument("需要 style_name")
+    style = _s(lambda: doc.StyleSheet.Styles.Find(str(name)))
+    if style is None:
+        raise CdrBadArgument(f"未找到样式 {name!r}（可先用 action='list' 查看）")
+    return style
+
+
+def _style_dict(style: Any) -> dict:
+    return {
+        "style_name": _s(lambda: str(style.Name)),
+        "category": _s(lambda: str(style.CategoryName)) or None,
+        "display_name": _s(lambda: str(style.DisplayName)) or None,
+        "display_category": _s(lambda: str(style.DisplayCategoryName)) or None,
+        "based_on": _s(lambda: str(style.BasedOn.Name)) or None,
+    }
+
+
+def style_ops(doc: Any, page_index: int | None, action: str, *,
+              target: dict | None = None, category: str = "fill",
+              name: str | None = None, new_name: str | None = None,
+              label: str = "cdr_style") -> dict:
+    """对象样式（Object Styles）的列出 / 创建 / 套用 / 改名 / 删除。
+
+    action:
+      list                     列出文档里的样式（名称 + 类别）
+      get（name）              读样式定义（属性名 + ToString JSON）
+      create（target,category,name）  从形状创建样式；
+                               category 实测可用：fill / outline（图形）、
+                               character / paragraph（文字）
+      apply（target,name）     把样式套到对象上
+      rename（name,new_name）  样式改名
+      delete（name）           删除样式
+    """
+    act = (action or "list").lower()
+    if act not in STYLE_ACTIONS:
+        raise CdrBadArgument(f"未知 action {action!r}；可用：{', '.join(STYLE_ACTIONS)}")
+
+    with mm_units(doc):
+        sheet = doc.StyleSheet
+        if act == "list":
+            count = _n(lambda: int(sheet.Styles.Count), 0)
+            styles = [_style_dict(sheet.Styles.Item(i))
+                      for i in range(1, min(count, 500) + 1)]
+            return {"action": act, "count": count, "styles": styles}
+        if act == "get":
+            style = _find_style(doc, name)
+            props = _s(lambda: list(style.GetAllPropertyNames()), []) or []
+            return {"action": act, **_style_dict(style),
+                    "properties": [str(p) for p in props[:120]],
+                    "property_count": len(props),
+                    "definition": (_s(lambda: str(style.ToString()), "") or "")[:1200]}
+        if act == "create":
+            page = _page(doc, page_index)
+            shape = find_shape(doc, page, target or {})
+            cat = str(category or "fill").lower()
+            if cat not in STYLE_CATEGORIES:
+                raise CdrBadArgument(
+                    f"category 可用：{', '.join(STYLE_CATEGORIES)}"
+                    "（fill/outline 用于图形，character/paragraph 用于文字）")
+            style_name = str(name or f"cdr_style_{_short_id()}")
+            with atomic(doc, label):
+                created = sheet.CreateStyleFromShape(shape, cat, style_name, False)
+            names: list[str] = []
+            try:
+                for i in range(1, int(created.Count) + 1):
+                    names.append(str(created.Item(i).Name))
+            except Exception:
+                pass
+            return {"action": act, "created": names or [style_name],
+                    "style_name": names[0] if names else style_name,
+                    "category": cat, "target": _s(lambda: str(shape.Name))}
+        if act == "apply":
+            page = _page(doc, page_index)
+            shape = find_shape(doc, page, target or {})
+            style = _find_style(doc, name)
+            style_name = _s(lambda: str(style.Name))
+            with atomic(doc, label):
+                shape.ApplyStyle(str(style_name))
+            return {"action": act, "applied": style_name,
+                    "target": _s(lambda: str(shape.Name)), "bbox": _bbox(shape)}
+        if act == "rename":
+            style = _find_style(doc, name)
+            if not new_name:
+                raise CdrBadArgument("rename 需要 new_name")
+            old = _s(lambda: str(style.Name))
+            with atomic(doc, label):
+                renamed = bool(_s(lambda: style.Rename(str(new_name)), False))
+            return {"action": act, "renamed": renamed, "old": old, "new": new_name}
+        style = _find_style(doc, name)
+        old = _s(lambda: str(style.Name))
+        with atomic(doc, label):
+            deleted = bool(_s(lambda: style.Delete(), False))
+        return {"action": "delete", "deleted": deleted, "style_name": old}
+
+
+# --------------------------------------------------------------------------- #
 # 图层
 # --------------------------------------------------------------------------- #
 def list_layers(doc: Any, page_index: int | None = None) -> list[dict]:
@@ -1318,7 +1561,8 @@ def list_layers(doc: Any, page_index: int | None = None) -> list[dict]:
 def layer_action(doc: Any, action: str, name: str | None = None,
                  page_index: int | None = None, index: int | None = None,
                  visible: bool | None = None, editable: bool | None = None,
-                 printable: bool | None = None, move: str | None = None) -> dict:
+                 printable: bool | None = None, move: str | None = None,
+                 move_below: str | None = None) -> dict:
     page = _page(doc, page_index)
     act = (action or "").lower()
 
@@ -1345,10 +1589,27 @@ def layer_action(doc: Any, action: str, name: str | None = None,
         target = _find_layer(page, name=move, index=None)
         layer.MoveAbove(target)
         return {"layers": list_layers(doc, page_index)}
+    if act == "move_below":
+        target = _find_layer(page, name=move_below, index=None)
+        layer.MoveBelow(target)
+        return {"layers": list_layers(doc, page_index)}
+    if act in {"above", "below"}:
+        neighbor = layer.GetAbove(True) if act == "above" else layer.GetBelow(True)
+        return {"action": act, "layer": _s(lambda: str(layer.Name)),
+                "neighbor": _s(lambda: str(neighbor.Name)) if neighbor is not None else None}
+    if act == "paste":
+        pasted = _s(lambda: layer.Paste())
+        return {"action": act, "pasted": pasted is not None,
+                "name": _s(lambda: str(pasted.Name)) if pasted is not None else None,
+                "type": SHAPE_TYPES.get(_n(lambda: int(pasted.Type), -1), "unknown")
+                        if pasted is not None else None,
+                "note": "使用系统剪贴板；剪贴板为空时 pasted=false"}
     if act == "delete":
         layer.Delete()
         return {"layers": list_layers(doc, page_index)}
-    raise CdrBadArgument(f"未知 action {action!r}；可用 list/create/activate/set/move/delete")
+    raise CdrBadArgument(
+        f"未知 action {action!r}；可用 list/create/activate/set/move/move_below/"
+        f"above/below/paste/delete")
 
 
 def _find_layer(page: Any, name: str | None, index: int | None) -> Any:
@@ -1535,7 +1796,7 @@ def selection_range(doc: Any) -> Any:
 # --------------------------------------------------------------------------- #
 CREATABLE = (
     "rectangle", "ellipse", "polygon", "spiral", "grid", "line", "bezier",
-    "polyline", "text", "paragraph_text", "guide",
+    "polyline", "bitmap", "text", "paragraph_text", "guide",
 )
 
 
@@ -1630,6 +1891,27 @@ def _create_one(doc: Any, layer: Any, item: dict) -> Any:
         if closed:
             sub.AppendLineSegment(x0, y0)
         sub.Closed = closed
+    elif kind in {"bitmap", "image"}:
+        # 从内存像素缓冲区创建位图（实测：Document.CreateImage → IVGImage，
+        # 再 Layer.CreateBitmap 落地；ImageAlpha 必须传对象或 None，传 0 会 TypeError）
+        x = float(g("x", 0))
+        y = float(g("y", 0))
+        w = float(g("width", 50))
+        h = float(g("height", 50))
+        px_w = int(g("pixels_w", g("px_width", 64)))
+        px_h = int(g("pixels_h", g("px_height", 64)))
+        if px_w < 1 or px_h < 1 or px_w > 8192 or px_h > 8192:
+            raise CdrBadArgument("bitmap 的 pixels_w/pixels_h 需在 1~8192 之间")
+        image_type = int(g("image_type", 4))
+        base = _color(doc, g("color", "#FFFFFF"))
+        image = doc.CreateImage(image_type, px_w, px_h, base)
+        for area in (g("fills", []) or []):
+            if not isinstance(area, dict):
+                continue
+            image.FillArea(int(area.get("x", 0)), int(area.get("y", 0)),
+                           int(area.get("width", 1)), int(area.get("height", 1)),
+                           _color(doc, area.get("color", "#000000")))
+        shape = layer.CreateBitmap(x, y, x + w, y + h, image, None)
     elif kind in {"text", "artistic_text"}:
         shape = layer.CreateArtisticText(
             float(g("x", 0)), float(g("y", 0)), str(g("text", "")),
@@ -2005,6 +2287,7 @@ def modify_shape(doc: Any, page_index: int | None, target: dict, changes: dict,
 def _apply_changes(doc: Any, shape: Any, changes: dict) -> dict:
     applied: list[str] = []
     warnings: list[str] = []
+    forced_name: str | None = None
 
     if "dx" in changes or "dy" in changes:
         shape.Move(float(changes.get("dx", 0)), float(changes.get("dy", 0)))
@@ -2046,6 +2329,31 @@ def _apply_changes(doc: Any, shape: Any, changes: dict) -> dict:
                 doc, shape, changes["transparency"]))
         except Exception as exc:  # noqa: BLE001
             warnings.append(f"透明度失败：{exc}")
+
+    if changes.get("freeze_transparency") is not None:
+        try:
+            if bool(changes["freeze_transparency"]):
+                page = doc.ActivePage
+                before = set()
+                for _i, _l, _j, s in _iter_page_shapes(page):
+                    before.add(str(_s(lambda s=s: s.Name, "")))
+                shape.Transparency.Freeze()
+                # 实测：Freeze 会把对象替换成**无名组合体**（type 7，Name=''），
+                # 原引用失效且改名无效；这里找到新对象并补名，保证后续能按名定位。
+                frozen = None
+                for _i, _l, _j, s in _iter_page_shapes(page):
+                    nm = str(_s(lambda s=s: s.Name, ""))
+                    if not nm or nm not in before:
+                        frozen = s
+                if frozen is not None:
+                    forced_name = f"{NAME_PREFIX}{_short_id()}"
+                    frozen.Name = forced_name
+                applied.append("freeze_transparency")
+            else:
+                shape.Transparency.Unfreeze()
+                applied.append("unfreeze_transparency")
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"冻结/解冻透明度失败：{exc}")
 
     if "gradient" in changes:
         try:
@@ -2294,7 +2602,7 @@ def _apply_changes(doc: Any, shape: Any, changes: dict) -> dict:
 
     return {
         "applied": applied,
-        "name": new_name or _s(lambda: str(shape.Name)),
+        "name": forced_name or new_name or _s(lambda: str(shape.Name)),
         "bbox": None if changes.get("delete") else _bbox(shape),
         "warnings": warnings,
     }
@@ -2320,6 +2628,8 @@ SHAPE_OPS = (
     "outline_to_curves",
     # 第五波：排列 / 阵列 / 边界 / 立体透视
     "step_repeat", "distribute", "boundary", "perspective", "separate",
+    # 第六波：范围级（选择集）
+    "parallel_curves", "rasterize",
 )
 
 
@@ -2334,6 +2644,8 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
              x: float | None = None, y: float | None = None,
              hx: float | None = None, hy: float | None = None,
              vx: float | None = None, vy: float | None = None,
+             curve_count: int = 2, curve_distance: float = 5.0,
+             resolution: int = 72, grayscale: bool = False, transparent: bool = True,
              label: str = "cdr_shape_ops") -> dict:
     op = (op or "").lower().replace("-", "_")
     if op not in SHAPE_OPS:
@@ -2468,6 +2780,42 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
             return {"op": op, "done": True,
                     "shapes_on_page": _n(lambda: int(page.Shapes.Count), 0)}
 
+        if op in {"parallel_curves", "rasterize"}:
+            # 范围级操作：显式给了 target 就只处理它（先清空选择集，避免混入
+            # cdr_create 留下的"最后创建对象"选中态）；没给就用当前选择集。
+            if target:
+                doc.ClearSelection()
+                shape.AddToSelection()
+            sr = _s(lambda: selection_range(doc))
+            if sr is None or _n(lambda: int(sr.Count), 0) < 1:
+                shape.AddToSelection()
+                sr = selection_range(doc)
+            if sr is None or _n(lambda: int(sr.Count), 0) < 1:
+                raise CdrBadArgument(f"{op} 需要至少 1 个对象（先 cdr_select 或给 target）")
+            if op == "parallel_curves":
+                try:
+                    with atomic(doc, label):
+                        made = sr.CreateParallelCurves(int(max(1, curve_count)),
+                                                       float(curve_distance))
+                except CdrComFailure as exc:
+                    raise CdrBadArgument(
+                        "parallel_curves 只支持曲线对象；请先 "
+                        f"cdr_shape_ops(op='to_curves') 转曲（原始错误：{exc}）")
+                return {"op": op, "count": int(max(1, curve_count)),
+                        "distance": float(curve_distance),
+                        "created": _n(lambda: int(made.Count), 0) if made is not None else 0,
+                        "shapes_on_page": _n(lambda: int(page.Shapes.Count), 0)}
+            with atomic(doc, label):
+                made = sr.ConvertToBitmap(24, bool(grayscale), True, bool(transparent),
+                                          int(resolution))
+            return {"op": op, "resolution": int(resolution),
+                    "grayscale": bool(grayscale), "transparent": bool(transparent),
+                    "created": made is not None,
+                    "name": _s(lambda: str(made.Name)) if made is not None else None,
+                    "type_id": _n(lambda: int(made.Type), -1) if made is not None else None,
+                    "bbox": _bbox(made) if made is not None else None,
+                    "shapes_on_page": _n(lambda: int(page.Shapes.Count), 0)}
+
         # 需要第二个形状
         target_shape = find_shape(doc, page, other or {})
         if op == "weld":
@@ -2591,6 +2939,7 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
              read_contents: bool = False, range_start: int | None = None,
              range_end: int | None = None, export_path: str | None = None,
              export_start: int = 1, export_count: int = 0,
+             opentype: dict | None = None,
              label: str = "cdr_text") -> dict:
     with mm_units(doc):
         page = _page(doc, page_index)
@@ -2602,6 +2951,7 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
             fit_to_path, change_case, bullet, drop_cap, line_spacing,
             char_spacing, word_spacing, insert_before, insert_after,
             contents, find, replace_old, replace_new, copy_attributes_from,
+            opentype,
         )) or any((to_curves, fit_frame, no_effect, to_paragraph, to_artistic,
                    select_all, align_to_baseline))
         if not mutating:
@@ -2774,8 +3124,27 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
                 shape.ConvertToCurves()
                 applied.append("to_curves")
 
-            # ---- 读取 / 导出（第五波实测：GetContents / Range / ExportToFile）----
+            # ---- OpenType 特性（第六波实测：SetOpenTypeFeature/GetOpenTypeFeature）----
             reading: dict = {}
+            if opentype and isinstance(opentype, dict):
+                try:
+                    total = len(_s(lambda: str(story.Text), ""))
+                    a = int(range_start or 0)
+                    b = int(range_end if range_end is not None else total)
+                    if not (0 <= a < b <= max(total, 1)):
+                        b = max(total, 1)
+                        a = 0
+                    rng = story.Range(a, b)
+                    readback: dict = {}
+                    for feat, on in opentype.items():
+                        rng.SetOpenTypeFeature(str(feat), bool(on))
+                        readback[str(feat)] = _n(lambda f=feat: int(rng.GetOpenTypeFeature(str(f))))
+                    applied.append("opentype")
+                    reading["opentype"] = readback
+                except Exception as exc:  # noqa: BLE001
+                    warnings.append(f"OpenType 特性设置失败：{exc}")
+
+            # ---- 读取 / 导出（第五波实测：GetContents / Range / ExportToFile）----
             if read_contents:
                 reading["contents"] = _s(lambda: shape.Text.GetContents(2), "")
             if range_start is not None or range_end is not None:
