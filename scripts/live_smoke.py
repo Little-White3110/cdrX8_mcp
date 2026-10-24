@@ -581,9 +581,25 @@ def main() -> int:
         if no_error("cdr_pages(shape_at)", sat):
             check("按点查到对象", sat.get("found") is True,
                   f"({px:.1f},{py:.1f}) -> {sat.get('shape')}")
-        selat = server.cdr_pages(doc_id, action="select_at", page_index=1, x=px, y=py)
-        if no_error("cdr_pages(select_at)", selat):
-            check("按点选择对象", (selat.get("selected") or 0) >= 1, str(selat.get("selected")))
+        # 画布上对象类型/叠放顺序会影响 IsSelectable，逐个候选点试，直到能选中
+        selected_ok = False
+        detail = ""
+        for cand in p1.get("shapes", [])[:8]:
+            b = cand.get("bbox")
+            if not b or not b.get("width") or not b.get("height"):
+                continue
+            cx = b["x"] + b["width"] / 2
+            cy = b["y"] + b["height"] / 2
+            selat = server.cdr_pages(doc_id, action="select_at", page_index=1, x=cx, y=cy)
+            if "error" in selat:
+                detail = f"{cand['name']}: {selat.get('message')}"
+                continue
+            got = selat.get("selected") or 0
+            detail = f"{cand['name']}@{cx:.1f},{cy:.1f} -> {got}"
+            if got >= 1:
+                selected_ok = True
+                break
+        check("按点选择对象", selected_ok, detail)
     else:
         check("找到可用于点查询的对象", False, "页面无可定位对象")
     tf = server.cdr_pages(doc_id, action="text_find", page_index=1, text="GAMMA")
@@ -604,6 +620,9 @@ def main() -> int:
         check("两色混合正确（红+蓝各半）", bl.get("hex") == "#800080", str(bl.get("hex")))
 
     print("\n[15g] 文档级操作")
+    fresh_g = server.cdr_inspect(doc_id)
+    if "state" in fresh_g:
+        state = fresh_g["state"]
     di = server.cdr_doc(doc_id, action="info")
     if no_error("cdr_doc(info)", di):
         check("读到文档概况", di.get("pages") is not None, f"pages={di.get('pages')}")
@@ -637,9 +656,20 @@ def main() -> int:
             print(f"    [diag] token 变化: rev {old['revision']}->{new['revision']}, "
                   f"pages {old['pages']}->{new['pages']}, shapes {old['shapes']}->{new['shapes']}")
         state = new
-    bmp2 = server.cdr_find(doc_id, type_id=5)
-    if bmp2.get("count"):
-        bname2 = bmp2["shapes"][0]["name"]
+    bname2 = None
+    fresh_png = os.path.join(out, "smoke.png")
+    if os.path.exists(fresh_png):
+        freshimp = server.cdr_import(doc_id, path=fresh_png, page_index=1, center=True,
+                                     expected_revision=state["revision"],
+                                     snapshot_token=state["snapshot_token"])
+        if no_error("为滤镜导入干净 RGB 位图", freshimp) and freshimp.get("shape"):
+            state = freshimp["state"]
+            bname2 = freshimp["shape"]["name"]
+    if not bname2:
+        bmp2 = server.cdr_find(doc_id, type_id=5)
+        if bmp2.get("count"):
+            bname2 = bmp2["shapes"][0]["name"]
+    if bname2:
         for eff in ({"type": "bci", "brightness": 5, "contrast": 5, "intensity": 5},
                     {"type": "invert"},
                     {"type": "posterize", "level": 4}):
@@ -726,6 +756,158 @@ def main() -> int:
     if no_error("创建 PostScript 填充矩形", ps):
         check("PostScript 底纹填充可用", ps.get("count") == 1, str(ps.get("count")))
         state = ps["state"]
+
+    # ---------------- 15k. 第五波：节点级编辑 / 路径查询 / 排列 / 文本读取 ----------------
+    print("\n[15k] 第五波：节点级编辑 + 路径查询 + 排列 + 文本读取")
+    w5 = server.cdr_create(doc_id, items=[
+        {"type": "polyline", "points": [[10, 160], [50, 160], [50, 190], [10, 190]],
+         "closed": True, "fill": "#DDDDDD"},
+        {"type": "bezier", "x1": 80, "y1": 170, "c1x": 100, "c1y": 190,
+         "c2x": 120, "c2y": 150, "x2": 140, "y2": 170}],
+        expected_revision=state["revision"], snapshot_token=state["snapshot_token"])
+    if no_error("创建节点测试对象", w5):
+        state = w5["state"]
+        poly_name = w5["created"][0]["name"]
+        bez_name = w5["created"][1]["name"]
+
+        nl = server.cdr_node(doc_id, target={"name": poly_name}, action="list")
+        if no_error("cdr_node(list)", nl):
+            check("节点列表读到 4 个节点（polyline 无重复节点）",
+                  nl.get("nodes") == 4 and len(nl.get("node_list") or []) == 4,
+                  f"nodes={nl.get('nodes')}")
+        nseg = server.cdr_node(doc_id, target={"name": poly_name}, action="segments")
+        if no_error("cdr_node(segments)", nseg):
+            seg0 = (nseg.get("segment_list") or [{}])[0]
+            check("线段详情含端点坐标",
+                  seg0.get("start") is not None and seg0.get("end") is not None,
+                  f"start={seg0.get('start')} end={seg0.get('end')}")
+        nmv = server.cdr_node(doc_id, target={"name": poly_name}, action="move",
+                              node=2, x=50, y=162,
+                              expected_revision=state["revision"],
+                              snapshot_token=state["snapshot_token"])
+        if no_error("cdr_node(move)", nmv):
+            check("节点坐标已改动", nmv.get("nodes") == 4, str(nmv.get("nodes")))
+            state = nmv["state"]
+        nfl = server.cdr_node(doc_id, target={"name": poly_name}, action="fillet",
+                              start=1, end=2, radius=2,
+                              expected_revision=state["revision"],
+                              snapshot_token=state["snapshot_token"])
+        if no_error("cdr_node(fillet)", nfl):
+            check("节点圆角新增节点", (nfl.get("nodes") or 0) >= 5,
+                  f"nodes={nfl.get('nodes')}")
+            state = nfl["state"]
+        ncp = server.cdr_node(doc_id, target={"name": bez_name}, action="control_points",
+                              segment_index=1, control="start", x=100, y=195,
+                              expected_revision=state["revision"],
+                              snapshot_token=state["snapshot_token"])
+        if no_error("cdr_node(control_points set)", ncp):
+            check("贝塞尔控制点已写入",
+                  (ncp.get("control_start") or [None, None])[1] == 195.0,
+                  str(ncp.get("control_start")))
+            state = ncp["state"]
+        nfound = server.cdr_node(doc_id, target={"name": poly_name}, action="find",
+                                 x=10, y=160, hot_area=5)
+        if no_error("cdr_node(find)", nfound):
+            check("按坐标找到节点", (nfound.get("node") or {}).get("index") is not None,
+                  str(nfound.get("node")))
+
+        pl = server.cdr_path(doc_id, target={"name": poly_name}, action="polyline",
+                             precision=10)
+        if no_error("cdr_path(polyline)", pl):
+            check("折线采样取回角点", (pl.get("count") or 0) >= 4,
+                  f"count={pl.get('count')} points={pl.get('points')}")
+        pp = server.cdr_path(doc_id, target={"name": bez_name}, action="point_position", t=0.5)
+        if no_error("cdr_path(point_position)", pp):
+            check("曲线上取点可用", pp.get("point") is not None, str(pp.get("point")))
+        tv = server.cdr_path(doc_id, target={"name": bez_name}, action="tangent_vector", t=0.5)
+        if no_error("cdr_path(tangent_vector)", tv):
+            check("切向量非零", bool(tv.get("length")), str(tv.get("vector")))
+        fn = server.cdr_path(doc_id, target={"name": poly_name}, action="find_node",
+                             x=50, y=162, hot_area=5)
+        if no_error("cdr_path(find_node)", fn):
+            check("路径级按坐标找节点", fn.get("found") is True, str(fn.get("node")))
+        rv = server.cdr_path(doc_id, target={"name": poly_name}, action="reverse_direction",
+                             expected_revision=state["revision"],
+                             snapshot_token=state["snapshot_token"])
+        if no_error("cdr_path(reverse_direction)", rv):
+            check("路径方向已反转", rv.get("clockwise") is True, str(rv.get("clockwise")))
+            state = rv["state"]
+
+        md = server.cdr_modify(doc_id, target={"name": poly_name},
+                               changes={"order": {"mode": "front_of",
+                                                  "ref": {"name": bez_name}}},
+                               expected_revision=state["revision"],
+                               snapshot_token=state["snapshot_token"])
+        if no_error("cdr_modify(order front_of)", md):
+            check("层级相对调整已应用", "order:front_of" in md.get("applied", []),
+                  str(md.get("applied")))
+            state = md["state"]
+        sr = server.cdr_shape_ops(doc_id, "step_repeat", target={"name": poly_name},
+                                  copies=2, distance_x=10, distance_y=0,
+                                  expected_revision=state["revision"],
+                                  snapshot_token=state["snapshot_token"])
+        if no_error("cdr_shape_ops(step_repeat)", sr):
+            check("阵列复制新建 2 个对象", (sr.get("copies_created") or 0) == 2,
+                  f"copies_created={sr.get('copies_created')}")
+            state = sr["state"]
+        ds = server.cdr_shape_ops(doc_id, "distribute", target={"name": bez_name},
+                                  distribute_type=1,
+                                  expected_revision=state["revision"],
+                                  snapshot_token=state["snapshot_token"])
+        if no_error("cdr_shape_ops(distribute)", ds):
+            check("原生分布排列可用", ds.get("op") == "distribute", str(ds.get("op")))
+            state = ds["state"]
+        ps2 = server.cdr_shape_ops(doc_id, "perspective", target={"name": bez_name},
+                                   expected_revision=state["revision"],
+                                   snapshot_token=state["snapshot_token"])
+        if no_error("cdr_shape_ops(perspective)", ps2):
+            check("透视效果已创建", ps2.get("effect") is True)
+            state = ps2["state"]
+        sp2 = server.cdr_shape_ops(doc_id, "separate", target={"name": bez_name},
+                                   expected_revision=state["revision"],
+                                   snapshot_token=state["snapshot_token"])
+        if no_error("cdr_shape_ops(separate)", sp2):
+            check("效果拆分可用", sp2.get("done") is True)
+            state = sp2["state"]
+
+        # 文本读取 / 导出（复用前面创建的文字对象）
+        tf = server.cdr_find(doc_id, type_id=6)
+        if tf.get("count"):
+            tname = tf["shapes"][0]["name"]
+            tr = server.cdr_text(doc_id, target={"name": tname}, read_contents=True,
+                                 range_start=0, range_end=5)
+            if no_error("cdr_text(read_contents)", tr):
+                check("文本读取可用", isinstance(tr.get("contents"), str)
+                      and tr.get("range_text") is not None,
+                      f"contents={tr.get('contents')!r} range={tr.get('range_text')!r}")
+            tout = os.path.join(out, "wave5_text.txt")
+            if os.path.exists(tout):
+                os.remove(tout)
+            te = server.cdr_text(doc_id, target={"name": tname}, export_path=tout,
+                                 export_start=1, export_count=5,
+                                 expected_revision=state["revision"],
+                                 snapshot_token=state["snapshot_token"])
+            if no_error("cdr_text(export_path)", te):
+                check("文本导出成文件", os.path.exists(tout),
+                      f"exists={os.path.exists(tout)}")
+                state = te.get("state", state)
+
+        un = server.cdr_doc(doc_id, "units", value=1, from_unit=1, to_unit=3)
+        if no_error("cdr_doc(units)", un):
+            check("单位换算可用", un.get("from_document") == 25.4, str(un))
+        sc = server.cdr_doc(doc_id, "sample_color", x=20, y=170)
+        if no_error("cdr_doc(sample_color)", sc):
+            check("取色返回颜色串", bool(sc.get("color")), str(sc.get("color")))
+        vd = server.cdr_view(doc_id, action="distance_to_document", distance=100)
+        if no_error("cdr_view(distance_to_document)", vd):
+            check("屏幕距离->文档距离可用", vd.get("document_distance") is not None,
+                  str(vd.get("document_distance")))
+        ga = server.cdr_pages(doc_id, action="guide_angle", x=0, y=0, angle=30,
+                              expected_revision=state["revision"],
+                              snapshot_token=state["snapshot_token"])
+        if no_error("cdr_pages(guide_angle)", ga):
+            check("角度参考线已创建", ga.get("created") is True)
+            state = ga["state"]
 
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")

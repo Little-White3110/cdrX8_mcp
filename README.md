@@ -7,9 +7,9 @@
 
 > **已在真机验证**：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）+ Python 3.11.9 64 位
 > - 单元测试 **55 项通过**
-> - 端到端联调（真实 CorelDRAW）**89/89 通过**
+> - 端到端联调（真实 CorelDRAW）**111/111 通过**
 > - 能力边界来自对 `vgcoreauto.tlb` 的反解（196 个自动化类 / 1619 个方法）+ 逐项实跑
-> - 方法级覆盖 **29.6%**（主干 20 接口 37.0%），可用 `python scripts/coverage_audit.py` 复现
+> - 方法级覆盖 **34.9%**（主干 20 接口 44.8%），可用 `python scripts/coverage_audit.py` 复现
 > - 完整清单见 [docs/COVERAGE.md](docs/COVERAGE.md)
 
 ---
@@ -46,7 +46,7 @@ python -m cdrx8_mcp              # 启动 MCP 服务器（stdio）
 
 ---
 
-## 工具一览（25 个）
+## 工具一览（26 个）
 
 ### 会话与文档
 
@@ -66,25 +66,26 @@ python -m cdrx8_mcp              # 启动 MCP 服务器（stdio）
 | 工具 | 作用 |
 |---|---|
 | `cdr_create` | 批量创建：矩形（含圆角）/ 椭圆（含圆弧、扇形）/ 多边形 / 星形 / 螺旋 / 网格 / 直线 / 贝塞尔 / 文字 / 段落文字 / 参考线 |
-| `cdr_modify` | 单个或**批量**修改：移动、缩放、旋转、翻转、斜切、矩阵/仿射变换、克隆、锁定；填充（纯色/渐变/纹理/无色/**从别的对象复制**）；描边（含**虚线**与**箭头**）；**透明度**；投影、轮廓图、封套；**渐变微调**；**色彩滤镜**；层级、复制、删除。批量用 `target={"all":true}` 或 `{"type_id":n}` |
-| `cdr_text` | 排版级：内容 / 字体 / 字号 / 粗斜体 / 下划线 / 对齐 / **大小写** / **项目符号** / **首字下沉** / **行距字距** / 前后插入 / **沿路径** / 文本框自适应 / **转曲** / **艺术字↔段落字互转** / **段落内容读写与替换** / **文本区间选择·基线对齐·属性复制** |
+| `cdr_modify` | 单个或**批量**修改：移动、缩放、旋转、翻转、斜切、矩阵/仿射变换、**清除变换**、**旋转中心**、克隆、锁定；填充（纯色/渐变/纹理/无色/**从别的对象复制**）；描边（含**虚线**与**箭头**）；**透明度**；投影、轮廓图、封套；**渐变微调**；**色彩滤镜**；**层级相对调整（前置/后置/上移/下移/反转）**、复制、删除。批量用 `target={"all":true}` 或 `{"type_id":n}` |
+| `cdr_text` | 排版级：内容 / 字体 / 字号 / 粗斜体 / 下划线 / 对齐 / **大小写** / **项目符号** / **首字下沉** / **行距字距** / 前后插入 / **沿路径** / 文本框自适应 / **转曲** / **艺术字↔段落字互转** / **段落内容读写与替换** / **文本区间选择·基线对齐·属性复制** / **读取全文·指定区间·导出纯文本** |
 | `cdr_replace_text` | 全文档文字替换（底层用 X8 原生 `Page.TextReplace`） |
 | `cdr_select` | 按名字 / 类型 / 矩形框选，加入选择集 |
-| `cdr_shape_ops` | **布尔与整形**：weld / trim / intersect / combine / group / ungroup / break_apart / to_curves / **outline_to_curves（描边转曲）** / to_symbol / powerclip / fillet / chamfer / scallop |
+| `cdr_shape_ops` | **布尔与整形**：weld / trim / intersect / combine / group / ungroup / break_apart / to_curves / **outline_to_curves（描边转曲）** / to_symbol / powerclip / fillet / chamfer / scallop / **step_repeat（阵列）** / **distribute（原生分布）** / **boundary（边界曲线）** / **perspective（透视）** / **separate（拆效果）** |
 | `cdr_align` | 对齐与分布（左中右 / 上下中 / 等间距，对齐对象或页面） |
 | `cdr_find` | 按名字或类型查找（跨图层） |
-| `cdr_path` | 曲线/子路径级：长度面积 / 偏移轮廓（刀模线）/ **追加圆·椭圆·矩形·三点弧·贝塞尔** / **节点精简** / **自焊接** / **路径等分** / **加节点·断开·移动子路径** / **点在形状内·曲线求交·取点取切向** |
+| `cdr_path` | 曲线/子路径级：长度面积 / 偏移轮廓（刀模线）/ **折线采样** / **追加圆·椭圆·矩形·三点弧·贝塞尔** / **节点精简** / **自焊接** / **路径等分** / **加节点·断开·移动子路径** / **点在形状内·曲线求交·取点取切向** / **参数取点·切向量·法向量·速度·交点·按坐标找节点/线段·反转方向·焊接子路径·去重叠** |
+| `cdr_node` | **节点/线段级编辑（第五波打通）**：列节点·列线段 / 移动·选中·删除 / 圆角·倒角· scallop·平滑 / 拉伸·旋转·斜切·断开 / 加节点·断线 / 读写贝塞尔控制点 / 按坐标找节点与线段 |
 | `cdr_bitmap` | 位图：信息 / 转色彩模式（rgb·cmyk·gray·bw）/ **阈值二值化** / 重采样 / **扩边** / 裁剪 |
 | `cdr_color` | **颜色运算（纯 Python）**：解析成 HEX/RGB/CMYK/Gray/HLS/Lab、转换、两色混合 |
-| `cdr_doc` | **文档级**：概况 / 清空选择集 / 清撤销栈 / **登记调色板** / **用曲线生成自定义箭头** |
-| `cdr_view` | **视图**：刷新重绘 / 激活窗口 / 文档↔屏幕坐标换算 |
+| `cdr_doc` | **文档级**：概况 / 清空选择集 / 清撤销栈 / **登记调色板** / **用曲线生成自定义箭头** / **单位换算** / **取色（点/区域）** / **显示隐藏对象** / **页面版式** / **重复上一操作** |
+| `cdr_view` | **视图**：刷新重绘 / 激活窗口 / 文档↔屏幕坐标换算 / **屏幕距离↔文档距离** |
 
 ### 图层 / 页面 / 文件
 
 | 工具 | 作用 |
 |---|---|
 | `cdr_layers` | 图层列表 / 新建 / 激活 / 显隐 / 锁定 / 打印 / 移动 / 删除 |
-| `cdr_pages` | 页面列表 / 新增 / 切页 / 删除 / 自定义尺寸 / **纸张预设** / **参考线列表** / **解锁全部** / **对象总包围盒** |
+| `cdr_pages` | 页面列表 / 新增 / 切页 / 删除 / 自定义尺寸 / **纸张预设** / **参考线列表** / **角度参考线** / **解锁全部** / **对象总包围盒** |
 | `cdr_import` | 导入 png / jpg / svg / pdf / ai / eps / dxf 等 |
 | `cdr_export` | 导出 **png / jpg / svg / pdf**，位图可指定 DPI，可只导选区 |
 
@@ -180,7 +181,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ---
 
-## X8 特有问题（25 条，全部实测）
+## X8 特有问题（31 条，全部实测）
 
 这些是 **X8 与 2024+ 的差异**，也是本项目存在的主要理由。
 
@@ -204,13 +205,19 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 | 16 | **`Curve.Contour` 返回的是未绑定曲线** | 还要 `Layer.CreateCurve(该曲线)` 才会变成页面对象 | 偏移后页面上什么都没多 |
 | 17 | **`Page.GetObjectsBoundingBox` 返回 `IVGRect`** | `IVGRect.GetRect()` 的 4 个出参 pywin32 取不回，自己遍历求和 | 拿不到包围盒 |
 | 18 | **`Bitmap.Trace` 会把 CorelDRAW 卡死** | 不要调用（弹模态框、进程无响应、COM 无法中断） | 调用方一起挂起 |
-| 19 | **节点集合没有访问入口** | 类型库全库无 `.Nodes`，节点级编辑不可用 | — |
+| 19 | **`curve.Nodes` / `curve.Segments` 是属性，不是方法**（第五波修正） | `curve.Nodes.Item(i)` / `curve.Nodes.Range(a,b)` / `curve.Segments.Item(i)`；节点编辑通过 `cdr_node` 暴露 | 只扫方法名会误判「节点级编辑不可用」 |
 | 20 | `Document` 上没有 `Copy/Paste/SnapTo*`；`Page` 没有 `Background` | 这些能力不存在 | AttributeError |
 | 21 | **`SaveAsCopy` 会把当前文档名改掉** | 调用后必须用返回的 `name` 更新会话 | 之后按旧名查文档全部失败 |
 | 22 | **`IVGColor` 不暴露任何分量属性** | `Red`/`Cyan`/`Gray` 全 AttributeError；`ConvertToCMYK` 只改 Type | 色彩运算改到纯 Python（`colors.py`） |
 | 23 | **`SubPath.GetPointAt` 返回 `IVGPoint`** | 坐标取 `.x` / `.y`（小写） | 取 `PositionX`/元组会失败 |
 | 24 | **文本 `GetContents/SetContents/Replace` 只支持段落文本** | 艺术字上调用会报「该操作需要段落文本对象」 | 先 `to_paragraph` |
 | 25 | **按名取回的 Document 有时取不到 `ActiveWindow`** | 退到 `app.ActiveWindow`，再退到 `app.Windows.Item(1)`（已内置） | 视图类操作报「没有活动窗口」 |
+| 26 | **`Curve.GetPolyline` 返回的是 `IVGCurve`**，不是数组 | 遍历返回曲线的 `SubPaths → Nodes` 取坐标（本项目已这么实现 `cdr_path(action="polyline")`） | 直接 `tuple()` 会失败或得到空 |
+| 27 | **偏移量有两套语义** | `OffsetType=0` = 沿曲线绝对距离；`OffsetType=1` = 0~1 参数比例（取点/曲率/速度都用 1） | 同一个 `t` 取到完全不同的点 |
+| 28 | **`GetTangentVectorAt(Normalize=True)` 返回零向量** | 取 `Normalize=False` 拿真实 x/y，再自己归一化 | 向量恒为 (0,0) |
+| 29 | **`Text.ImportFromFile` 会卡住 COM 通道** | 不要调用；需要读文本请用 `GetContents` / `Text.Range` | 模态框阻塞，调用超时后进程仍在跑 |
+| 30 | **点集参数（`AppendSubpathFromPoints` 等）pywin32 无法构造** | `TypeError: Python instance can not be converted to a COM object`；用逐点 `AppendLineSegment` 代替 | 传 list / VARIANT 都不行 |
+| 31 | **`Shape.CreateBlend` 的第二个形状参数传不进去** | 同样 `TypeError`（需要 pywin32 无法构造的引用） | 混合效果暂不支持 |
 
 改代码前请先读 [`src/cdrx8_mcp/constants.py`](src/cdrx8_mcp/constants.py) 里的注释。
 
@@ -222,12 +229,17 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 * **位图自动转矢量（PowerTRACE）**：`Bitmap.Trace` 实测会让 CorelDRAW 进程变成
   **无响应**（弹模态框、`Responding=False`、必须强杀进程），而 COM 调用无法中断——
   暴露它等于给 Agent 埋一个必挂的雷，所以**故意不实现**
-* **节点级编辑**：类型库全库搜不到任何 `.Nodes` 访问器，拿不到节点集合
+* **文本导入**：`Text.ImportFromFile` 会把 COM 通道卡住（模态框），因此只提供
+  `GetContents` / `Text.Range` 读取与 `ExportToFile` 导出，不提供反向导入
+* **点集直接建曲线**：`AppendSubpathFromPoints` / `AppendSubpathFitToPoints` /
+  `CreateSubPathFromArray` / `Document.CreateCurveFitToPoints` 的数组参数
+  pywin32 构造不出来（`TypeError: Python instance can not be converted to a COM object`），
+  逐点 `AppendLineSegment` 是目前唯一稳定路径
 * **对象样式 / 符号插入**：样式类别常量试了 0~8 全部报「未找到类别」；`app.SymbolLibraries`
   存在但本机 `Count=0`（未装符号库），所以只能把形状转成符号（`to_symbol`），不能插入库内符号
-* **立体化 / 透镜 / 尺寸标注 / 连接线 / 符号插入 / 对象样式 / 专色 / 图案填充**：
+* **立体化 / 透镜 / 尺寸标注 / 连接线 / 符号插入 / 对象样式 / 专色 / 图案填充 / 混合**：
   `CreateExtrude` `CreateLens` `CreateLinearDimension` `CreateConnector` `CreateSymbol`
-  全部卡在 `TypeError: Python instance can not be converted to a COM object`
+  `Shape.CreateBlend` 全部卡在 `TypeError: Python instance can not be converted to a COM object`
   （需要 pywin32 无法构造的结构体/枚举参数）；专色需要本机调色板 ID；图案填充需要 .pat 文件
 
 > 每一条的实测证据都记在 [docs/COVERAGE.md](docs/COVERAGE.md) 的「明确不可用」表里。
@@ -247,7 +259,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ```powershell
 python -m pytest -q                # 55 项纯逻辑测试，任何平台可跑
-python scripts/live_smoke.py       # 89 项端到端，需要 CorelDRAW X8
+python scripts/live_smoke.py       # 111 项端到端，需要 CorelDRAW X8
 python scripts/live_smoke.py --keep   # 保留文档方便肉眼看效果
 python scripts/coverage_audit.py   # 覆盖率审计（复现 README/COVERAGE 里的数字）
 ```
@@ -260,7 +272,9 @@ python scripts/coverage_audit.py   # 覆盖率审计（复现 README/COVERAGE �
 页面按点查询 → 颜色运算 → 文档调色板/箭头/清撤销栈 → 位图滤镜** →
 weld/fillet → 框选/组合/解组 → 对齐 → 图层 → 查找 → 分页/预设/参考线/包围盒 →
 四格式导出（含 DPI 倍增校验）→ 导入 → 位图转模式/重采样 → 文字替换 → 存盘/另存副本 →
-撤销/重做 → 过期 token 拒绝 → 关闭。
+撤销/重做 → **节点级编辑/线段几何/贝塞尔控制点 → 折线采样/参数取点/切法向量/按坐标查找 →
+层级相对调整/阵列复制/原生分布/透视/拆效果 → 文本读取与导出 → 单位换算/取色/角度参考线** →
+过期 token 拒绝 → 关闭。
 
 完整能力矩阵见 [docs/COVERAGE.md](docs/COVERAGE.md)。
 

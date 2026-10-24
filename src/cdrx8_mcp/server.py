@@ -140,7 +140,7 @@ def cdr_status() -> dict:
             info.update({"running": False, "probe_error": str(exc)})
         except Exception as exc:  # noqa: BLE001
             info.update({"running": False, "probe_error": f"{type(exc).__name__}: {exc}"})
-        info["tools"] = 25
+        info["tools"] = 26
         return info
 
     return _guard(_run)
@@ -298,6 +298,8 @@ def cdr_modify(document_id: str, target: dict, changes: dict,
       gradient {angle, edge_pad, translate:[dx,dy], transformations:[d11,d12,d21,d22], opaque}
       effect {type:"bci"|"gamma"|"hsl"|"invert"|"posterize"|"color_balance", ...}
       flip（0 水平 / 1 垂直）｜skew {x,y}｜clone {dx,dy}｜locked true/false
+      order（"front_of"|"back_of" 需 ref / "forward_one" / "back_one" / "reverse"）
+      clear_transformations（清除对象变换）｜rotation_center {x,y}
       text｜font｜size｜bold｜italic｜underline｜alignment
       fit_to_path（{"name":"曲线对象"}）｜fit_frame（文本适应文本框）
       name｜to_front｜to_back｜duplicate[,dup_dx,dup_dy]｜delete
@@ -342,6 +344,10 @@ def cdr_text(document_id: str, target: dict, text: str | None = None,
              replace_old: str | None = None, replace_new: str | None = None,
              select_all: bool = False, align_to_baseline: bool = False,
              copy_attributes_from: dict | None = None,
+             read_contents: bool = False, range_start: int | None = None,
+             range_end: int | None = None, export_path: str | None = None,
+             export_start: int = 1, export_count: int = 0,
+             export_overwrite: bool = False,
              expected_revision: int | None = None, snapshot_token: str | None = None,
              page_index: int | None = None) -> dict:
     """文字的排版级操作。
@@ -354,12 +360,24 @@ def cdr_text(document_id: str, target: dict, text: str | None = None,
     文本区间：select_all / align_to_baseline / copy_attributes_from（复制另一对象的文字属性）
     版式：fit_to_path（沿曲线）/ fit_frame（自动适配文本框）/ insert_before / insert_after
     输出：to_curves（转曲，发排前必做）
+    读取/导出：read_contents（读全文）/ range_start+range_end（读指定区间，0 基）/
+              export_path（导出纯文本，export_start 从 1 起）
 
     注意：contents / replace_old / find 走的是段落文本接口，对艺术字会返回 warning。
     """
     def _run():
         doc, sess = _with_doc(document_id)
-        warnings = _check_view(sess, expected_revision, snapshot_token, doc)
+        mutating = any(v is not None for v in (
+            text, font, size, bold, italic, underline, alignment,
+            fit_to_path, change_case, bullet, drop_cap, line_spacing,
+            char_spacing, word_spacing, insert_before, insert_after,
+            contents, find, replace_old, replace_new, copy_attributes_from,
+        )) or any((to_curves, fit_frame, no_effect, to_paragraph, to_artistic,
+                   select_all, align_to_baseline))
+        warnings = _check_view(sess, expected_revision, snapshot_token, doc) \
+            if mutating else []
+        target_path = resolve_write_path(export_path, overwrite=export_overwrite)[0] \
+            if export_path else None
         result = _com(lambda _b: ops.set_text(
             doc, page_index, target, text=text, font=font, size=size, bold=bold,
             italic=italic, underline=underline, alignment=alignment, to_curves=to_curves,
@@ -372,7 +390,12 @@ def cdr_text(document_id: str, target: dict, text: str | None = None,
             replace_new=replace_new, select_all=select_all,
             align_to_baseline=align_to_baseline,
             copy_attributes_from=copy_attributes_from,
+            read_contents=read_contents, range_start=range_start, range_end=range_end,
+            export_path=str(target_path) if target_path else None,
+            export_start=export_start, export_count=export_count,
         ), label="cdr_text")
+        if not mutating:
+            return result
         return _commit(doc, sess, result, warnings)
 
     return _guard(_run)
@@ -427,6 +450,14 @@ def cdr_shape_ops(document_id: str, op: str, target: dict | None = None,
                   distance_a: float = 0, distance_b: float = 0,
                   leave_source: bool = True, leave_target: bool = True,
                   symbol_name: str | None = None,
+                  copies: int = 1, distance_x: float = 0, distance_y: float = 0,
+                  mode_x: int = 1, direction_x: int = 1,
+                  mode_y: int = 1, direction_y: int = 3,
+                  distribute_type: int = 1, page_extent: bool = False,
+                  place_on_top: bool = True, delete_source: bool = False,
+                  x: float | None = None, y: float | None = None,
+                  hx: float | None = None, hy: float | None = None,
+                  vx: float | None = None, vy: float | None = None,
                   expected_revision: int | None = None,
                   snapshot_token: str | None = None,
                   page_index: int | None = None) -> dict:
@@ -441,6 +472,12 @@ def cdr_shape_ops(document_id: str, op: str, target: dict | None = None,
       outline_to_curves        描边转曲（对象原地从形状变成曲线轮廓，发排/切割常用）
       to_symbol                把 target 转成符号（需 symbol_name）
       fillet（radius）/ chamfer（distance_a,distance_b）/ scallop（radius）
+      step_repeat（copies,distance_x,distance_y,mode_x,direction_x,mode_y,direction_y）
+                 阵列复制（X8 原生 StepAndRepeat，实测 direction_y 必须 2 或 3）
+      distribute（distribute_type,page_extent）  分布排列（X8 原生 Distribute）
+      boundary（x,y,place_on_top,delete_source） 生成形状边界曲线
+      perspective（可选 hx,hy,vx,vy）            透视效果（实测无参可用）
+      separate                                   拆开 target 上的效果/组合
     """
     def _run():
         doc, sess = _with_doc(document_id)
@@ -449,7 +486,13 @@ def cdr_shape_ops(document_id: str, op: str, target: dict | None = None,
             doc, page_index, op, target=target, other=other, radius=radius,
             distance_a=distance_a, distance_b=distance_b,
             leave_source=leave_source, leave_target=leave_target,
-            symbol_name=symbol_name,
+            symbol_name=symbol_name, copies=copies,
+            distance_x=distance_x, distance_y=distance_y,
+            mode_x=mode_x, direction_x=direction_x,
+            mode_y=mode_y, direction_y=direction_y,
+            distribute_type=distribute_type, page_extent=page_extent,
+            place_on_top=place_on_top, delete_source=delete_source,
+            x=x, y=y, hx=hx, hy=hy, vx=vx, vy=vy,
         ), label="cdr_shape_ops")
         return _commit(doc, sess, result, warnings)
 
@@ -527,13 +570,71 @@ def cdr_find(document_id: str, name: str | None = None, type_id: int | None = No
 
 
 @mcp.tool()
+def cdr_node(document_id: str, target: dict, action: str = "list",
+             node: int | None = None, start: int | None = None, end: int | None = None,
+             all_nodes: bool = False, x: float | None = None, y: float | None = None,
+             dx: float = 0.0, dy: float = 0.0, node_type: int | None = None,
+             radius: float = 0.0, distance_a: float = 0.0, distance_b: float = 0.0,
+             ratio_x: float = 1.0, ratio_y: float = 1.0, angle: float = 0.0,
+             angle_x: float = 0.0, angle_y: float = 0.0, offset: float = 0.5,
+             segment_index: int | None = None, control: str | None = None,
+             hot_area: float = -1.0,
+             expected_revision: int | None = None, snapshot_token: str | None = None,
+             page_index: int | None = None) -> dict:
+    """节点 / 线段级编辑（X8 实测可用：curve.Nodes / curve.Segments）。
+
+    target 定位曲线对象（不是曲线的先 `cdr_shape_ops(op="to_curves")`）。
+
+    节点选择器：node=n（第 n 个节点）｜start+end（节点范围）｜all_nodes=true。
+    读操作默认列全部节点；**写操作必须显式指定** node / start+end / all_nodes。
+
+    action（只读）：
+      list           列出节点（索引/坐标/类型/所在子路径/是否端点）
+      segments       列出线段（类型/长度/端点/贝塞尔控制点/中点/曲率）
+      segment_info   单条线段详情（segment_index + offset）
+      find           按坐标找最近的节点与线段（x,y,hot_area）
+
+    action（变更）：
+      move           dx,dy 相对移动；单节点也可用 x,y 绝对定位
+      select         选中节点（供后续节点级操作/查看）
+      delete         删除节点
+      type           node_type（0~2；实测 X8 对多数节点会忽略，改平滑请用 smoothen）
+      fillet（radius）/ chamfer（distance_a,distance_b）/ scallop（radius）
+      smoothen（radius 当平滑度 0~100）/ stretch（ratio_x,ratio_y）/
+      rotate（angle）/ skew（angle_x,angle_y）/ break_apart
+      add_node（segment_index + offset）      在线段上加节点
+      break_segment（segment_index + offset） 在线段处断开
+      control_points（segment_index[,control="start"/"end",x,y]）读写贝塞尔控制点
+    """
+    def _run():
+        act = (action or "list").lower()
+        doc, sess = _with_doc(document_id)
+        kwargs = dict(node=node, start=start, end=end, all_nodes=all_nodes,
+                      x=x, y=y, dx=dx, dy=dy, node_type=node_type, radius=radius,
+                      distance_a=distance_a, distance_b=distance_b,
+                      ratio_x=ratio_x, ratio_y=ratio_y, angle=angle,
+                      angle_x=angle_x, angle_y=angle_y, offset=offset,
+                      segment_index=segment_index, control=control,
+                      hot_area=hot_area)
+        if act not in ops.NODE_MUTATIONS or (act == "control_points" and control is None):
+            return _com(lambda _b: ops.node_ops(doc, page_index, target, act, **kwargs),
+                        label="cdr_node")
+        warnings = _check_view(sess, expected_revision, snapshot_token, doc)
+        result = _com(lambda _b: ops.node_ops(doc, page_index, target, act, **kwargs),
+                      label="cdr_node")
+        return _commit(doc, sess, result, warnings)
+
+    return _guard(_run)
+
+
+@mcp.tool()
 def cdr_pages(document_id: str, action: str = "list",
               page_index: int | None = None, count: int = 1,
               width_mm: float | None = None, height_mm: float | None = None,
               preset: str | None = None, landscape: bool = False,
               x: float | None = None, y: float | None = None,
               text: str | None = None, move_to_index: int | None = None,
-              hot_area: float = 2.0,
+              hot_area: float = 2.0, angle: float = 45.0,
               expected_revision: int | None = None,
               snapshot_token: str | None = None) -> dict:
     """页面管理。
@@ -553,6 +654,7 @@ def cdr_pages(document_id: str, action: str = "list",
       select_at（x,y）              按坐标点选择对象
       text_find（text）             在页面上查找文本
       move_to（move_to_index）      把当前页移到指定位置
+      guide_angle（x,y,angle）      按基点+角度加参考线（X8 CreateGuideAngle）
     """
     def _run():
         doc, sess = _with_doc(document_id)
@@ -574,6 +676,13 @@ def cdr_pages(document_id: str, action: str = "list",
                 to_index=move_to_index, hot_area=hot_area), label="cdr_pages:query")
 
         warnings = _check_view(sess, expected_revision, snapshot_token, doc)
+        if act == "guide_angle":
+            if x is None or y is None:
+                return {"error": "bad_argument",
+                        "message": "action=guide_angle 需要 x 与 y（基点）"}
+            result = _com(lambda _b: ops.add_guide_angle(doc, page_index, x, y, angle),
+                          label="cdr_pages:guide_angle")
+            return _commit(doc, sess, result, warnings)
         if act == "unlock":
             result = _com(lambda _b: ops.unlock_all(doc, page_index),
                           label="cdr_pages:unlock")
@@ -616,22 +725,29 @@ def cdr_path(document_id: str, target: dict, action: str = "info",
              rect: list | None = None, arc: list | None = None, bezier: list | None = None,
              other: dict | None = None, amount: float = 30.0,
              subpath: int = 1, t: float = 0.5, dx: float = 0.0, dy: float = 0.0,
+             precision: int = 50,
+             tolerance: float = 0.0, allow_reversals: bool = True, hot_area: float = -1.0,
              expected_revision: int | None = None,
              snapshot_token: str | None = None,
              page_index: int | None = None) -> dict:
     """曲线 / 子路径级操作（对象需是曲线，可先 `cdr_shape_ops(op="to_curves")` 转曲）。
 
-    只读：info（长度/面积/子路径）、polyline、point_inside、intersects、
+    只读：info（长度/面积/子路径）、polyline（折线采样，已修复）、point_inside、intersects、
           subpath_info、get_point、get_tangent、
           curvature（曲率）、perpendicular（法线角度）、evenly_spaced（等距点）、
           closest_segment（最近线段）、is_on_path（点是否在路径上）、
-          segment_at（某位置所在线段）、is_rect_on_edge（矩形是否贴边）
+          segment_at（某位置所在线段）、is_rect_on_edge（矩形是否贴边）、
+          point_position（t 位置坐标）、tangent_vector / perpendicular_vector（向量+角度）、
+          curve_speed（速度）、intersections（与另一条曲线的交点）、
+          find_node / find_segment（按坐标找节点/线段）
 
     变更：contour（偏移出刀模线）、add_subpath、
           append_circle / append_ellipse / append_rectangle / append_arc / append_bezier
           （往同一条曲线里拼更多子路径）、
           reduce_nodes（节点精简）、self_weld（自焊接）、
-          equal_divide（等分）、add_node、break_apart、move_subpath
+          equal_divide（等分）、add_node、break_apart、move_subpath、
+          reverse_direction（反转方向）、join_subpaths（焊接相邻子路径）、
+          remove_overlaps（去重叠）
     """
     def _run():
         act = (action or "info").lower()
@@ -639,11 +755,15 @@ def cdr_path(document_id: str, target: dict, action: str = "info",
                            "subpath_info", "get_point", "get_tangent",
                            "curvature", "perpendicular", "evenly_spaced",
                            "closest_segment", "is_on_path", "segment_at",
-                           "is_rect_on_edge"}
+                           "is_rect_on_edge", "point_position", "tangent_vector",
+                           "perpendicular_vector", "curve_speed", "intersections",
+                           "find_node", "find_segment"}
         doc, sess = _with_doc(document_id)
         kwargs = dict(offset=offset, direction=direction, x=x, y=y, radius=radius,
                       rx=rx, ry=ry, rect=rect, arc=arc, bezier=bezier, other=other,
-                      amount=amount, subpath=subpath, t=t, dx=dx, dy=dy)
+                      amount=amount, subpath=subpath, t=t, dx=dx, dy=dy,
+                      precision=precision, tolerance=tolerance,
+                      allow_reversals=allow_reversals, hot_area=hot_area)
         if readonly:
             return _com(lambda _b: ops.path_ops(doc, page_index, target, act, **kwargs),
                         label="cdr_path")
@@ -679,6 +799,10 @@ def cdr_color(action: str = "info", color: Any = None, color2: Any = None,
 
 @mcp.tool()
 def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
+            value: float | None = None, from_unit: int | None = None,
+            to_unit: int | None = None, x: float | None = None,
+            y: float | None = None, x2: float | None = None, y2: float | None = None,
+            x_samples: int = 4, y_samples: int = 4, layout: int | None = None,
             expected_revision: int | None = None, snapshot_token: str | None = None,
             page_index: int | None = None) -> dict:
     """文档级操作。
@@ -689,17 +813,24 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
       clear_undo       清空撤销栈（批处理前后释放内存）
       palette          把文档用到的颜色登记进调色板（印前交接）
       arrowhead        用一条曲线生成自定义箭头（target 指向曲线）
+      units            单位换算：value + from_unit（换算到文档单位）或 to_unit（文档单位→目标）
+                       单位枚举实测：1=in 3=mm 4=cm 5=px 7=m
+      sample_color     取色：x,y（采样一个点）或再加 x2,y2（区域平均）
+      show_all         显示所有隐藏对象
+      layout           页面版式（layout 数字枚举，实测 1 可用）
+      repeat           重复上一操作（等价 Ctrl+R，慎用）
     """
     def _run():
         doc, sess = _with_doc(document_id)
+        kwargs = dict(target=target, page_index=page_index, value=value,
+                      from_unit=from_unit, to_unit=to_unit, x=x, y=y, x2=x2, y2=y2,
+                      x_samples=x_samples, y_samples=y_samples, layout=layout)
         if action == "info":
-            return _com(lambda _b: ops.doc_ops(doc, "info", page_index=page_index),
-                        label="cdr_doc")
+            return _com(lambda _b: ops.doc_ops(doc, "info", **kwargs), label="cdr_doc")
+        if action in {"clear_selection", "units", "sample_color"}:
+            return _com(lambda _b: ops.doc_ops(doc, action, **kwargs), label="cdr_doc")
         warnings = _check_view(sess, expected_revision, snapshot_token, doc)
-        result = _com(lambda _b: ops.doc_ops(doc, action, target=target,
-                                             page_index=page_index), label="cdr_doc")
-        if action == "clear_selection":
-            return result
+        result = _com(lambda _b: ops.doc_ops(doc, action, **kwargs), label="cdr_doc")
         return _commit(doc, sess, result, warnings)
 
     return _guard(_run)
@@ -717,6 +848,7 @@ def cdr_view(document_id: str, action: str = "refresh",
       to_screen（x,y）      文档坐标 -> 屏幕坐标
       to_document（x,y）    屏幕坐标 -> 文档坐标
       distance_to_screen（distance）  文档距离 -> 屏幕距离
+      distance_to_document（distance）  屏幕距离 -> 文档距离
     """
     def _run():
         doc, _sess = _with_doc(document_id)

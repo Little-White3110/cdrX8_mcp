@@ -231,7 +231,8 @@ def save_as_copy(doc: Any, path: str) -> dict:
     }
 
 
-VIEW_ACTIONS = ("refresh", "activate", "to_screen", "to_document", "distance_to_screen")
+VIEW_ACTIONS = ("refresh", "activate", "to_screen", "to_document",
+                "distance_to_screen", "distance_to_document")
 
 
 def view_ops(doc: Any, action: str, *, x: float | None = None, y: float | None = None,
@@ -269,15 +270,25 @@ def view_ops(doc: Any, action: str, *, x: float | None = None, y: float | None =
             raise CdrBadArgument("to_document 需要 x 与 y（屏幕坐标）")
         pt = _s(lambda: tuple(win.ScreenToDocument(float(x), float(y))))
         return {"action": act, "document": [_round(v) for v in pt] if pt else None}
+    if act == "distance_to_document":
+        val = _s(lambda: float(win.ScreenDistanceToDocumentDistance(float(distance))))
+        return {"action": act, "screen_distance": distance,
+                "document_distance": _round(val)}
     val = _s(lambda: float(win.DocumentDistanceToScreenDistance(float(distance))))
     return {"action": act, "document_distance": distance, "screen_distance": _round(val)}
 
 
-DOC_ACTIONS = ("info", "clear_selection", "clear_undo", "palette", "arrowhead")
+DOC_ACTIONS = ("info", "clear_selection", "clear_undo", "palette", "arrowhead",
+               "units", "sample_color", "show_all", "layout", "repeat")
 
 
 def doc_ops(doc: Any, action: str, *, target: dict | None = None,
-            page_index: int | None = None) -> dict:
+            page_index: int | None = None, value: float | None = None,
+            from_unit: int | None = None, to_unit: int | None = None,
+            x: float | None = None, y: float | None = None,
+            x2: float | None = None, y2: float | None = None,
+            x_samples: int = 4, y_samples: int = 4,
+            layout: int | None = None) -> dict:
     """文档级操作。
 
     action:
@@ -286,6 +297,11 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
       clear_undo       清空撤销栈（批处理前后释放内存）
       palette          把文档用到的颜色登记进调色板（AddColorsToDocPalette）
       arrowhead        用一条曲线生成自定义箭头（返回箭头对象可用信息）
+      units            单位换算：doc.ToUnits / doc.FromUnits（value/from_unit/to_unit）
+      sample_color     取色：SampleColorAtPoint（x,y）或 SampleColorInArea（x,y,x2,y2）
+      show_all         显示所有隐藏对象（ShowAllHiddenObjects）
+      layout           页面版式（SetLayout：layout 传数字枚举）
+      repeat           重复上一操作（Document.Repeat，等同 Ctrl+R）
     """
     act = (action or "info").lower()
     if act not in DOC_ACTIONS:
@@ -310,6 +326,48 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
     if act == "palette":
         doc.AddColorsToDocPalette(False, 0)
         return {"action": act, "done": True}
+    if act == "units":
+        if value is None:
+            raise CdrBadArgument("units 需要 value")
+        out: dict = {"action": act, "value": float(value), "doc_unit": _n(lambda: int(doc.Unit))}
+        if from_unit is not None:
+            out["to_document"] = _round(_s(lambda: float(doc.ToUnits(float(value),
+                                                                   int(from_unit)))))
+        if to_unit is not None:
+            out["from_document"] = _round(_s(lambda: float(doc.FromUnits(float(value),
+                                                                       int(to_unit)))))
+        if from_unit is None and to_unit is None:
+            out["to_document"] = _round(_s(lambda: float(doc.ToUnits(float(value),
+                                                                   _n(lambda: int(doc.Unit), 1)))))
+        return out
+    if act == "sample_color":
+        if x is None or y is None:
+            raise CdrBadArgument("sample_color 需要 x 与 y")
+        with mm_units(doc):
+            if x2 is not None and y2 is not None:
+                col = _s(lambda: doc.SampleColorInArea(float(x), float(y), float(x2),
+                                                       float(y2), int(x_samples),
+                                                       int(y_samples), 99))
+            else:
+                col = _s(lambda: doc.SampleColorAtPoint(float(x), float(y), 99))
+        if col is None:
+            return {"action": act, "sampled": False, "color": None}
+        return {"action": act, "sampled": True,
+                "color": _s(lambda: str(col.ToString())),
+                "name": _s(lambda: str(col.GetName())) or None}
+    if act == "show_all":
+        doc.ShowAllHiddenObjects()
+        return {"action": act, "done": True}
+    if act == "layout":
+        if layout is None:
+            raise CdrBadArgument("layout 需要 layout（数字枚举）")
+        doc.SetLayout(int(layout), False, True)
+        return {"action": act, "layout": int(layout),
+                "pages": _n(lambda: int(doc.Pages.Count))}
+    if act == "repeat":
+        doc.Repeat()
+        return {"action": act, "done": True,
+                "shapes": total_shapes(doc)}
     # arrowhead
     with mm_units(doc):
         page = _page(doc, page_index)
@@ -486,6 +544,27 @@ def page_query(doc: Any, action: str, *, page_index: int | None = None,
     raise CdrBadArgument(f"未知 action {act}；可用 geometry/shape_at/select_at/text_find/move_to")
 
 
+def add_guide_angle(doc: Any, page_index: int | None = None, x: float = 0.0,
+                    y: float = 0.0, angle: float = 45.0) -> dict:
+    """按「基点 + 角度」加参考线（实测 IVGLayer.CreateGuideAngle 可用）。"""
+    with mm_units(doc):
+        page = _page(doc, page_index)
+        layer = _active_layer(page)
+        shape = layer.CreateGuideAngle(float(x), float(y), float(angle))
+        guides = 0
+        try:
+            for _i in range(1, int(page.Shapes.Count) + 1):
+                try:
+                    if int(page.Shapes.Item(_i).Type) == 9:
+                        guides += 1
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        return {"action": "guide_angle", "created": shape is not None,
+                "x": x, "y": y, "angle": angle, "guides": guides}
+
+
 def objects_bounds(doc: Any, page_index: int | None = None,
                    selected_only: bool = False) -> dict:
     """本页所有对象（或当前选中对象）的总包围盒。
@@ -612,7 +691,35 @@ PATH_ACTIONS = (
     # 查询（第三批）
     "curvature", "perpendicular", "evenly_spaced", "closest_segment",
     "is_on_path", "segment_at", "is_rect_on_edge",
+    # 第四批（第五波实测）
+    "point_position", "tangent_vector", "perpendicular_vector", "curve_speed",
+    "intersections", "find_node", "find_segment",
+    "reverse_direction", "join_subpaths", "remove_overlaps",
 )
+
+
+def _polyline_points(curve: Any, precision: int = 50, limit: int = 4000) -> list[list[float]]:
+    """把曲线采样成折线点（实测 X8 可用）。
+
+    关键发现：`Curve.GetPolyline()` 返回的是 **IVGCurve**（不是 pywin32 取不回的
+    变体数组）。遍历返回曲线的 SubPaths → Nodes 即可拿到坐标；采样点里会有连续
+    重复点（退化子路径），这里按"连续相同"去重。
+    """
+    poly = curve.GetPolyline(int(precision))
+    points: list[list[float]] = []
+    last: tuple[float, float] | None = None
+    for si in range(1, int(poly.SubPaths.Count) + 1):
+        sp = poly.SubPaths.Item(si)
+        for ni in range(1, int(sp.Nodes.Count) + 1):
+            node = sp.Nodes.Item(ni)
+            pt = (_round(_s(lambda n=node: float(n.PositionX), 0.0)),
+                  _round(_s(lambda n=node: float(n.PositionY), 0.0)))
+            if pt != last:
+                points.append([pt[0], pt[1]])
+                last = pt
+            if len(points) >= limit:
+                return points
+    return points
 
 
 def path_ops(doc: Any, page_index: int | None, target: dict, action: str, *,
@@ -622,6 +729,8 @@ def path_ops(doc: Any, page_index: int | None, target: dict, action: str, *,
              rect: list | None = None, arc: list | None = None, bezier: list | None = None,
              other: dict | None = None, amount: float = 30.0, closed: bool = True,
              subpath: int = 1, t: float = 0.5, dx: float = 0.0, dy: float = 0.0,
+             tolerance: float = 0.0, allow_reversals: bool = True,
+             hot_area: float = -1.0,
              label: str = "cdr_path") -> dict:
     """曲线 / 子路径级操作。所有坐标毫米。"""
     act = (action or "info").lower()
@@ -654,12 +763,11 @@ def path_ops(doc: Any, page_index: int | None, target: dict, action: str, *,
             return {"action": act, **info()}
         if act == "polyline":
             try:
-                pts = tuple(curve.GetPolyline(int(precision)))
-                return {"action": act, "points": [_round(p) for p in pts[:200]],
-                        "count": len(pts)}
-            except Exception:
+                pts = _polyline_points(curve, int(precision))
+                return {"action": act, "points": pts[:200], "count": len(pts)}
+            except Exception as exc:  # noqa: BLE001
                 return {"action": act, "points": [],
-                        "note": "该曲线无法取折线点（pywin32 取不到变体数组）"}
+                        "note": f"该曲线无法采样（{type(exc).__name__}: {exc}）"}
         if act == "point_inside":
             if x is None or y is None:
                 raise CdrBadArgument("point_inside 需要 x 与 y")
@@ -734,6 +842,78 @@ def path_ops(doc: Any, page_index: int | None, target: dict, action: str, *,
                     "point": [_round(_s(lambda: float(pt.x))),
                               _round(_s(lambda: float(pt.y)))]}
 
+        # ---- 查询（第四批，2026-10-25 实测）----
+        if act == "point_position":
+            sp = sub()
+            pt = _s(lambda: sp.GetPointAt(float(t), 1))
+            if pt is None:
+                return {"action": act, "t": t, "point": None}
+            return {"action": act, "t": t,
+                    "point": [_round(_s(lambda: float(pt.x))),
+                              _round(_s(lambda: float(pt.y)))]}
+        if act in {"tangent_vector", "perpendicular_vector"}:
+            sp = sub()
+            # 实测：Normalize=True 时 X8 返回零向量，必须取 False 再自己归一化
+            if act == "tangent_vector":
+                vec = _s(lambda: sp.GetTangentVectorAt(float(t), 1, False))
+            else:
+                vec = _s(lambda: sp.GetPerpendicularVectorAt(float(t), 1, False))
+            if vec is None:
+                return {"action": act, "t": t, "vector": None}
+            vx = _s(lambda: float(vec.x))
+            vy = _s(lambda: float(vec.y))
+            length = _round(_s(lambda: float(vec.Length)))
+            normalized = None
+            if vx is not None and vy is not None and length:
+                normalized = [_round(vx / length, 6), _round(vy / length, 6)]
+            return {"action": act, "t": t,
+                    "vector": [_round(vx), _round(vy)],
+                    "normalized": normalized,
+                    "angle": _round(_s(lambda: float(vec.Angle))),
+                    "length": length}
+        if act == "curve_speed":
+            sp = sub()
+            return {"action": act, "t": t,
+                    "speed": _round(_s(lambda: float(sp.GetCurveSpeedAt(float(t), 1))))}
+        if act == "intersections":
+            sp = sub()
+            other_shape = find_shape(doc, page, other or {})
+            oc = _s(lambda: other_shape.Curve)
+            if oc is None:
+                raise CdrBadArgument("other 必须是曲线对象")
+            count = _n(lambda: int(oc.SubPaths.Count), 0)
+            if count < 1:
+                raise CdrBadArgument("other 没有子路径")
+            idx = max(1, min(int(subpath), count))
+            target_sp = oc.SubPaths.Item(idx)
+            cross = _s(lambda: sp.GetIntersections(target_sp, 1))
+            points: list[list[float]] = []
+            if cross is not None:
+                for i in range(1, int(cross.Count) + 1):
+                    pt = cross.Item(i)
+                    points.append([_round(_s(lambda p=pt: float(p.x))),
+                                   _round(_s(lambda p=pt: float(p.y)))])
+            return {"action": act, "count": len(points), "points": points}
+        if act == "find_node":
+            if x is None or y is None:
+                raise CdrBadArgument("find_node 需要 x 与 y")
+            node = _s(lambda: curve.FindNodeAtPoint(float(x), float(y), float(hot_area)))
+            if node is None:
+                return {"action": act, "found": False, "node": None}
+            return {"action": act, "found": True, "node": _node_dict(node)}
+        if act == "find_segment":
+            if x is None or y is None:
+                raise CdrBadArgument("find_segment 需要 x 与 y")
+            res = _s(lambda: curve.FindSegmentAtPoint(
+                float(x), float(y), HotArea=float(hot_area)))
+            if res is None:
+                return {"action": act, "found": False, "segment": None}
+            seg = res[0] if isinstance(res, (tuple, list)) else res
+            offset_val = res[1] if isinstance(res, (tuple, list)) and len(res) > 1 else None
+            return {"action": act, "found": True,
+                    "segment": _segment_dict(seg),
+                    "offset": _round(offset_val) if offset_val is not None else None}
+
         # ---- 变更 ----
         with atomic(doc, label):
             if act == "contour":
@@ -794,6 +974,17 @@ def path_ops(doc: Any, page_index: int | None, target: dict, action: str, *,
             if act == "self_weld":
                 curve.SelfWeldClosedSubpaths()
                 return {"action": act, **info()}
+            if act == "reverse_direction":
+                curve.ReverseDirection()
+                return {"action": act,
+                        "clockwise": bool(_s(lambda: bool(curve.IsClockwise), False)), **info()}
+            if act == "join_subpaths":
+                curve.JoinTouchingSubpaths(bool(allow_reversals), float(tolerance))
+                return {"action": act, "subpaths_after": _n(lambda: int(curve.SubPaths.Count), 0),
+                        **info()}
+            if act == "remove_overlaps":
+                produced = _s(lambda: curve.RemoveOverlaps())
+                return {"action": act, "result_curve": produced is not None, **info()}
 
             if act == "equal_divide":
                 sp = sub()
@@ -814,6 +1005,293 @@ def path_ops(doc: Any, page_index: int | None, target: dict, action: str, *,
                 sp.Move(float(dx), float(dy))
                 return {"action": act, **info()}
     return {"action": act, **info()}
+
+
+# --------------------------------------------------------------------------- #
+# 节点级编辑（第五波实测打通）
+#
+# 历史结论「拿不到节点集合」是错的：`IVGCurve.Nodes` / `.Segments` 是**属性**
+# （不是方法），反解脚本只扫了方法名所以漏掉了。实测 X8 上可以：
+#   curve.Nodes.Count / Item(i) / Range(a,b) / All() / First / Last
+#   node.PositionX/Y / Type / Index / SubPathIndex / IsEnding / Selected
+#   node.SetPosition / Move / CreateSelection / Delete
+#   nodeRange.Fillet / Chamfer / Scallop / Smoothen / SetType / Move /
+#              Rotate / Skew / Stretch / BreakApart / GetBoundingBox / AddToSelection
+#   curve.Segments.Count / Item(i) / All() / Range(a,b)
+#   segment.GetPointAt / GetPointPositionAt / GetTangentAt / GetCurvatureAt /
+#           GetCurveSpeedAt / GetStartingControlPointPosition /
+#           SetStartingControlPointPosition / AddNodeAt / BreakApartAt
+# 注意：doc.Unit 决定坐标单位；本函数内统一用 mm_units。
+# --------------------------------------------------------------------------- #
+NODE_ACTIONS = (
+    "list", "segments", "segment_info", "find",
+    "move", "select", "delete", "type",
+    "fillet", "chamfer", "scallop", "smoothen",
+    "stretch", "rotate", "skew", "break_apart",
+    "add_node", "break_segment", "control_points",
+)
+
+NODE_MUTATIONS = {
+    "move", "select", "delete", "type", "fillet", "chamfer", "scallop",
+    "smoothen", "stretch", "rotate", "skew", "break_apart",
+    "add_node", "break_segment", "control_points",
+}
+
+
+def _node_dict(node: Any) -> dict:
+    return {
+        "index": _n(lambda: int(node.Index)),
+        "absolute_index": _n(lambda: int(node.AbsoluteIndex)),
+        "subpath": _n(lambda: int(node.SubPathIndex)),
+        "type": _n(lambda: int(node.Type)),
+        "x": _round(_s(lambda: float(node.PositionX))),
+        "y": _round(_s(lambda: float(node.PositionY))),
+        "ending": bool(_s(lambda: bool(node.IsEnding), False)),
+        "selected": bool(_s(lambda: bool(node.Selected), False)),
+    }
+
+
+def _segment_control_points(seg: Any) -> dict:
+    out: dict = {"control_start": None, "control_end": None}
+    try:
+        start = tuple(seg.GetStartingControlPointPosition())
+        out["control_start"] = [_round(v) for v in start]
+    except Exception:
+        pass
+    try:
+        end = tuple(seg.GetEndingControlPointPosition())
+        out["control_end"] = [_round(v) for v in end]
+    except Exception:
+        pass
+    return out
+
+
+def _segment_dict(seg: Any, t: float = 0.5) -> dict:
+    """线段详情。
+
+    实测 X8 的 Offset 语义：OffsetType=0 是"沿曲线绝对距离"，OffsetType=1 才是
+    0~1 的参数比例。这里统一用 1；点坐标走 GetPointAt(offset, 1)。
+    """
+    start_pt = _s(lambda: seg.GetPointAt(0.0, 1))
+    end_pt = _s(lambda: seg.GetPointAt(1.0, 1))
+    mid_pt = _s(lambda: seg.GetPointAt(float(t), 1))
+    info = {
+        "index": _n(lambda: int(seg.Index)),
+        "absolute_index": _n(lambda: int(seg.AbsoluteIndex)),
+        "type": _n(lambda: int(seg.Type)),
+        "length": _round(_s(lambda: float(seg.Length))),
+        "start": ([_round(_s(lambda: float(start_pt.x))),
+                   _round(_s(lambda: float(start_pt.y)))] if start_pt else None),
+        "end": ([_round(_s(lambda: float(end_pt.x))),
+                 _round(_s(lambda: float(end_pt.y)))] if end_pt else None),
+        "point_at_t": ([_round(_s(lambda: float(mid_pt.x))),
+                        _round(_s(lambda: float(mid_pt.y)))] if mid_pt else None),
+        "curvature": _round(_s(lambda: float(seg.GetCurvatureAt(float(t), 1)))),
+        "speed": _round(_s(lambda: float(seg.GetCurveSpeedAt(float(t), 1)))),
+    }
+    info.update(_segment_control_points(seg))
+    return info
+
+
+def _node_count(curve: Any) -> int:
+    return _n(lambda: int(curve.Nodes.Count), 0)
+
+
+def _node_range(curve: Any, node: int | None, start: int | None, end: int | None,
+                all_nodes: bool) -> Any:
+    count = _node_count(curve)
+    if count < 1:
+        raise CdrBadArgument("曲线没有节点")
+    if node is not None:
+        idx = int(node)
+        if not 1 <= idx <= count:
+            raise CdrBadArgument(f"node 越界：{idx}（共 {count} 个）")
+        curve.Nodes.Item(idx).CreateSelection()
+        return curve.Selection()
+    if start is not None or end is not None:
+        a = int(start if start is not None else 1)
+        b = int(end if end is not None else count)
+        if not 1 <= a <= b <= count:
+            raise CdrBadArgument(f"节点范围越界：[{a},{b}]（共 {count} 个）")
+        return curve.Nodes.Range(a, b)
+    if all_nodes:
+        return curve.Nodes.All()
+    return None
+
+
+def _node_ref(curve: Any, node: int | None) -> Any:
+    count = _node_count(curve)
+    idx = int(node) if node is not None else 1
+    if not 1 <= idx <= count:
+        raise CdrBadArgument(f"node 越界：{idx}（共 {count} 个）")
+    return curve.Nodes.Item(idx)
+
+
+def _segment_ref(curve: Any, segment_index: int | None) -> Any:
+    count = _n(lambda: int(curve.Segments.Count), 0)
+    idx = int(segment_index) if segment_index is not None else 1
+    if not 1 <= idx <= count:
+        raise CdrBadArgument(f"segment 越界：{idx}（共 {count} 条）")
+    return curve.Segments.Item(idx)
+
+
+def node_ops(doc: Any, page_index: int | None, target: dict, action: str, *,
+             node: int | None = None, start: int | None = None, end: int | None = None,
+             all_nodes: bool = False, x: float | None = None, y: float | None = None,
+             dx: float = 0.0, dy: float = 0.0, node_type: int | None = None,
+             radius: float = 0.0, distance_a: float = 0.0, distance_b: float = 0.0,
+             ratio_x: float = 1.0, ratio_y: float = 1.0, angle: float = 0.0,
+             angle_x: float = 0.0, angle_y: float = 0.0, offset: float = 0.5,
+             segment_index: int | None = None, control: str | None = None,
+             hot_area: float = -1.0, label: str = "cdr_node") -> dict:
+    """节点 / 线段级编辑。
+
+    action（只读）：list / segments / segment_info / find
+    action（变更）：move / select / delete / type / fillet / chamfer / scallop /
+                    smoothen / stretch / rotate / skew / break_apart /
+                    add_node / break_segment / control_points
+    选择器：node=第几个节点 ｜ start/end=节点范围 ｜ all_nodes=true（读操作默认全部）
+    """
+    act = (action or "list").lower()
+    if act not in NODE_ACTIONS:
+        raise CdrBadArgument(f"未知 action {action!r}；可用：{', '.join(NODE_ACTIONS)}")
+
+    with mm_units(doc):
+        page = _page(doc, page_index)
+        shape = find_shape(doc, page, target)
+        curve = _s(lambda: shape.Curve)
+        if curve is None:
+            raise CdrBadArgument("目标不是曲线对象（可先用 cdr_shape_ops(op='to_curves') 转曲）")
+
+        def base() -> dict:
+            return {
+                "name": _s(lambda: str(shape.Name)),
+                "closed": bool(_s(lambda: bool(curve.Closed), False)),
+                "clockwise": bool(_s(lambda: bool(curve.IsClockwise), False)),
+                "nodes": _node_count(curve),
+                "segments": _n(lambda: int(curve.Segments.Count), 0),
+                "subpaths": _n(lambda: int(curve.SubPaths.Count), 0),
+            }
+
+        # ---------- 只读 ----------
+        if act == "list":
+            count = _node_count(curve)
+            items = [_node_dict(curve.Nodes.Item(i)) for i in range(1, min(count, 500) + 1)]
+            xs = [n["x"] for n in items if n["x"] is not None]
+            ys = [n["y"] for n in items if n["y"] is not None]
+            bbox = None
+            if xs and ys:
+                bbox = {"x": min(xs), "y": min(ys),
+                        "width": _round(max(xs) - min(xs)),
+                        "height": _round(max(ys) - min(ys))}
+            return {"action": act, **base(), "node_list": items, "bbox": bbox,
+                    "truncated": count > 500}
+        if act == "segments":
+            count = _n(lambda: int(curve.Segments.Count), 0)
+            items = [_segment_dict(curve.Segments.Item(i), float(offset))
+                     for i in range(1, min(count, 300) + 1)]
+            return {"action": act, **base(), "segment_list": items,
+                    "truncated": count > 300}
+        if act == "segment_info":
+            seg = _segment_ref(curve, segment_index)
+            return {"action": act, **base(), "segment": _segment_dict(seg, float(offset))}
+        if act == "find":
+            if x is None or y is None:
+                raise CdrBadArgument("find 需要 x 与 y")
+            found_node = _s(lambda: curve.FindNodeAtPoint(float(x), float(y), float(hot_area)))
+            found_seg = _s(lambda: curve.FindSegmentAtPoint(
+                float(x), float(y), HotArea=float(hot_area)))
+            seg = None
+            off = None
+            if found_seg is not None:
+                if isinstance(found_seg, (tuple, list)):
+                    seg = _segment_dict(found_seg[0], float(offset))
+                    off = _round(found_seg[1]) if len(found_seg) > 1 else None
+                else:
+                    seg = _segment_dict(found_seg, float(offset))
+            return {"action": act,
+                    "node": _node_dict(found_node) if found_node is not None else None,
+                    "segment": seg, "segment_offset": off}
+
+        # ---------- 变更 ----------
+        if act == "add_node":
+            seg = _segment_ref(curve, segment_index)
+            with atomic(doc, label):
+                new_node = seg.AddNodeAt(float(offset))
+            return {"action": act, "segment": segment_index or 1, "offset": offset,
+                    "node": _node_dict(new_node) if new_node is not None else None,
+                    **base()}
+        if act == "break_segment":
+            seg = _segment_ref(curve, segment_index)
+            with atomic(doc, label):
+                new_node = seg.BreakApartAt(float(offset))
+            return {"action": act, "segment": segment_index or 1, "offset": offset,
+                    "node": _node_dict(new_node) if new_node is not None else None,
+                    **base()}
+        if act == "control_points":
+            seg = _segment_ref(curve, segment_index)
+            if control and x is not None and y is not None:
+                with atomic(doc, label):
+                    if str(control).lower().startswith("s"):
+                        seg.SetStartingControlPointPosition(float(x), float(y))
+                        applied = "start"
+                    else:
+                        seg.SetEndingControlPointPosition(float(x), float(y))
+                        applied = "end"
+                return {"action": act, "segment": segment_index or 1,
+                        "set": applied, **_segment_control_points(seg)}
+            return {"action": act, "segment": segment_index or 1,
+                    **_segment_control_points(seg)}
+
+        rng = _node_range(curve, node, start, end, all_nodes)
+        if rng is None:
+            raise CdrBadArgument(
+                "该 action 需要指定节点：node=n / start+end / all_nodes=true")
+
+        with atomic(doc, label):
+            if act == "move":
+                if x is not None and y is not None and node is not None:
+                    _node_ref(curve, node).SetPosition(float(x), float(y))
+                else:
+                    rng.Move(float(dx), float(dy))
+            elif act == "select":
+                rng.CreateSelection()
+            elif act == "delete":
+                rng.Delete()
+            elif act == "type":
+                if node_type is None:
+                    raise CdrBadArgument("type 需要 node_type（实测有效范围 0~2）")
+                rng.SetType(int(node_type))
+            elif act == "fillet":
+                rng.Fillet(float(radius), True)
+            elif act == "chamfer":
+                rng.Chamfer(float(distance_a), float(distance_b), True)
+            elif act == "scallop":
+                rng.Scallop(float(radius), True)
+            elif act == "smoothen":
+                rng.Smoothen(int(max(0, min(100, int(radius or 100)))))
+            elif act == "stretch":
+                rng.Stretch(float(ratio_x), float(ratio_y))
+            elif act == "rotate":
+                rng.Rotate(float(angle), False)
+            elif act == "skew":
+                rng.Skew(float(angle_x), float(angle_y))
+            elif act == "break_apart":
+                rng.BreakApart()
+
+        result = {"action": act, **base()}
+        if act == "select":
+            result["selected"] = _n(lambda: int(curve.Selection().Count), 0)
+        if act == "type":
+            read_back = [_n(lambda i=i: int(curve.Nodes.Item(i).Type))
+                         for i in range(1, min(_node_count(curve), 500) + 1)]
+            result["types"] = sorted(set(t for t in read_back if t is not None))
+            if node_type is not None and int(node_type) not in result["types"]:
+                result.setdefault("warnings", []).append(
+                    "Type 写入未被 X8 接受（实测：节点类型只能读，改类型请用 smoothen）")
+        if act in {"delete", "break_apart", "fillet", "chamfer", "scallop", "smoothen"}:
+            result["bbox"] = _bbox(shape)
+        return result
 
 
 # --------------------------------------------------------------------------- #
@@ -1140,11 +1618,13 @@ def _create_one(doc: Any, layer: Any, item: dict) -> Any:
         if len(pts) < 2:
             raise CdrBadArgument("polyline 需要 points：[[x,y], [x,y], ...] 至少 2 个点")
         x0, y0 = float(pts[0][0]), float(pts[0][1])
-        # X8 没有"创建空曲线"的入口（CreateCurve 必须给 Source），
-        # 所以用一个**退化线段**（起止点重合）当载体，再往里加子路径。
-        shape = layer.CreateCurveSegment2(x0, y0, x0, y0, x0, y0, x0, y0)
-        sub = shape.Curve.CreateSubPath(x0, y0)
-        for point in pts[1:]:
+        x1, y1 = float(pts[1][0]), float(pts[1][1])
+        # X8 没有"创建空曲线"的入口（CreateCurve 必须给 Source）。
+        # 用第一段线段当载体，再往同一个子路径追加剩余点——
+        # 这样不会像旧的"退化线段 + CreateSubPath"那样留下重复节点。
+        shape = layer.CreateLineSegment(x0, y0, x1, y1)
+        sub = shape.Curve.SubPaths.Item(1)
+        for point in pts[2:]:
             sub.AppendLineSegment(float(point[0]), float(point[1]))
         closed = bool(item.get("closed", True))
         if closed:
@@ -1761,6 +2241,47 @@ def _apply_changes(doc: Any, shape: Any, changes: dict) -> dict:
         shape.OrderToBack()
         applied.append("to_back")
 
+    if changes.get("order"):
+        try:
+            spec = changes["order"]
+            mode = str(spec.get("mode", spec) if isinstance(spec, dict) else spec).lower()
+            ref_spec = spec.get("ref") if isinstance(spec, dict) else changes.get("order_ref")
+            if mode in {"front_of", "back_of"}:
+                if not ref_spec:
+                    raise CdrBadArgument("order=front_of/back_of 需要 ref 指定参照对象")
+                ref = find_shape(doc, doc.ActivePage, ref_spec)
+                if mode == "front_of":
+                    shape.OrderFrontOf(ref)
+                else:
+                    shape.OrderBackOf(ref)
+            elif mode in {"forward_one", "forward"}:
+                shape.OrderForwardOne()
+            elif mode in {"back_one", "backward"}:
+                shape.OrderBackOne()
+            elif mode == "reverse":
+                shape.OrderReverse()
+            else:
+                raise CdrBadArgument(
+                    "order 可用 front_of / back_of / forward_one / back_one / reverse")
+            applied.append(f"order:{mode}")
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"层级调整失败：{exc}")
+
+    if changes.get("clear_transformations"):
+        try:
+            shape.ClearTransformations()
+            applied.append("clear_transformations")
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"清除变换失败：{exc}")
+
+    if isinstance(changes.get("rotation_center"), dict):
+        try:
+            rc = changes["rotation_center"]
+            shape.SetRotationCenter(float(rc.get("x", 0)), float(rc.get("y", 0)))
+            applied.append("rotation_center")
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"设置旋转中心失败：{exc}")
+
     new_name = None
     if changes.get("duplicate"):
         dup = shape.Duplicate(float(changes.get("dup_dx", 5)), float(changes.get("dup_dy", -5)))
@@ -1797,6 +2318,8 @@ SHAPE_OPS = (
     "group", "ungroup", "weld", "trim", "intersect", "combine", "break_apart",
     "fillet", "chamfer", "scallop", "to_curves", "powerclip", "to_symbol",
     "outline_to_curves",
+    # 第五波：排列 / 阵列 / 边界 / 立体透视
+    "step_repeat", "distribute", "boundary", "perspective", "separate",
 )
 
 
@@ -1804,6 +2327,13 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
              other: dict | None = None, *, radius: float = 0, distance_a: float = 0,
              distance_b: float = 0, leave_source: bool = True, leave_target: bool = True,
              center_in_container: bool = True, symbol_name: str | None = None,
+             copies: int = 1, distance_x: float = 0.0, distance_y: float = 0.0,
+             mode_x: int = 1, direction_x: int = 1, mode_y: int = 1, direction_y: int = 3,
+             distribute_type: int = 1, page_extent: bool = False,
+             place_on_top: bool = True, delete_source: bool = False,
+             x: float | None = None, y: float | None = None,
+             hx: float | None = None, hy: float | None = None,
+             vx: float | None = None, vy: float | None = None,
              label: str = "cdr_shape_ops") -> dict:
     op = (op or "").lower().replace("-", "_")
     if op not in SHAPE_OPS:
@@ -1888,6 +2418,55 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
         if op == "scallop":
             shape.Scallop(float(radius), True)
             return {"op": op, "radius": radius, "bbox": _bbox(shape)}
+
+        # ---- 第五波：排列 / 阵列 / 边界 / 透视（2026-10-25 实测）----
+        if op == "step_repeat":
+            before = {str(_s(lambda s=s: s.Name, ""))
+                      for _i, _l, _j, s in _iter_page_shapes(page)}
+            before_count = _n(lambda: int(page.Shapes.Count), 0)
+            with atomic(doc, label):
+                shape.StepAndRepeat(
+                    int(max(1, copies)), float(distance_x), float(distance_y),
+                    int(mode_x), int(direction_x), int(mode_y), int(direction_y))
+            after = [str(_s(lambda s=s: s.Name, "")) for _idx, _li, _j, s
+                     in _iter_page_shapes(page)]
+            created = [n for n in after if n and n not in before]
+            after_count = _n(lambda: int(page.Shapes.Count), 0)
+            return {"op": op, "copies": int(max(1, copies)),
+                    "distance": [distance_x, distance_y],
+                    "created": created, "copies_created": after_count - before_count,
+                    "shapes_on_page": after_count,
+                    "bbox": _bbox(shape)}
+        if op == "distribute":
+            with atomic(doc, label):
+                shape.Distribute(int(distribute_type), bool(page_extent))
+            return {"op": op, "distribute_type": int(distribute_type),
+                    "page_extent": bool(page_extent), "bbox": _bbox(shape)}
+        if op == "boundary":
+            if x is None or y is None:
+                raise CdrBadArgument("boundary 需要 x 与 y（形状边界上的参考点）")
+            with atomic(doc, label):
+                created = shape.CreateBoundary(float(x), float(y),
+                                               bool(place_on_top), bool(delete_source))
+            return {"op": op, "created": created is not None,
+                    "name": (_s(lambda: str(created.Name)) or None) if created is not None else None,
+                    "bbox": _bbox(created) if created is not None else None,
+                    "shapes_on_page": _n(lambda: int(page.Shapes.Count), 0)}
+        if op == "perspective":
+            with atomic(doc, label):
+                if None not in (hx, hy, vx, vy):
+                    effect = shape.CreatePerspective(float(hx), float(hy),
+                                                     float(vx), float(vy))
+                else:
+                    effect = shape.CreatePerspective()
+            return {"op": op, "effect": effect is not None,
+                    "vanish": ([hx, hy, vx, vy] if None not in (hx, hy, vx, vy) else None),
+                    "bbox": _bbox(shape)}
+        if op == "separate":
+            with atomic(doc, label):
+                shape.Separate()
+            return {"op": op, "done": True,
+                    "shapes_on_page": _n(lambda: int(page.Shapes.Count), 0)}
 
         # 需要第二个形状
         target_shape = find_shape(doc, page, other or {})
@@ -2009,12 +2588,45 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
              replace_old: str | None = None, replace_new: str | None = None,
              select_all: bool = False, align_to_baseline: bool = False,
              copy_attributes_from: dict | None = None,
+             read_contents: bool = False, range_start: int | None = None,
+             range_end: int | None = None, export_path: str | None = None,
+             export_start: int = 1, export_count: int = 0,
              label: str = "cdr_text") -> dict:
     with mm_units(doc):
         page = _page(doc, page_index)
         shape = find_shape(doc, page, target)
         if int(_s(lambda: int(shape.Type), -1)) != TEXT_TYPE:
             raise CdrBadArgument("目标不是文字对象")
+        mutating = any(v is not None for v in (
+            text, font, size, bold, italic, underline, alignment,
+            fit_to_path, change_case, bullet, drop_cap, line_spacing,
+            char_spacing, word_spacing, insert_before, insert_after,
+            contents, find, replace_old, replace_new, copy_attributes_from,
+        )) or any((to_curves, fit_frame, no_effect, to_paragraph, to_artistic,
+                   select_all, align_to_baseline))
+        if not mutating:
+            # 纯读取 / 导出：不建 undo 组，也不改动文档
+            result: dict = {"applied": [], "warnings": [],
+                            "text": _s(lambda: str(shape.Text.Story.Text), ""),
+                            "bbox": _bbox(shape)}
+            if read_contents:
+                result["contents"] = _s(lambda: shape.Text.GetContents(2), "")
+            if range_start is not None or range_end is not None:
+                a = int(range_start or 0)
+                b = int(range_end if range_end is not None else a + 1)
+                if not 0 <= a < b:
+                    result["warnings"].append(
+                        "range_start/range_end 需满足 0 <= start < end（实测 0 基）")
+                else:
+                    result["range"] = [a, b]
+                    result["range_text"] = _s(
+                        lambda: shape.Text.Range(a, b).Text, "")
+            if export_path:
+                shape.Text.ExportToFile(str(export_path), int(export_start),
+                                        int(export_count), 0)
+                result["applied"].append("export_text")
+                result["exported"] = str(export_path)
+            return result
         with atomic(doc, label):
             story = shape.Text.Story
             applied: list[str] = []
@@ -2161,11 +2773,33 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
             if to_curves:
                 shape.ConvertToCurves()
                 applied.append("to_curves")
+
+            # ---- 读取 / 导出（第五波实测：GetContents / Range / ExportToFile）----
+            reading: dict = {}
+            if read_contents:
+                reading["contents"] = _s(lambda: shape.Text.GetContents(2), "")
+            if range_start is not None or range_end is not None:
+                a = int(range_start or 0)
+                b = int(range_end if range_end is not None else a + 1)
+                if not 0 <= a < b:
+                    warnings.append("range_start/range_end 需满足 0 <= start < end（实测 0 基）")
+                else:
+                    reading["range"] = [a, b]
+                    reading["range_text"] = _s(lambda: shape.Text.Range(a, b).Text, "")
+            if export_path:
+                try:
+                    shape.Text.ExportToFile(str(export_path), int(export_start),
+                                            int(export_count), 0)
+                    applied.append("export_text")
+                    reading["exported"] = str(export_path)
+                except Exception as exc:  # noqa: BLE001
+                    warnings.append(f"导出文本失败（StartIndex 需 >=1）：{exc}")
             return {
                 "applied": applied,
                 "warnings": warnings,
                 "text": _s(lambda: str(story.Text), ""),
                 "bbox": _bbox(shape),
+                **reading,
             }
 
 
