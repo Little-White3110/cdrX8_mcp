@@ -3407,6 +3407,8 @@ SHAPE_OPS = (
     "to_document",
     # 第十五波：立体化 / 透镜 / 效果管理
     "extrude", "lens", "extrude_set", "lens_set", "effect_info", "clear_effects",
+    # 第十七波：混合
+    "blend", "blend_set",
 )
 
 
@@ -3424,6 +3426,16 @@ _LENS_PROPS = {
     "view_point_x": "ViewPointX", "view_point_y": "ViewPointY",
     "use_fill_color": "UseFillColor", "use_outline_color": "UseOutlineColor",
     "palette_rotation": "PaletteRotation", "color_map_palette": "ColorMapPalette",
+}
+_BLEND_PROPS = {
+    "steps": "Steps", "spacing": "Spacing", "angle": "Angle",
+    "color_blend_type": "ColorBlendType", "mode": "Mode", "loop": "Loop",
+    "rotate_shapes": "RotateShapes", "map_nodes": "MapNodes",
+    "fuse_start": "FuseStart", "fuse_end": "FuseEnd",
+    "color_acceleration": "ColorAcceleration",
+    "spacing_acceleration": "SpacingAcceleration",
+    "link_acceleration": "LinkAcceleration",
+    "accelerate_size": "AccelerateSize",
 }
 _EFFECT_COLORS = ("BaseColor", "ShadingColor", "BevelColor", "Color", "FillColor",
                   "OutlineColor", "FromColor", "ToColor")
@@ -3443,6 +3455,21 @@ def _apply_effect_props(doc: Any, effect: Any, spec: dict, mapping: dict) -> lis
             setattr(effect, attr, _color(doc, spec[key]))
             applied.append(key)
     return applied
+
+
+def _find_effect(shape: Any, attr: str) -> tuple:
+    effects = _s(lambda: shape.Effects)
+    if effects is None:
+        return None, None
+    count = _n(lambda: int(effects.Count), 0)
+    for i in range(1, count + 1):
+        eff = _s(lambda i=i: effects.Item(i))
+        if eff is None:
+            continue
+        obj = _s(lambda eff=eff: getattr(eff, attr))
+        if obj is not None:
+            return eff, obj
+    return None, None
 
 
 def _effect_info(shape: Any) -> dict:
@@ -3465,7 +3492,12 @@ def _effect_info(shape: Any) -> dict:
             info["props"] = {k: _s(lambda obj=obj, a=a: getattr(obj, a))
                              for a, k in (("Type", "type"), ("Depth", "depth"),
                                           ("Rate", "rate"),
-                                          ("Magnification", "magnification"))}
+                                          ("Magnification", "magnification"),
+                                          ("Steps", "steps"),
+                                          ("Spacing", "spacing"),
+                                          ("Angle", "angle"),
+                                          ("ColorBlendType", "color_blend_type"),
+                                          ("Mode", "mode"))}
             break
         items.append(info)
     return {"count": count, "effects": items}
@@ -3497,6 +3529,10 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
              lens_type: int = 1, rate: float = 50.0,
              color1: Any = "#FFFFFF", color2: Any = "#000000",
              color_map_palette: int = 0, effect: dict | None = None,
+             steps: int = 20, color_blend_type: int = 0, blend_mode: int = 0,
+             spacing: float = 0.0, angle: float = 0.0, loop: bool = False,
+             rotate_shapes: bool = False, spacing_accel: int = 0,
+             color_accel: int = 0, accel_size: bool = False,
              label: str = "cdr_shape_ops") -> dict:
     op = (op or "").lower().replace("-", "_")
     if op not in SHAPE_OPS:
@@ -3575,7 +3611,8 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
 
         shape = find_shape(doc, page, target or {})
 
-        if op in {"extrude", "lens", "extrude_set", "lens_set", "clear_effects"}:
+        if op in {"extrude", "lens", "extrude_set", "lens_set", "clear_effects",
+                  "blend", "blend_set"}:
             with atomic(doc, label):
                 if op == "clear_effects":
                     effects = shape.Effects
@@ -3585,7 +3622,24 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
                         cleared += 1
                     return {"op": op, "cleared": cleared,
                             "effects": _effect_info(shape)["count"]}
-                if op == "extrude":
+                if op == "blend":
+                    if not other:
+                        raise CdrBadArgument("blend 需要 target + other 两个对象")
+                    other_shape = find_shape(doc, page, other)
+                    shape.CreateBlend(
+                        other_shape, int(steps), int(color_blend_type),
+                        int(blend_mode), float(spacing), float(angle),
+                        bool(loop), None, bool(rotate_shapes),
+                        int(spacing_accel), int(color_accel), bool(accel_size))
+                    eff = shape.Effects.Item(int(shape.Effects.Count))
+                    typed = eff.Blend
+                    mapping = _BLEND_PROPS
+                elif op == "blend_set":
+                    eff, typed = _find_effect(shape, "Blend")
+                    if eff is None:
+                        raise CdrBadArgument("对象没有混合效果")
+                    mapping = _BLEND_PROPS
+                elif op == "extrude":
                     if vp_x is None or vp_y is None:
                         bb = _bbox(shape) or {}
                         vp_x = float(bb.get("x", 0)) + float(bb.get("width", 0)) / 2

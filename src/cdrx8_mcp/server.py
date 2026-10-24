@@ -526,6 +526,11 @@ def cdr_shape_ops(document_id: str, op: str, target: dict | None = None,
                   lens_type: int = 1, rate: float = 50.0,
                   color1: Any = "#FFFFFF", color2: Any = "#000000",
                   color_map_palette: int = 0, effect: dict | None = None,
+                  steps: int = 20, color_blend_type: int = 0,
+                  blend_mode: int = 0, spacing: float = 0.0,
+                  angle: float = 0.0, loop: bool = False,
+                  rotate_shapes: bool = False, spacing_accel: int = 0,
+                  color_accel: int = 0, accel_size: bool = False,
                   expected_revision: int | None = None,
                   snapshot_token: str | None = None,
                   page_index: int | None = None) -> dict:
@@ -565,6 +570,10 @@ def cdr_shape_ops(document_id: str, op: str, target: dict | None = None,
       extrude_set / lens_set  只改已有效果属性（effect={...}）
       effect_info            列出对象上的效果
       clear_effects          清除对象上的所有效果
+      blend（target+other，steps/spacing/angle/color_blend_type/blend_mode/
+             loop/rotate_shapes/spacing_accel/color_accel/accel_size）
+             创建混合效果；effect={steps,spacing,angle,...} 微调
+      blend_set              只改已有混合效果属性
     """
     def _run():
         doc, sess = _with_doc(document_id)
@@ -592,7 +601,10 @@ def cdr_shape_ops(document_id: str, op: str, target: dict | None = None,
             bevel_angle=bevel_angle, bevel_color=bevel_color,
             bevel_only=bevel_only, lens_type=lens_type, rate=rate,
             color1=color1, color2=color2, color_map_palette=color_map_palette,
-            effect=effect,
+            effect=effect, steps=steps, color_blend_type=color_blend_type,
+            blend_mode=blend_mode, spacing=spacing, angle=angle, loop=loop,
+            rotate_shapes=rotate_shapes, spacing_accel=spacing_accel,
+            color_accel=color_accel, accel_size=accel_size,
         ), label="cdr_shape_ops")
         if str(op).lower() == "to_document" and result.get("document_name"):
             new_sess = registry().get_or_create(result["document_name"])

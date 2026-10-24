@@ -2007,6 +2007,57 @@ def main() -> int:
             check("位图特效改变像素", (p_before.get("color") != p_after.get("color")),
                   f"before={p_before.get('color')} after={p_after.get('color')}")
 
+    # ---------------- 15w. 第十七波：混合（Blend） ----------------
+    print("\n[15w] 第十七波：混合效果")
+    fresh17 = server.cdr_inspect(doc_id)
+    if "state" in fresh17:
+        state = fresh17["state"]
+    w17 = server.cdr_create(doc_id, items=[
+        {"type": "ellipse", "x": 20, "y": 220, "width": 24, "height": 24,
+         "fill": "#FF0000"},
+        {"type": "ellipse", "x": 90, "y": 220, "width": 24, "height": 24,
+         "fill": "#0000FF"},
+    ], expected_revision=state["revision"], snapshot_token=state["snapshot_token"])
+    if no_error("创建第十七波混合对象", w17):
+        state = w17["state"]
+        a17 = w17["created"][0]["name"]
+        b17 = w17["created"][1]["name"]
+        bl = server.cdr_shape_ops(doc_id, "blend",
+                                  target={"name": a17}, other={"name": b17},
+                                  steps=5,
+                                  expected_revision=state["revision"],
+                                  snapshot_token=state["snapshot_token"])
+        if no_error("cdr_shape_ops(blend)", bl):
+            eff = (bl.get("effects") or {}).get("effects") or [{}]
+            props = eff[0].get("props") or {}
+            check("混合效果已创建", eff[0].get("kind") == "blend"
+                  and props.get("steps") == 5,
+                  f"effects={bl.get('effects')}")
+            state = bl["state"]
+        bs = server.cdr_shape_ops(doc_id, "blend_set", target={"name": a17},
+                                  effect={"steps": 8, "spacing": 2.0},
+                                  expected_revision=state["revision"],
+                                  snapshot_token=state["snapshot_token"])
+        if no_error("cdr_shape_ops(blend_set)", bs):
+            eff = (bs.get("effects") or {}).get("effects") or [{}]
+            props = eff[0].get("props") or {}
+            check("混合步数可微调", props.get("steps") == 8
+                  and props.get("spacing") == 2.0, str(props))
+            state = bs["state"]
+        bi = server.cdr_shape_ops(doc_id, "effect_info", target={"name": a17})
+        if no_error("cdr_shape_ops(effect_info blend)", bi):
+            check("混合效果可枚举", (bi.get("count") or 0) == 1,
+                  f"count={bi.get('count')}")
+            if "state" in bi:
+                state = bi["state"]
+        bc = server.cdr_shape_ops(doc_id, "clear_effects", target={"name": a17},
+                                  expected_revision=state["revision"],
+                                  snapshot_token=state["snapshot_token"])
+        if no_error("cdr_shape_ops(clear_effects blend)", bc):
+            check("混合效果可清除", (bc.get("cleared") or 0) == 1
+                  and (bc.get("effects") or 0) == 0, str(bc))
+            state = bc["state"]
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,
