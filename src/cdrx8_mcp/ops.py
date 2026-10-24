@@ -282,7 +282,7 @@ DOC_ACTIONS = ("info", "clear_selection", "clear_undo", "palette", "arrowhead",
                "units", "sample_color", "show_all", "layout", "repeat",
                "fonts", "palettes", "palette_color",
                "palette_open_fixed", "palette_colors", "spot_color",
-               "pattern_canvas")
+               "pattern_canvas", "textures")
 
 
 def doc_ops(doc: Any, action: str, *, target: dict | None = None,
@@ -537,6 +537,23 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
                 "drawn": drawn,
                 "canvases": _n(lambda: int(app.PatternCanvases.Count)),
                 "note": "用 cdr_modify(fill={\"type\":\"pattern\",\"canvas_index\":N,...}) 应用"}
+    if act == "textures":
+        app = _app_of(doc)
+        app_path = _s(lambda: str(app.Path), "") or ""
+        root = os.path.abspath(os.path.join(app_path, os.pardir, "Custom Data", "Textures")) \
+            if app_path else ""
+        names: list[str] = []
+        if root and os.path.isdir(root):
+            for fn in sorted(os.listdir(root)):
+                if fn.lower().endswith((".tif", ".tiff", ".bmp", ".jpg", ".jpeg", ".png")):
+                    names.append(os.path.splitext(fn)[0])
+        needle = str(query or "").strip().lower()
+        matched = [n for n in names if not needle or needle in n.lower()]
+        cap = max(1, min(int(limit), 2000))
+        return {"action": act, "root": root or None, "total": len(names),
+                "matched": len(matched), "textures": matched[:cap],
+                "truncated": len(matched) > cap,
+                "note": "用 fill={\"type\":\"texture\",\"name\":<名称>,\"library\":\"Textures\"}"}
     # arrowhead
     with mm_units(doc):
         page = _page(doc, page_index)
@@ -1584,8 +1601,10 @@ def node_ops(doc: Any, page_index: int | None, target: dict, action: str, *,
 # 也可以 Rename / Delete / ToString 读定义。
 # --------------------------------------------------------------------------- #
 STYLE_ACTIONS = ("list", "get", "create", "apply", "rename", "delete",
-                 "set_property", "derived")
-STYLE_MUTATIONS = {"create", "apply", "rename", "delete", "set_property"}
+                 "set_property", "derived", "export_sheet", "import_sheet",
+                 "color_styles", "create_color_styles")
+STYLE_MUTATIONS = {"create", "apply", "rename", "delete", "set_property",
+                   "import_sheet", "create_color_styles"}
 STYLE_CATEGORIES = ("fill", "outline", "character", "paragraph")
 
 
@@ -1634,9 +1653,13 @@ def style_ops(doc: Any, page_index: int | None, action: str, *,
               target: dict | None = None, category: str = "fill",
               name: str | None = None, new_name: str | None = None,
               based_on: str | None = None, property: str | None = None,
-              value: Any = None,
+              value: Any = None, sheet_path: str | None = None,
+              use_fills: bool = True, use_outlines: bool = True,
+              selected_only: bool = False, harmonies: int = 0,
+              convert_colors_to: int = 99,
               label: str = "cdr_style") -> dict:
-    """对象样式（Object Styles）的列出 / 创建 / 套用 / 改名 / 删除 / 改属性。
+    """对象样式（Object Styles）的列出 / 创建 / 套用 / 改名 / 删除 / 改属性 /
+    样式表导入导出 / 颜色样式。
 
     action:
       list                     列出文档里的样式（名称 + 类别）
@@ -1649,6 +1672,11 @@ def style_ops(doc: Any, page_index: int | None, action: str, *,
       delete（name）           删除样式
       set_property（name,property,value）  改样式属性（标量走字符串；*color 结尾走颜色对象）
       derived（name）          列派生样式
+      export_sheet（sheet_path） 把当前样式表存成 .cdst
+      import_sheet（sheet_path） 从 .cdst 载入样式（实测可恢复被删样式）
+      color_styles             列出颜色样式（AllColorStyles）
+      create_color_styles（harmonies, selected_only, convert_colors_to）
+                               从文档/选区生成颜色样式与颜色协调
     """
     act = (action or "list").lower()
     if act not in STYLE_ACTIONS:
@@ -1670,6 +1698,46 @@ def style_ops(doc: Any, page_index: int | None, action: str, *,
                     "readable_properties": _style_readable_props(style),
                     "derived": _style_derived(style),
                     "definition": (_s(lambda: str(style.ToString()), "") or "")[:1200]}
+        if act == "export_sheet":
+            if not sheet_path:
+                raise CdrBadArgument("export_sheet 需要 sheet_path（.cdst）")
+            doc.SaveStyleSheet(str(sheet_path))
+            return {"action": act, "saved": str(sheet_path),
+                    "exists": os.path.exists(str(sheet_path)),
+                    "bytes": os.path.getsize(str(sheet_path))
+                    if os.path.exists(str(sheet_path)) else 0,
+                    "styles": _n(lambda: int(sheet.Styles.Count), 0)}
+        if act == "import_sheet":
+            if not sheet_path:
+                raise CdrBadArgument("import_sheet 需要 sheet_path（.cdst）")
+            if not os.path.exists(str(sheet_path)):
+                raise CdrBadArgument(f"样式表不存在：{sheet_path}")
+            with atomic(doc, label):
+                doc.LoadStyleSheet(str(sheet_path))
+            count = _n(lambda: int(sheet.Styles.Count), 0)
+            return {"action": act, "loaded": str(sheet_path), "count": count,
+                    "styles": [str(sheet.Styles.Item(i).Name)
+                               for i in range(1, min(count, 200) + 1)]}
+        if act == "color_styles":
+            colors = sheet.AllColorStyles
+            count = _n(lambda: int(colors.Count), 0)
+            items = []
+            for i in range(1, min(count, 500) + 1):
+                col = colors.Item(i)
+                items.append({"name": _s(lambda c=col: str(c.GetName())) or None,
+                              "color": _s(lambda c=col: str(c.ToString()))})
+            return {"action": act, "count": count, "color_styles": items}
+        if act == "create_color_styles":
+            before = _n(lambda: int(sheet.AllColorStyles.Count), 0)
+            with atomic(doc, label):
+                affected = _n(lambda: int(doc.CreateColorStyles(
+                    bool(use_fills), bool(use_outlines), bool(selected_only),
+                    int(harmonies), int(convert_colors_to))), 0)
+            after = _n(lambda: int(sheet.AllColorStyles.Count), 0)
+            return {"action": act, "affected": affected,
+                    "before": before, "after": after,
+                    "harmonies": int(harmonies),
+                    "convert_colors_to": int(convert_colors_to)}
         if act == "create":
             cat = str(category or "fill").lower()
             if cat not in STYLE_CATEGORIES:
@@ -2999,6 +3067,8 @@ SHAPE_OPS = (
     # 第七波：包络 / 比较 / 范围批量
     "envelope_from_shape", "compare",
     "batch_outline_to_curves", "fill_mode", "pixel_aligned", "range_boundary",
+    # 第九波：投影平面
+    "project", "unproject",
 )
 
 
@@ -3017,6 +3087,8 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
              resolution: int = 72, grayscale: bool = False, transparent: bool = True,
              envelope_mode: int = 2, compare_type: int = 1, condition: int = 0,
              pixel_aligned: bool = True, fill_mode: int = 0,
+             plane: int = 0, reference_point: int = 9,
+             apply_to_duplicate: bool = False,
              label: str = "cdr_shape_ops") -> dict:
     op = (op or "").lower().replace("-", "_")
     if op not in SHAPE_OPS:
@@ -3171,6 +3243,19 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
             return {"op": op, "same": same, "compare_type": int(compare_type),
                     "condition": int(condition),
                     "other": _s(lambda: str(other_shape.Name))}
+
+        if op in {"project", "unproject"}:
+            pl = int(plane)
+            if pl not in (0, 1, 2):
+                raise CdrBadArgument("plane 可用 0=front / 1=right / 2=top")
+            with atomic(doc, label):
+                if op == "project":
+                    shape.Project(pl, int(reference_point), bool(apply_to_duplicate))
+                else:
+                    shape.Unproject(pl, int(reference_point), bool(apply_to_duplicate))
+            return {"op": op, "plane": pl, "reference_point": int(reference_point),
+                    "apply_to_duplicate": bool(apply_to_duplicate),
+                    "bbox": _bbox(shape)}
 
         if op in {"parallel_curves", "rasterize", "batch_outline_to_curves",
                   "fill_mode", "pixel_aligned", "range_boundary"}:
@@ -3337,6 +3422,41 @@ def _case_index(value: Any) -> int:
     return CASE_MODES[key]
 
 
+def _text_font_info(shape: Any) -> dict | None:
+    """读字体属性。
+
+    实测坑：`Text.GetFontProperties(Frames)` 在这些对象上会返回**默认结构体**
+    （Name=''、Size=1.17e-38），不可信；`Text.Story` 上的 Font/Size/Bold/Italic/
+    Underline 才是真实值。
+    """
+    story = _s(lambda: shape.Text.Story)
+    if story is None:
+        return None
+    return {
+        "name": _s(lambda: str(story.Font)) or None,
+        "size": _round(_s(lambda: float(story.Size))),
+        "bold": bool(_s(lambda: bool(story.Bold), False)),
+        "italic": bool(_s(lambda: bool(story.Italic), False)),
+        "underline": bool(_s(lambda: bool(story.Underline), False)),
+    }
+
+
+def _text_hyphenation_info(shape: Any) -> dict | None:
+    """读断字设置。实测 `SetHyphenationSettings` 写回不生效，这里只读。"""
+    hs = _s(lambda: shape.Text.GetHyphenationSettings(2))
+    if hs is None:
+        return None
+    return {
+        "automatic": bool(_s(lambda: bool(hs.UseAutomaticHyphenation), False)),
+        "min_word_length": _n(lambda: int(hs.MinWordLength)),
+        "min_before": _n(lambda: int(hs.MinCharactersBefore)),
+        "min_after": _n(lambda: int(hs.MinCharactersAfter)),
+        "hot_zone": _round(_s(lambda: float(hs.HotZone))),
+        "break_capitalized": bool(_s(lambda: bool(hs.BreakCapitalized), False)),
+        "break_all_cap_words": bool(_s(lambda: bool(hs.BreakAllCapWords), False)),
+    }
+
+
 def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None = None,
              font: str | None = None, size: float | None = None, bold: bool | None = None,
              italic: bool | None = None, underline: bool | None = None,
@@ -3355,6 +3475,7 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
              range_end: int | None = None, export_path: str | None = None,
              export_start: int = 1, export_count: int = 0,
              opentype: dict | None = None,
+             read_font: bool = False, read_hyphenation: bool = False,
              label: str = "cdr_text") -> dict:
     with mm_units(doc):
         page = _page(doc, page_index)
@@ -3391,6 +3512,14 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
                                         int(export_count), 0)
                 result["applied"].append("export_text")
                 result["exported"] = str(export_path)
+            if read_font:
+                info = _text_font_info(shape)
+                if info is not None:
+                    result["font"] = info
+            if read_hyphenation:
+                info = _text_hyphenation_info(shape)
+                if info is not None:
+                    result["hyphenation"] = info
             return result
         with atomic(doc, label):
             story = shape.Text.Story
@@ -3578,6 +3707,14 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
                     reading["exported"] = str(export_path)
                 except Exception as exc:  # noqa: BLE001
                     warnings.append(f"导出文本失败（StartIndex 需 >=1）：{exc}")
+            if read_font:
+                info = _text_font_info(shape)
+                if info is not None:
+                    reading["font"] = info
+            if read_hyphenation:
+                info = _text_hyphenation_info(shape)
+                if info is not None:
+                    reading["hyphenation"] = info
             return {
                 "applied": applied,
                 "warnings": warnings,

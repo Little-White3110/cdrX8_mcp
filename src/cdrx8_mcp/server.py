@@ -176,22 +176,33 @@ def cdr_documents() -> dict:
 @mcp.tool()
 def cdr_open(path: str | None = None, width_mm: float | None = None,
              height_mm: float | None = None, orientation: str | None = None,
-             preset: str | None = None) -> dict:
-    """打开已有 .cdr，或新建空白文档。
+             preset: str | None = None, template: str | None = None,
+             include_graphics: bool = True) -> dict:
+    """打开已有 .cdr，或新建空白文档，或**从模板创建**。
 
     Args:
         path: 要打开的 .cdr 绝对路径；为空则新建。
         width_mm / height_mm: 新建文档尺寸（毫米）。
         orientation: "portrait" / "landscape"。
         preset: 页面预设，如 "A4"/"A3"/"card"（名片）；给了就忽略 width/height。
+        template: 模板文件路径（实测 .cdr 也可当模板）；给定时走
+                  `Application.CreateDocumentFromTemplate`。
+        include_graphics: 从模板创建时是否带模板里的图形（默认 true）。
     """
     def _run():
         target = str(resolve_read_path(path)) if path else None
+        tpl = str(resolve_read_path(template)) if template else None
+        if target and tpl:
+            return {"error": "bad_argument", "message": "path 与 template 只能给一个"}
 
         def _do(_b):
             app = _b.ensure_app()
-            doc = (ops.open_document(app, target) if target
-                   else ops.create_document(app, width_mm, height_mm, orientation, preset))
+            if tpl:
+                doc = app.CreateDocumentFromTemplate(tpl, bool(include_graphics))
+            elif target:
+                doc = ops.open_document(app, target)
+            else:
+                doc = ops.create_document(app, width_mm, height_mm, orientation, preset)
             name = str(doc.Name)
             with ops.mm_units(doc):
                 page = doc.ActivePage
@@ -201,6 +212,7 @@ def cdr_open(path: str | None = None, width_mm: float | None = None,
                     "width_mm": ops._round(ops._s(lambda: float(page.SizeWidth))),
                     "height_mm": ops._round(ops._s(lambda: float(page.SizeHeight))),
                     "pages": ops._n(lambda: int(doc.Pages.Count), 1),
+                    "from_template": bool(tpl),
                 }
 
         info = _com(_do, timeout=DEFAULT_STARTUP_TIMEOUT_S, label="cdr_open")
@@ -362,6 +374,7 @@ def cdr_text(document_id: str, target: dict, text: str | None = None,
              range_end: int | None = None, export_path: str | None = None,
              export_start: int = 1, export_count: int = 0,
              export_overwrite: bool = False, opentype: dict | None = None,
+             read_font: bool = False, read_hyphenation: bool = False,
              expected_revision: int | None = None, snapshot_token: str | None = None,
              page_index: int | None = None) -> dict:
     """文字的排版级操作。
@@ -376,6 +389,8 @@ def cdr_text(document_id: str, target: dict, text: str | None = None,
     输出：to_curves（转曲，发排前必做）
     读取/导出：read_contents（读全文）/ range_start+range_end（读指定区间，0 基）/
               export_path（导出纯文本，export_start 从 1 起）
+              read_font（读字体属性：名称/字号/样式/下划线…）/
+              read_hyphenation（读断字设置；实测 X8 断字设置写回无效，只读）
     OpenType：opentype={"liga":true,"kern":false,...}（实测 SetOpenTypeFeature 可用）
 
     注意：contents / replace_old / find 走的是段落文本接口，对艺术字会返回 warning。
@@ -410,6 +425,7 @@ def cdr_text(document_id: str, target: dict, text: str | None = None,
             export_path=str(target_path) if target_path else None,
             export_start=export_start, export_count=export_count,
             opentype=opentype,
+            read_font=read_font, read_hyphenation=read_hyphenation,
         ), label="cdr_text")
         if not mutating:
             return result
@@ -483,7 +499,8 @@ def cdr_shape_ops(document_id: str, op: str, target: dict | None = None,
                   transparent: bool = True,
                   envelope_mode: int = 2, compare_type: int = 1,
                   condition: int = 0, pixel_aligned: bool = True,
-                  fill_mode: int = 0,
+                  fill_mode: int = 0, plane: int = 0,
+                  reference_point: int = 9, apply_to_duplicate: bool = False,
                   expected_revision: int | None = None,
                   snapshot_token: str | None = None,
                   page_index: int | None = None) -> dict:
@@ -512,6 +529,8 @@ def cdr_shape_ops(document_id: str, op: str, target: dict | None = None,
       range_boundary（x,y）      范围级：选择集边界曲线
       envelope_from_shape（other,envelope_mode）用另一对象/曲线做封套
       compare（other,compare_type,condition）对象比较（返回 same 布尔）
+      project / unproject（plane 0=front 1=right 2=top, reference_point 1~9,
+                          apply_to_duplicate）把对象投影到 3D 平面/反投影
     """
     def _run():
         doc, sess = _with_doc(document_id)
@@ -531,6 +550,8 @@ def cdr_shape_ops(document_id: str, op: str, target: dict | None = None,
             resolution=resolution, grayscale=grayscale, transparent=transparent,
             envelope_mode=envelope_mode, compare_type=compare_type,
             condition=condition, pixel_aligned=pixel_aligned, fill_mode=fill_mode,
+            plane=plane, reference_point=reference_point,
+            apply_to_duplicate=apply_to_duplicate,
         ), label="cdr_shape_ops")
         return _commit(doc, sess, result, warnings)
 
@@ -677,10 +698,13 @@ def cdr_style(document_id: str, action: str = "list",
               target: dict | None = None, category: str = "fill",
               style_name: str | None = None, new_name: str | None = None,
               based_on: str | None = None, property: str | None = None,
-              value: Any = None,
+              value: Any = None, sheet_path: str | None = None,
+              use_fills: bool = True, use_outlines: bool = True,
+              selected_only: bool = False, harmonies: int = 0,
+              convert_colors_to: int = 99,
               expected_revision: int | None = None, snapshot_token: str | None = None,
               page_index: int | None = None) -> dict:
-    """对象样式（Object Styles）：列出 / 从对象创建 / 派生 / 套用 / 改属性 / 删除。
+    """对象样式（Object Styles）：列出 / 创建 / 派生 / 套用 / 改属性 / 导入导出样式表 / 颜色样式。
 
     action:
       list                       列出文档样式（名称、类别）
@@ -696,6 +720,11 @@ def cdr_style(document_id: str, action: str = "list",
       set_property（style_name, property, value）
                                  改样式属性；标量走字符串，*color 结尾的用颜色对象
       derived（style_name）      列出派生样式
+      export_sheet（sheet_path） 把样式表存成 .cdst
+      import_sheet（sheet_path） 从 .cdst 载入样式
+      color_styles               列出颜色样式（AllColorStyles）
+      create_color_styles（harmonies, selected_only, convert_colors_to）
+                                 从文档/选区生成颜色样式与颜色协调
 
     历史结论「样式类别常量 0~8 全失败」是误判：Category 是**字符串**不是数字。
     套用必须用 `Shape.ApplyStyle("样式名")`（传 Style 对象会报「未找到样式」）。
@@ -703,9 +732,18 @@ def cdr_style(document_id: str, action: str = "list",
     def _run():
         act = (action or "list").lower()
         doc, sess = _with_doc(document_id)
+        resolved_sheet = None
+        if sheet_path:
+            if act == "import_sheet":
+                resolved_sheet = str(resolve_read_path(sheet_path))
+            elif act == "export_sheet":
+                resolved_sheet = str(resolve_write_path(sheet_path, overwrite=True)[0])
         kwargs = dict(target=target, category=category, name=style_name,
                       new_name=new_name, based_on=based_on, property=property,
-                      value=value)
+                      value=value, sheet_path=resolved_sheet,
+                      use_fills=use_fills, use_outlines=use_outlines,
+                      selected_only=selected_only, harmonies=harmonies,
+                      convert_colors_to=convert_colors_to)
         if act not in ops.STYLE_MUTATIONS:
             return _com(lambda _b: ops.style_ops(doc, page_index, act, **kwargs),
                         label="cdr_style")
@@ -938,6 +976,7 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
       pattern_canvas   新建 32x32 图案画布并登记：pattern_fills=[[x1,y1,x2,y2],…] /
                        pattern_pixels=[[x,y],…] / pattern_lines=[[x1,y1,x2,y2],…]；
                        返回 canvas_index，供 cdr_modify 图案填充/图案透明使用
+      textures         列出 Corel 纹理库名称（供 fill={"type":"texture","name":...}）
     """
     def _run():
         doc, sess = _with_doc(document_id)
@@ -953,7 +992,8 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
             return _com(lambda _b: ops.doc_ops(doc, "info", **kwargs), label="cdr_doc")
         if action in {"clear_selection", "units", "sample_color", "fonts",
                       "palettes", "palette_color", "palette_open_fixed",
-                      "palette_colors", "spot_color", "pattern_canvas"}:
+                      "palette_colors", "spot_color", "pattern_canvas",
+                      "textures"}:
             return _com(lambda _b: ops.doc_ops(doc, action, **kwargs), label="cdr_doc")
         warnings = _check_view(sess, expected_revision, snapshot_token, doc)
         result = _com(lambda _b: ops.doc_ops(doc, action, **kwargs), label="cdr_doc")

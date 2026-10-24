@@ -1411,6 +1411,128 @@ def main() -> int:
                 check("目标图层对象数 >= 2", (target.get("shapes") or 0) >= 2,
                       f"shapes={target.get('shapes')}")
 
+    # ---------------- 15o. 第九波：模板创建 / 样式表导入导出 / 颜色样式 / 纹理 / 投影 / 字体读取 ----------------
+    print("\n[15o] 第九波：模板 + 样式表 + 颜色样式 + 纹理 + 3D 投影 + 字体读取")
+    fresh9 = server.cdr_inspect(doc_id)
+    if "state" in fresh9:
+        state = fresh9["state"]
+    w9 = server.cdr_create(doc_id, items=[
+        {"type": "rectangle", "x": 20, "y": 140, "width": 40, "height": 30,
+         "fill": "#CC0000", "outline": {"width": 2, "color": "#000000"}},
+        {"type": "paragraph_text", "x": 20, "y": 200, "x2": 150, "y2": 240,
+         "text": "Hyphenation sample text", "font": "Arial", "size": 12},
+    ], expected_revision=state["revision"], snapshot_token=state["snapshot_token"])
+    if no_error("创建第九波测试对象", w9):
+        state = w9["state"]
+        q1 = w9["created"][0]["name"]
+        qt = w9["created"][1]["name"]
+
+        # --- 模板创建 ---
+        tpl = os.path.join(out, "smoke.cdr")
+        if os.path.exists(tpl):
+            td = server.cdr_open(template=tpl, include_graphics=True)
+            if no_error("cdr_open(template)", td):
+                check("从模板创建文档", td.get("from_template") is True
+                      and (td.get("pages") or 0) >= 1,
+                      f"pages={td.get('pages')} name={td.get('name')}")
+                tdoc = td.get("document_id")
+                if tdoc:
+                    no_error("关闭模板文档", server.cdr_close(tdoc))
+        else:
+            print("    [skip] smoke.cdr 不存在，跳过模板测试", flush=True)
+
+        # --- 样式表导出 / 导入 ---
+        s9 = server.cdr_style(doc_id, action="create", target={"name": q1},
+                              category="fill", style_name="W9Style",
+                              expected_revision=state["revision"],
+                              snapshot_token=state["snapshot_token"])
+        if no_error("cdr_style(create W9Style)", s9):
+            state = s9["state"]
+            sheet = os.path.join(out, "w9_styles.cdst")
+            if os.path.exists(sheet):
+                os.remove(sheet)
+            se = server.cdr_style(doc_id, action="export_sheet", sheet_path=sheet)
+            if no_error("cdr_style(export_sheet)", se):
+                check("样式表导出成文件", se.get("exists") is True
+                      and (se.get("bytes") or 0) > 1000, f"bytes={se.get('bytes')}")
+            sd = server.cdr_style(doc_id, action="delete", style_name="W9Style",
+                                  expected_revision=state["revision"],
+                                  snapshot_token=state["snapshot_token"])
+            if no_error("cdr_style(delete W9Style)", sd):
+                state = sd["state"]
+                si = server.cdr_style(doc_id, action="import_sheet", sheet_path=sheet,
+                                      expected_revision=state["revision"],
+                                      snapshot_token=state["snapshot_token"])
+                if no_error("cdr_style(import_sheet)", si):
+                    check("样式表导入恢复样式", "W9Style" in (si.get("styles") or []),
+                          str(si.get("styles")))
+                    state = si["state"]
+
+        # --- 颜色样式 ---
+        cs = server.cdr_style(doc_id, action="create_color_styles", harmonies=1,
+                              expected_revision=state["revision"],
+                              snapshot_token=state["snapshot_token"])
+        if no_error("cdr_style(create_color_styles)", cs):
+            check("颜色样式生成成功", (cs.get("after") or 0) > (cs.get("before") or 0),
+                  f"{cs.get('before')} -> {cs.get('after')}")
+            state = cs["state"]
+            csl = server.cdr_style(doc_id, action="color_styles")
+            if no_error("cdr_style(color_styles)", csl):
+                check("颜色样式可枚举", (csl.get("count") or 0) >= 1
+                      and bool((csl.get("color_styles") or [{}])[0].get("color")),
+                      f"count={csl.get('count')}")
+
+        # --- 纹理列表 / 纹理填充 ---
+        tex = server.cdr_doc(doc_id, "textures")
+        if no_error("cdr_doc(textures)", tex):
+            check("纹理库名称可枚举", (tex.get("total") or 0) >= 1,
+                  f"total={tex.get('total')} first={(tex.get('textures') or [None])[0]}")
+            if tex.get("textures"):
+                tf = server.cdr_modify(doc_id, {"name": q1}, {
+                    "fill": {"type": "texture", "name": tex["textures"][0],
+                             "library": "Textures"}},
+                    expected_revision=state["revision"],
+                    snapshot_token=state["snapshot_token"])
+                if no_error("cdr_modify(fill texture)", tf):
+                    check("纹理填充已应用", "fill:texture" in (tf.get("applied") or []),
+                          str(tf.get("applied")))
+                    state = tf["state"]
+
+        # --- 3D 投影 / 反投影 ---
+        bb_before = None
+        ins9 = server.cdr_inspect(doc_id)
+        if "shapes" in ins9:
+            bb_before = next((s.get("bbox") for s in ins9["shapes"]
+                              if s.get("name") == q1), None)
+        pj = server.cdr_shape_ops(doc_id, "project", target={"name": q1}, plane=2,
+                                  expected_revision=state["revision"],
+                                  snapshot_token=state["snapshot_token"])
+        if no_error("cdr_shape_ops(project)", pj):
+            check("对象可投影到 3D 平面", pj.get("bbox") is not None,
+                  f"bbox={pj.get('bbox')}")
+            state = pj["state"]
+            up = server.cdr_shape_ops(doc_id, "unproject", target={"name": q1}, plane=2,
+                                      expected_revision=state["revision"],
+                                      snapshot_token=state["snapshot_token"])
+            if no_error("cdr_shape_ops(unproject)", up):
+                bb_after = up.get("bbox") or {}
+                same = (bb_before and bb_after
+                        and abs((bb_before.get("x") or 0) - (bb_after.get("x") or 0)) < 0.5
+                        and abs((bb_before.get("width") or 0) - (bb_after.get("width") or 0)) < 0.5)
+                check("反投影恢复原包围盒", bool(same),
+                      f"before={bb_before} after={bb_after}")
+                state = up["state"]
+
+        # --- 字体属性 / 断字设置读取 ---
+        ft = server.cdr_text(doc_id, {"name": qt}, read_font=True, read_hyphenation=True)
+        if no_error("cdr_text(read_font/read_hyphenation)", ft):
+            font = ft.get("font") or {}
+            hyph = ft.get("hyphenation") or {}
+            check("字体属性读取正确", font.get("name") == "Arial"
+                  and (font.get("size") or 0) > 0,
+                  f"font={font}")
+            check("断字设置可读", (hyph.get("min_word_length") or 0) > 0, f"hyph={hyph}")
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

@@ -7,9 +7,9 @@
 
 > **已在真机验证**：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）+ Python 3.11.9 64 位
 > - 单元测试 **55 项通过**
-> - 端到端联调（真实 CorelDRAW）**169/169 通过**
+> - 端到端联调（真实 CorelDRAW）**180/180 通过**
 > - 能力边界来自对 `vgcoreauto.tlb` 的反解（196 个自动化类 / 1619 个方法）+ 逐项实跑
-> - 方法级覆盖 **40.4%**（主干 20 接口 52.0%），可用 `python scripts/coverage_audit.py` 复现
+> - 方法级覆盖 **41.0%**（主干 20 接口 53.3%），可用 `python scripts/coverage_audit.py` 复现
 > - 完整清单见 [docs/COVERAGE.md](docs/COVERAGE.md)
 
 ---
@@ -55,7 +55,7 @@ python -m cdrx8_mcp              # 启动 MCP 服务器（stdio）
 | `cdr_status` | 运行状态、版本、服务配置（无副作用） |
 | `cdr_connect` | 附着已运行实例；`launch=true` 才允许启动 |
 | `cdr_documents` | 列出打开的文档，给出 `document_id` |
-| `cdr_open` | 打开 `.cdr`，或按毫米尺寸 / 页面预设新建 |
+| `cdr_open` | 打开 `.cdr`，按毫米尺寸 / 页面预设新建，或**从模板创建**（`template=路径`） |
 | `cdr_inspect` | 读视图：页面、图层、`revision`、`snapshot_token`、每个对象 |
 | `cdr_save` | 另存为 `.cdr`（默认不覆盖） |
 | `cdr_undo` | 撤销 / 重做最近 N 步 |
@@ -67,18 +67,18 @@ python -m cdrx8_mcp              # 启动 MCP 服务器（stdio）
 |---|---|
 | `cdr_create` | 批量创建：矩形（含圆角）/ 椭圆（含圆弧、扇形）/ 多边形 / 星形 / 螺旋 / 网格 / 直线 / 贝塞尔 / 文字 / 段落文字 / 参考线 / **内存位图（纯色 + 像素色块）** |
 | `cdr_modify` | 单个或**批量**修改：移动、缩放、旋转、翻转、斜切、矩阵/仿射变换、**清除变换**、**旋转中心**、克隆、锁定；填充（纯色/渐变/纹理/**图案（画布）**/**专色**/无色/**从别的对象复制**）；描边（含虚线、箭头、**专色**）；**透明度**/**图案透明**、**冻结/解冻透明度**；投影、轮廓图、封套；**渐变微调**；**色彩滤镜**；**层级相对调整**、**复制/剪切到系统剪贴板**、**移动到/复制到图层**、复制、删除。批量用 `target={"all":true}` 或 `{"type_id":n}` |
-| `cdr_text` | 排版级：内容 / 字体 / 字号 / 粗斜体 / 下划线 / 对齐 / **大小写** / **项目符号** / **首字下沉** / **行距字距** / 前后插入 / **沿路径** / 文本框自适应 / **转曲** / **艺术字↔段落字互转** / **段落内容读写与替换** / **文本区间选择·基线对齐·属性复制** / **读取全文·指定区间·导出纯文本** / **OpenType 特性** |
+| `cdr_text` | 排版级：内容 / 字体 / 字号 / 粗斜体 / 下划线 / 对齐 / 大小写 / 项目符号 / 首字下沉 / 行距字距 / 前后插入 / 沿路径 / 自适应 / 转曲 / 艺术字↔段落字互转 / 段落内容读写与替换 / 文本区间 / **读取全文·指定区间·导出纯文本** / **字体属性读取·断字设置读取** / **OpenType 特性** |
 | `cdr_replace_text` | 全文档文字替换（底层用 X8 原生 `Page.TextReplace`） |
 | `cdr_select` | 按名字 / 类型 / 矩形框选，加入选择集；**可移除或清空选择集** |
-| `cdr_shape_ops` | **布尔与整形**：weld / trim / intersect / combine / group / ungroup / break_apart / to_curves / **outline_to_curves（描边转曲）** / to_symbol / powerclip / fillet / chamfer / scallop / **step_repeat（阵列）** / **distribute（原生分布）** / **boundary（边界曲线）** / **perspective（透视）** / **separate（拆效果）** / **parallel_curves（并行曲线）** / **rasterize（选择集栅格化）** / **batch_outline_to_curves / fill_mode / pixel_aligned / range_boundary / envelope_from_shape / compare** |
+| `cdr_shape_ops` | **布尔与整形**：weld / trim / intersect / combine / group / ungroup / break_apart / to_curves / **outline_to_curves** / to_symbol / powerclip / fillet / chamfer / scallop / **step_repeat / distribute / boundary / perspective / separate / parallel_curves / rasterize / batch_outline_to_curves / fill_mode / pixel_aligned / range_boundary / envelope_from_shape / compare / project / unproject** |
 | `cdr_align` | 对齐与分布（左中右 / 上下中 / 等间距，对齐对象或页面） |
 | `cdr_find` | 按名字或类型查找（跨图层） |
-| `cdr_style` | **对象样式**：列出 / 从对象创建（fill·outline·character·paragraph）/ **基于已有样式派生** / 按名套用 / 改名 / 删除 / **读可读属性·改属性** / 列派生样式 |
+| `cdr_style` | **对象样式**：列出 / 从对象创建（fill·outline·character·paragraph）/ **基于已有样式派生** / 按名套用 / 改名 / 删除 / **读可读属性·改属性** / 列派生样式 / **样式表 .cdst 导入导出** / **颜色样式与颜色协调** |
 | `cdr_path` | 曲线/子路径级：长度面积 / 偏移轮廓（刀模线）/ **折线采样** / **追加圆·椭圆·矩形·三点弧·贝塞尔** / **节点精简** / **自焊接** / **路径等分** / **加节点·断开·移动子路径** / **点在形状内·曲线求交·取点取切向** / **参数取点·切向量·法向量·速度·交点·按坐标找节点/线段·反转方向·焊接子路径·去重叠** |
 | `cdr_node` | **节点/线段级编辑（第五波打通）**：列节点·列线段 / 移动·选中·删除 / 圆角·倒角· scallop·平滑 / 拉伸·旋转·斜切·断开 / 加节点·断线 / 读写贝塞尔控制点 / 按坐标找节点与线段 |
 | `cdr_bitmap` | 位图：信息 / 转色彩模式（rgb·cmyk·gray·bw）/ **阈值二值化** / **调色板模式 0~9（9=自定义调色板）** / **双色调 0~3（可给 .cpd 预设）** / **取像素颜色** / 图像缓冲信息 / 重采样 / **扩边** / 裁剪 |
 | `cdr_color` | **颜色运算（纯 Python）**：解析成 HEX/RGB/CMYK/Gray/HLS/Lab、转换、两色混合 |
-| `cdr_doc` | **文档级**：概况 / 清空选择集 / 清撤销栈 / **登记调色板** / **用曲线生成自定义箭头** / **单位换算** / **取色（点/区域）** / **字体列表** / **调色板列表·取色·固定调色板打开·颜色枚举·专色创建** / **图案画布创建** / **显示隐藏对象** / **页面版式** / **重复上一操作** |
+| `cdr_doc` | **文档级**：概况 / 清空选择集 / 清撤销栈 / **登记调色板** / **用曲线生成自定义箭头** / **单位换算** / **取色（点/区域）** / **字体列表** / **调色板列表·取色·固定调色板打开·颜色枚举·专色创建** / **图案画布创建** / **纹理库列表** / **显示隐藏对象** / **页面版式** / **重复上一操作** |
 | `cdr_view` | **视图**：刷新重绘 / 激活窗口 / 文档↔屏幕坐标换算 / **屏幕距离↔文档距离** |
 
 ### 图层 / 页面 / 文件
@@ -183,7 +183,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ---
 
-## X8 特有问题（50 条，全部实测）
+## X8 特有问题（56 条，全部实测）
 
 这些是 **X8 与 2024+ 的差异**，也是本项目存在的主要理由。
 
@@ -239,6 +239,12 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 | 48 | **`Document.CreateFill/CreateOutline` 传字符串不生效** | 任意字符串都返回 `IVGFill/IVGOutline`，但应用后填充类型为 0（无效） | 不要依赖字符串填充/描边 |
 | 49 | **跨文档复制靠系统剪贴板** | `Shape.Copy()`/`Shape.Cut()` → 目标文档 `Layer.Paste()`；粘贴对象保留原名字 | 同名对象可能造成定位混淆，建议粘贴后改名 |
 | 50 | **对象换图层是 `Shape.MoveToLayer/CopyToLayer`** | 传 `page.Layers.Item(i)` 对象；`CopyToLayer` 返回副本 | `Layer` 上没有"移动对象"的方法 |
+| 51 | **`.cdr` 也能当模板用** | `Application.CreateDocumentFromTemplate("任意.cdr", True)` 可创建新文档；本机无 .cdt 也能测 | 模板路径不存在时报错 |
+| 52 | **`SaveStyleSheet/LoadStyleSheet` 是恢复样式表的可靠办法** | `doc.SaveStyleSheet(path.cdst)` 后删除样式，再 `LoadStyleSheet(path)` 可恢复 | 样式表文件约 400 KB |
+| 53 | **`CreateColorStyles` 的返回值恒为 0，但确实创建了颜色样式** | 用 `StyleSheet.AllColorStyles.Count` 前后对比判断；`harmonies=1..3` 会生成一组协调色 | 按返回值判断会误以为失败 |
+| 54 | **`Text.GetFontProperties` 返回默认结构体** | Name=''、Size≈1e-38；真实字体用 `Text.Story.Font/Size/Bold/Italic/Underline` | 用结构体会读到空字体 |
+| 55 | **断字设置与 HTML 兼容文本写不进去** | `SetHyphenationSettings` 调用不报错但值不变；`MakeHTMLCompatible` 返回 False | 只提供断字读取 |
+| 56 | **`OpenDocumentAsCopy` 参数无法传递** | Options 传 0 / None 都是 `TypeError: Python instance can not be converted to a COM object` | 需要副本请用 SaveAs 新路径 |
 
 改代码前请先读 [`src/cdrx8_mcp/constants.py`](src/cdrx8_mcp/constants.py) 里的注释。
 
@@ -266,6 +272,8 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
   `CreateExtrude` `CreateLens` `CreateLinearDimension` `CreateConnector` `CreateSymbol`
   `Shape.CreateBlend` 全部卡在 `TypeError: Python instance can not be converted to a COM object`
   （需要 pywin32 无法构造的结构体/枚举参数）；`Curve.CreateCurveMappedToStroke` 报「类型不匹配」
+* **按副本打开 / HTML 兼容文本 / 断字写入**：`OpenDocumentAsCopy` 参数 TypeError；
+  `MakeHTMLCompatible` 返回 False；`SetHyphenationSettings` 写回不生效（只提供断字读取）
 
 > 每一条的实测证据都记在 [docs/COVERAGE.md](docs/COVERAGE.md) 的「明确不可用」表里。
 * **图案填充需要图案文件**：`ApplyPatternFill` 无文件时报错
@@ -284,7 +292,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ```powershell
 python -m pytest -q                # 55 项纯逻辑测试，任何平台可跑
-python scripts/live_smoke.py       # 169 项端到端，需要 CorelDRAW X8
+python scripts/live_smoke.py       # 180 项端到端，需要 CorelDRAW X8
 python scripts/live_smoke.py --keep   # 保留文档方便肉眼看效果
 python scripts/coverage_audit.py   # 覆盖率审计（复现 README/COVERAGE 里的数字）
 ```
@@ -304,6 +312,8 @@ weld/fillet → 框选/组合/解组 → 对齐 → 图层 → 查找 → 分页
 **PANTONE 固定调色板/专色填充描边 → 样式属性读写/派生 → 范围描边转曲/填充规则/像素对齐/边界 →
 封套/对象比较 → 选择集移除/清空 → 吸附点查询** →
 **图案画布填充/图案透明 → 剪贴板复制/剪切（同文档+跨文档）→ 对象移入/复制到图层** →
+**模板创建文档 → 样式表 .cdst 导出/导入 → 颜色样式/颜色协调 → 纹理库列表与纹理填充 →
+3D 平面投影/反投影 → 字体属性与断字设置读取** →
 过期 token 拒绝 → 关闭。
 
 完整能力矩阵见 [docs/COVERAGE.md](docs/COVERAGE.md)。
