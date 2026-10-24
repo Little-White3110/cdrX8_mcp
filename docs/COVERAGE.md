@@ -2,7 +2,7 @@
 
 > 目的：证明"还有多少没探"。每一行要么有对应的工具，要么有实测失败证据。
 > 环境：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）/ Python 3.11.9 64 位
-> 最近更新：2026-10-25 第十八波（色彩配置文件 / 文档颜色转换）
+> 最近更新：2026-10-25 第十九波（用户级应用偏好 KV / 当前工具信息）
 
 ## 怎么得出这份清单
 
@@ -17,7 +17,7 @@
 
 | 接口 | 方法数 | 覆盖情况 |
 |---|---:|---|
-| `IVGApplication` | 82 | 已用：CreateDocument / **CreateDocumentFromTemplate** / OpenDocument / 全套 Create*Color / CreateShapeRange / CreateStructExportOptions / CreateStructImportOptions / OutlineStyles（含 **AddStyle/Save**）/ ArrowHeads / Version / Path / Documents / **ColorManager** / **FontList / Palettes（含 OpenFixed / Create / Item） / CreateDuotone / CreateSpotColorByName / CreatePatternCanvas / PatternCanvases / GetSupportedOpenTypeFeatures / CheckPlatformVersion / IsUILanguageAvailable**；OpenDocumentAsCopy 参数 TypeError |
+| `IVGApplication` | 82 | 已用：CreateDocument / **CreateDocumentFromTemplate** / OpenDocument / 全套 Create*Color / CreateShapeRange / CreateStructExportOptions / CreateStructImportOptions / OutlineStyles（含 **AddStyle/Save**）/ ArrowHeads / Version / Path / Documents / **ColorManager / ActiveTool / ActiveToolStateGuid / RegisterUserApplicationPreference / GetApplicationPreferenceValue / SetApplicationPreferenceValue** / **FontList / Palettes（含 OpenFixed / Create / Item） / CreateDuotone / CreateSpotColorByName / CreatePatternCanvas / PatternCanvases / GetSupportedOpenTypeFeatures / CheckPlatformVersion / IsUILanguageAvailable**；OpenDocumentAsCopy 参数 TypeError |
 | `IVGDocument` | 78 | 已用：Unit / Pages / AddPages / DeletePages / ActivePage / ActiveLayer / Selection / Save·SaveAs / ExportEx / ExportBitmap(不适用) / PublishToPDF / Undo / Redo / Begin·EndCommandGroup / FileName / Dirty / Name / StyleSheet / **Metadata / DataFields / ColorContext / ConvertToColorContext / Revert** / **设置：EditAcrossLayers / ApplyToDuplicate / CurvePrecision / Resolution / ReferencePoint / ShapeEnumDirection / TextFormatter / WorldScale / FacingPages / FirstPageOnRightSide / Layout / Unit / DrawingOriginX·Y / PreserveSelection** / **Keywords·Notes（可写，读需走 Metadata）** / **ToUnits / FromUnits / SampleColorAtPoint / SampleColorInArea / ShowAllHiddenObjects / SetLayout / Repeat / CreateImage / CreateColorStyles / InsertPages / HatchLibraries / SaveStyleSheet / LoadStyleSheet / CreateFill / CreateOutline（字符串格式无效）** |
 | `IVGPage` | 22 | **全覆盖**：SetSize / SelectSize / GetSize / CreateLayer / Activate / Delete / MoveTo / FindShape(s) / TextFind / TextReplace / GetGuides / UnlockAllShapes / GetObjectsBoundingBox(改用自算) / SelectShapesFromRectangle / Shapes / Layers / Orientation / **FindClosestSnapPoint** |
 | `IVGLayer` | 50 | 已用：Create*（矩形/椭圆/多边形/螺旋/网格/线/贝塞尔/艺术字/段落字/参考线/**角度参考线**/**位图 CreateBitmap·CreateBitmap2**）/ Import / ImportEx / CreateCurve / Activate / Delete / MoveAbove / **MoveBelow / GetAbove / GetBelow / Paste** / Visible / Editable / Printable / Master / FindShape |
@@ -78,7 +78,7 @@
 | 位图 | `cdr_bitmap`（信息/转色彩模式/重采样/裁剪/取消裁剪/取像素色·图像缓冲信息·调色板模式 0~9·双色调/内容替换 SetImageData/**位图特效命令串 ApplyBitmapEffect**） | ✅（Trace 除外） |
 | 路径 | `cdr_path`（长度面积/偏移轮廓/追加子路径/折线点/反转方向·焊子路径·去重叠·参数取点·切/法向量·速度·交点·找节点/线段） | ✅ |
 | 导入导出 | `cdr_import` `cdr_export`（png/jpg/svg/pdf，可指定 DPI，可只导选区） | ✅ |
-| 文档 | `cdr_doc`（概况/清选区/清撤销栈/调色板/箭头/箭头登记/单位换算·取色·显示隐藏·版式·重复操作/字体列表·调色板列表·调色板取色/固定调色板打开·颜色枚举·专色创建/图案画布创建（含区域变换）/纹理库列表/文档元数据读写/自定义调色板创建/数据字段·对象数据·色彩管理·线型样式/文档设置读写/应用信息·文档回滚/**色彩配置文件·文档颜色转换**） | ✅ |
+| 文档 | `cdr_doc`（概况/清选区/清撤销栈/调色板/箭头/箭头登记/单位换算·取色·显示隐藏·版式·重复操作/字体列表·调色板列表·调色板取色/固定调色板打开·颜色枚举·专色创建/图案画布创建（含区域变换）/纹理库列表/文档元数据读写/自定义调色板创建/数据字段·对象数据·色彩管理·线型样式/文档设置读写/应用信息·文档回滚/色彩配置文件·文档颜色转换/**用户偏好 KV**） | ✅ |
 | **对象数据** | `cdr_modify(changes={"data":{...}})` + `cdr_doc(action="object_data"/"data_fields"/"add_data_field")` | ✅ 第十一波 |
 | 视图 | `cdr_view`（刷新/激活/文档↔屏幕坐标/屏幕↔文档距离） | ✅ 第五波 |
 | 历史 | `cdr_undo`（撤销/重做） | ✅ |
@@ -110,6 +110,7 @@
 | 符号库 | `Application.SymbolLibraries` | 本机 Count=0，无符号库可 Add/插入 | 需先安装符号库文件 |
 | 文档颜色转换 | `Document.ConvertToColorContext(profile.CreateColorContext())` | RGB→CMYK→RGB 实测成功（填充色由 RGB 变 CMYK 再回 RGB）；**灰度→RGB 会报「服务器出现意外情况」** | 已封装 `cdr_doc(action="convert_color")`；转换前建议先以 RGB→CMYK→RGB 顺序，避免灰→RGB |
 | 色彩配置文件 | `Application.ColorManager.ColorProfiles` | 本机 64 个；`GetProfilesByColorModel(0/1/2)` 分别可取 RGB/CMYK/Gray；`DefaultColorContext` 含 3 个 | `CreateColorContext()` 直接调用不可用，须用 `profile.CreateColorContext()` |
+| 应用偏好 | `RegisterUserApplicationPreference` / `Get·SetApplicationPreferenceValue` | 用户偏好可注册、读写（存 CorelDRAW 工作区）；读取真实应用偏好组（如 `VGDoc Pref Settings`）报「发生意外错误」 | 只支持用户自定义偏好（Group/Key） |
 | 文档回滚 | `Document.Revert()` | 可用（修改后 15→16→15 对象）；**破坏性**，丢弃未保存修改 | 已封装为 `cdr_doc(action="revert")`，调用前确认已保存 |
 | 立体化/透镜创建 | `Shape.CreateExtrude(...)` / `Shape.CreateLens(...)` | 只传前几个 int 参数报 `TypeError: Python instance can not be converted to a COM object`；**传全参数（含颜色对象）即可** | 已封装并补齐默认颜色参数 |
 | 点对象创建 | `Application.MathUtils.CreatePoint` | `MathUtils` CLSID `{E98800C5-…}` 报「没有注册类」，Application 上也没有 MathUtils 属性 | 尺寸标注/连接线仍不可用 |
@@ -219,7 +220,7 @@
 
 ```powershell
 python -m pytest -q              # 55 项纯逻辑
-python scripts/live_smoke.py     # 228 项端到端（真实 CorelDRAW）
+python scripts/live_smoke.py     # 234 项端到端（真实 CorelDRAW）
 ```
 
 联调断言覆盖了上表所有 ✅ 项。反解脚本属于过程产物，已按要求放在 `tmp/` 并在完成时清理；
@@ -227,14 +228,14 @@ python scripts/live_smoke.py     # 228 项端到端（真实 CorelDRAW）
 
 ---
 
-## 六、量化覆盖率（2026-10-25 第十八波实测）
+## 六、量化覆盖率（2026-10-25 第十九波实测）
 
 方法：反解类型库拿到 196 个自动化类 / **1619** 个方法（已剔除 `QueryInterface` 等 COM 基础设施）；
 用 AST 扫描 `src/cdrx8_mcp/*.py`，收集所有 `.方法名(` 调用与 `setattr/getattr` 的属性名，
 与主干接口的方法名求交集。**注意：属性名（如 `curve.Nodes`）也会被计入**，所以本波数字含真实属性访问。
 
-**全局：693 / 1619 = 42.8%**（21.2% → … → 42.6% → 本轮 42.8%）
-**主干 20 接口：413 / 743 = 55.6%**
+**全局：696 / 1619 = 43.0%**（21.2% → … → 42.8% → 本轮 43.0%）
+**主干 20 接口：416 / 743 = 56.0%**
 
 复现命令：`python scripts/coverage_audit.py`（会临时展开类型库到 `tmp/gen_py`，跑完自动清理）
 
@@ -248,7 +249,7 @@ python scripts/live_smoke.py     # 228 项端到端（真实 CorelDRAW）
 | `IVGCurve` | 36 | 22 | 61% |
 | `IVGLayer` | 49 | 22 | 45% |
 | `IVGTextRange` | 31 | 22 | **71%** |
-| `IVGApplication` | 78 | 22 | 28% |
+| `IVGApplication` | 78 | 25 | **32%** |
 | `IVGText` | 29 | 16 | **55%** |
 | `IVGNode` | 18 | 9 | 50% |
 | `IVGBitmap` | 15 | 11 | **73%** |
@@ -260,10 +261,10 @@ python scripts/live_smoke.py     # 228 项端到端（真实 CorelDRAW）
 | `IVGTransparency` | 8 | 6 | **75%** |
 | `IVGStyle` | 15 | 8 | **53%** |
 | `IVGColorContext` | 6 | 1 | 17% |
-| **合计** | **743** | **413** | **55.6%** |
+| **合计** | **743** | **416** | **56.0%** |
 
 > **怎么读这两个数**：
-> 1. 全局 42.8% 覆盖 1619 个方法（含变体与重复）；主干 20 接口 55.6%。
+> 1. 全局 43.0% 覆盖 1619 个方法（含变体与重复）；主干 20 接口 56.0%。
 > 2. 它是**方法/属性名匹配**的近似值，同名方法会跨接口误计。
 > 3. `IVGColor` 的 21% 是**故意的**：实测不暴露分量属性，色彩运算在纯 Python 完成。
 > 4. 未调用方法多为变体（Wide/Ex/2/3 后缀）与事件订阅、CorelScriptTools/MathUtils。
@@ -489,6 +490,16 @@ python scripts/live_smoke.py     # 228 项端到端（真实 CorelDRAW）
 | 灰度→RGB | `ConvertToColorContext` | ❌ 从灰度转 RGB 报「服务器出现意外情况」；其余方向正常 |
 | 关键坑 | `Application.CreateColorContext()` | 直接调用 TypeError；必须 `profile.CreateColorContext()` |
 
+## 七之十七、第十九波已接入（2026-10-25，用户级应用偏好 KV、当前工具信息）
+
+| 能力 | 落地位置 | 实测 |
+|---|---|---|
+| **用户偏好注册** | `cdr_doc(action="pref_register", pref_group, pref_key, pref_default)` | ✅ `RegisterUserApplicationPreference("cdrX8 MCP", key, "default-val")`，随后 get 返回默认值 |
+| **用户偏好读写** | `cdr_doc(action="pref_get"/"pref_set", pref_key, pref_value, pref_default)` | ✅ set 为 "hello-world" 后回读一致；未注册时可用默认值自动注册 |
+| **当前工具信息** | `cdr_doc(action="app_info")` → `active_tool` / `active_tool_state` | ✅ 返回当前工具名与 GUID |
+| 真实应用偏好 | `GetApplicationPreferenceValue("VGDoc Pref Settings", "KeepDesktopObjectsOnLayer")` | ❌ 报「发生意外错误」；只能读写用户注册的偏好 |
+| 持久化范围 | CorelDRAW 工作区 | 同会话内已验证；跨重启持久化未单独验证 |
+
 ## 七之二、仍未接入（第三轮候选）
 
 | 能力 | 接口 | 为什么还没做 |
@@ -510,15 +521,15 @@ python scripts/live_smoke.py     # 228 项端到端（真实 CorelDRAW）
 
 ## 八、一句话总结
 
-* **能力域覆盖**：41 个能力域 / 27 个工具，日常出图闭环完整；节点编辑、对象样式、专色、
+* **能力域覆盖**：42 个能力域 / 27 个工具，日常出图闭环完整；节点编辑、对象样式、专色、
   图案/纹理填充、跨文档复制、模板/样式表/颜色样式、文档元数据、对象数据字段、自定义虚线、
   文档设置、文本区间编辑、自定义箭头、图案微调、文本格式查询、位图内容替换、文档回滚、
-  立体化/透镜/效果管理、位图特效命令串、混合、文档颜色转换都已补上。
-* **方法级覆盖**：全局 42.8%（693/1619），主干 20 接口 55.6%（413/743）。
+  立体化/透镜/效果管理、位图特效命令串、混合、文档颜色转换、用户偏好 KV 都已补上。
+* **方法级覆盖**：全局 43.0%（696/1619），主干 20 接口 56.0%（416/743）。
 * **明确不可用**：位图描摹、文本导入、点集数组建曲线、尺寸标注/连接线（MathUtils 点对象
   不可创建）、符号库、文件型图案/影线填充（本机无库）、曲线贴笔触、OpenDocumentAsCopy、
-  HTML 兼容文本、断字写入、填充字符串、文本尺寸查询、灰度→RGB 转换。
-* **第十八波新增**：`Application.ColorManager` 配置文件列表 + `profile.CreateColorContext()`
-  + `Document.ConvertToColorContext()` 实现 RGB/CMYK/Gray 文档颜色转换。
+  HTML 兼容文本、断字写入、填充字符串、文本尺寸查询、灰度→RGB 转换、真实应用偏好读取。
+* **第十九波新增**：`RegisterUserApplicationPreference` + `Get/SetApplicationPreferenceValue`
+  提供用户偏好 KV；`ActiveTool/ActiveToolStateGuid` 可读。
 
 

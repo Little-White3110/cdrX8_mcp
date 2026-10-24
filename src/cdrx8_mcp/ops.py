@@ -285,7 +285,8 @@ DOC_ACTIONS = ("info", "clear_selection", "clear_undo", "palette", "arrowhead",
                "pattern_canvas", "textures", "metadata", "set_metadata",
                "palette_create", "data_fields", "add_data_field", "object_data",
                "color_context", "outline_styles", "settings", "set_settings",
-               "revert", "app_info", "color_profiles", "convert_color")
+               "revert", "app_info", "color_profiles", "convert_color",
+               "pref_register", "pref_get", "pref_set")
 
 
 def doc_ops(doc: Any, action: str, *, target: dict | None = None,
@@ -307,7 +308,9 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
             register: bool = False, copy_areas: list | None = None,
             rotate_areas: list | None = None, flip_areas: list | None = None,
             model: int | str | None = None, profile_name: str | None = None,
-            rendering_intent: int | None = None) -> dict:
+            rendering_intent: int | None = None,
+            pref_group: str = "cdrX8 MCP", pref_key: str | None = None,
+            pref_value: Any = None, pref_default: Any = None) -> dict:
     """文档级操作。
 
     action:
@@ -770,6 +773,8 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
                 "open_type_features": matched[:cap],
                 "feature_count": len(features),
                 "feature_matched": len(matched),
+                "active_tool": _s(lambda: str(app.ActiveTool)),
+                "active_tool_state": _s(lambda: str(app.ActiveToolStateGuid)),
                 "platform_checks": {str(v): bool(_s(
                     lambda v=v: bool(app.CheckPlatformVersion(int(v), 0)), False))
                     for v in (16, 17, 18)},
@@ -872,6 +877,38 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
                 "model": _n(lambda: int(target.ColorModel)),
                 "rendering_intent": _n(lambda: int(context.RenderingIntent)),
                 "before": before, "after": after}
+    if act in {"pref_register", "pref_get", "pref_set"}:
+        if not pref_key:
+            raise CdrBadArgument("pref_* 需要 pref_key")
+        app = _app_of(doc)
+        group = str(pref_group or "cdrX8 MCP")
+        key = str(pref_key)
+        if act == "pref_register":
+            default = "" if pref_default is None else pref_default
+            app.RegisterUserApplicationPreference(group, key, default)
+            return {"action": act, "group": group, "key": key,
+                    "default": default,
+                    "value": _s(lambda: app.GetApplicationPreferenceValue(group, key))}
+        if act == "pref_get":
+            try:
+                value = app.GetApplicationPreferenceValue(group, key)
+            except Exception:
+                if pref_default is None:
+                    raise CdrBadArgument(
+                        f"偏好 {group}/{key} 未注册；先 pref_register 或传 pref_default")
+                app.RegisterUserApplicationPreference(group, key, pref_default)
+                value = app.GetApplicationPreferenceValue(group, key)
+            return {"action": act, "group": group, "key": key,
+                    "value": _s(lambda: value)}
+        # pref_set
+        try:
+            app.SetApplicationPreferenceValue(group, key, pref_value)
+        except Exception:
+            default = "" if pref_default is None else pref_default
+            app.RegisterUserApplicationPreference(group, key, default)
+            app.SetApplicationPreferenceValue(group, key, pref_value)
+        return {"action": act, "group": group, "key": key,
+                "value": _s(lambda: app.GetApplicationPreferenceValue(group, key))}
     # arrowhead
     with mm_units(doc):
         page = _page(doc, page_index)

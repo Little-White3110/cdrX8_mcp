@@ -1016,6 +1016,8 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
             rotate_areas: list | None = None, flip_areas: list | None = None,
             model: int | str | None = None, profile_name: str | None = None,
             rendering_intent: int | None = None,
+            pref_group: str = "cdrX8 MCP", pref_key: str | None = None,
+            pref_value: Any = None, pref_default: Any = None,
             expected_revision: int | None = None, snapshot_token: str | None = None,
             page_index: int | None = None) -> dict:
     """文档级操作。
@@ -1064,6 +1066,9 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
       color_profiles   列出已安装色彩配置文件（可按 model 0=RGB/1=CMYK/2=Gray/3=Lab）
       convert_color    把文档颜色转换到指定配置文件：model 或 profile_name，
                        rendering_intent 可选（0~3）
+      pref_register    注册用户级应用偏好（GroupName/KeyName/默认值），持久化在 CorelDRAW 工作区
+      pref_get         读取用户偏好（未注册时可传 pref_default 自动注册）
+      pref_set         写入用户偏好（未注册时自动注册再写）
     """
     def _run():
         doc, sess = _with_doc(document_id)
@@ -1085,7 +1090,9 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
                       copy_areas=copy_areas, rotate_areas=rotate_areas,
                       flip_areas=flip_areas, model=model,
                       profile_name=profile_name,
-                      rendering_intent=rendering_intent)
+                      rendering_intent=rendering_intent,
+                      pref_group=pref_group, pref_key=pref_key,
+                      pref_value=pref_value, pref_default=pref_default)
         if action == "info":
             return _com(lambda _b: ops.doc_ops(doc, "info", **kwargs), label="cdr_doc")
         if action in {"clear_selection", "units", "sample_color", "fonts",
@@ -1093,7 +1100,8 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
                       "palette_colors", "spot_color", "pattern_canvas",
                       "textures", "metadata", "palette_create", "data_fields",
                       "object_data", "color_context", "outline_styles",
-                      "settings", "app_info", "color_profiles"}:
+                      "settings", "app_info", "color_profiles",
+                      "pref_register", "pref_get", "pref_set"}:
             return _com(lambda _b: ops.doc_ops(doc, action, **kwargs), label="cdr_doc")
         warnings = _check_view(sess, expected_revision, snapshot_token, doc)
         result = _com(lambda _b: ops.doc_ops(doc, action, **kwargs), label="cdr_doc")

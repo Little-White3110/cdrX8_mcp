@@ -2103,6 +2103,36 @@ def main() -> int:
                   and "Dot Gain" in (cb.get("after") or ""), str(cb.get("after")))
             state = cb["state"]
 
+    # ---------------- 15y. 第十九波：用户级应用偏好（持久化 KV） ----------------
+    print("\n[15y] 第十九波：用户级应用偏好（KV）")
+    pr = server.cdr_doc(doc_id, "pref_register", pref_key=f"W19Key_{os.urandom(3).hex()}",
+                        pref_default="default-val")
+    if no_error("cdr_doc(pref_register)", pr):
+        check("用户偏好注册成功", pr.get("value") == "default-val",
+              f"value={pr.get('value')}")
+    pkey = (pr or {}).get("key") or "W19Key"
+    pg = server.cdr_doc(doc_id, "pref_get", pref_key=pkey)
+    if no_error("cdr_doc(pref_get)", pg):
+        check("用户偏好可读", pg.get("value") == "default-val",
+              f"value={pg.get('value')}")
+    ps = server.cdr_doc(doc_id, "pref_set", pref_key=pkey,
+                        pref_value="hello-world")
+    if no_error("cdr_doc(pref_set)", ps):
+        check("用户偏好可写", ps.get("value") == "hello-world",
+              f"value={ps.get('value')}")
+        pg2 = server.cdr_doc(doc_id, "pref_get", pref_key=pkey)
+        check("用户偏好写入后回读", pg2.get("value") == "hello-world",
+              f"value={pg2.get('value')}")
+    pa = server.cdr_doc(doc_id, "pref_get", pref_key="W19Auto",
+                        pref_default="auto-default")
+    if no_error("cdr_doc(pref_get 未注册+默认值)", pa):
+        check("未注册偏好可用默认值自动注册", pa.get("value") == "auto-default",
+              f"value={pa.get('value')}")
+    ai19 = server.cdr_doc(doc_id, "app_info", limit=1)
+    if no_error("cdr_doc(app_info 工具状态)", ai19):
+        check("应用信息含当前工具", ai19.get("active_tool") is not None,
+              f"tool={ai19.get('active_tool')}")
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,
