@@ -609,6 +609,9 @@ PATH_ACTIONS = (
     # 子路径级
     "subpath_info", "equal_divide", "add_node", "break_apart",
     "get_point", "get_tangent", "move_subpath",
+    # 查询（第三批）
+    "curvature", "perpendicular", "evenly_spaced", "closest_segment",
+    "is_on_path", "segment_at", "is_rect_on_edge",
 )
 
 
@@ -675,6 +678,49 @@ def path_ops(doc: Any, page_index: int | None, target: dict, action: str, *,
                 "position": [_round(v) for v in pos] if pos else None,
                 "length": _round(_s(lambda: float(sp.Length))),
             }
+
+        # ---- 查询类（第三批，实测均可）----
+        if act == "curvature":
+            sp = sub()
+            return {"action": act, "t": t,
+                    "curvature": _round(_s(lambda: float(sp.GetCurvatureAt(float(t), 0))))}
+        if act == "perpendicular":
+            sp = sub()
+            return {"action": act, "t": t,
+                    "angle": _round(_s(lambda: float(sp.GetPerpendicularAt(float(t), 0))))}
+        if act == "evenly_spaced":
+            sp = sub()
+            try:
+                pts = tuple(sp.GetEvenlySpacedPoints(float(offset or 10), True))
+                return {"action": act, "count": len(pts),
+                        "points": [_round(v) for v in pts[:100]]}
+            except Exception:
+                return {"action": act, "points": [],
+                        "note": "该子路径取不到等距点数组（pywin32 限制）"}
+        if act == "closest_segment":
+            sp = sub()
+            if x is None or y is None:
+                raise CdrBadArgument("closest_segment 需要 x 与 y")
+            res = _s(lambda: tuple(sp.FindClosestSegment(float(x), float(y), 0)))
+            return {"action": act, "result": [_round(v) for v in res] if res else None}
+        if act == "segment_at":
+            sp = sub()
+            res = _s(lambda: tuple(sp.GetSegmentAt(float(t), 0, 0)))
+            return {"action": act, "t": t,
+                    "segment": [_round(v) for v in res] if res else None}
+        if act == "is_on_path":
+            sp = sub()
+            if x is None or y is None:
+                raise CdrBadArgument("is_on_path 需要 x 与 y")
+            return {"action": act,
+                    "on_path": bool(_s(lambda: sp.IsOnSubPath(float(x), float(y), 2.0), 0))}
+        if act == "is_rect_on_edge":
+            r = rect or []
+            if len(r) != 4:
+                raise CdrBadArgument("is_rect_on_edge 需要 rect=[x1,y1,x2,y2]")
+            return {"action": act,
+                    "on_edge": bool(_s(lambda: curve.IsRectOnEdge(
+                        float(r[0]), float(r[1]), float(r[2]), float(r[3])), 0))}
         if act in {"get_point", "get_tangent"}:
             sp = sub()
             if act == "get_tangent":

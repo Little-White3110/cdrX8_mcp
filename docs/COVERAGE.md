@@ -114,39 +114,39 @@ python scripts/live_smoke.py     # 46 项端到端（真实 CorelDRAW）
 用 AST 扫描 `src/cdrx8_mcp/*.py`，收集所有 `.方法名(` 调用与 `setattr/getattr` 的属性名，
 与主干接口的方法名求交集。
 
-**全局：468 / 1619 = 28.9%**（第一轮 21.2% → 第二轮 27.6% → 本轮 28.9%）
-**主干 20 接口：266 / 743 = 35.8%**
+**全局：480 / 1619 = 29.6%**（第一轮 21.2% → 第二轮 27.6% → 第三轮 28.9% → 本轮 29.6%）
+**主干 20 接口：275 / 743 = 37.0%**
 
 复现命令：`python scripts/coverage_audit.py`（会临时展开类型库到 `tmp/gen_py`，跑完自动清理）
 
 | 接口 | 方法数 | 已调用 | 覆盖 |
 |---|---:|---:|---:|
-| `IVGPage` | 21 | 18 | **86%** |
-| `IVGFountainFill` | 6 | 5 | 83% |
-| `IVGWindow` | 8 | 6 | **75%** |
-| `IVGFill` | 12 | 6 | **50%** |
-| `IVGBitmap` | 15 | 7 | 47% |
-| `IVGNode` ⚠️ | 18 | 8 | 44%（同名误计，实际无节点入口） |
-| `IVGCurve` | 36 | 15 | 42% |
-| `IVGTextRange` | 31 | 13 | 42% |
 | `IVGShape` | 123 | 49 | 40% |
 | `IVGShapeRange` | 125 | 49 | 39% |
-| `IVGSubPath` | 38 | 15 | 39% |
+| `IVGSubPath` | 38 | 22 | **58%** |
+| `IVGDocument` | 74 | 22 | 30% |
+| `IVGPage` | 21 | 18 | **86%** |
+| `IVGCurve` | 36 | 17 | 47% |
+| `IVGLayer` | 49 | 16 | 33% |
+| `IVGTextRange` | 31 | 13 | 42% |
+| `IVGApplication` | 78 | 13 | 17% |
 | `IVGText` | 29 | 11 | 38% |
+| `IVGNode` ⚠️ | 18 | 8 | 44%（同名误计，实际无节点入口） |
+| `IVGBitmap` | 15 | 7 | 47% |
+| `IVGFill` | 12 | 6 | **50%** |
+| `IVGWindow` | 8 | 6 | **75%** |
+| `IVGFountainFill` | 6 | 5 | 83% |
+| `IVGColor` | 43 | 5 | 12%（色彩运算已改纯 Python，见下） |
 | `IVGOutline` | 8 | 3 | 38% |
 | `IVGTransparency` | 8 | 3 | 38% |
-| `IVGLayer` | 49 | 16 | 33% |
-| `IVGDocument` | 74 | 22 | 30% |
-| `IVGApplication` | 78 | 13 | 17% |
-| `IVGColorContext` | 6 | 1 | 17% |
-| `IVGColor` | 43 | 5 | 12%（色彩运算已改纯 Python，见下） |
 | `IVGStyle` | 15 | 1 | 7% |
-| **合计** | **743** | **266** | **35.8%** |
+| `IVGColorContext` | 6 | 1 | 17% |
+| **合计** | **743** | **275** | **37.0%** |
 
 > **怎么读这两个数**：
-> 1. 全局 27.6% 覆盖 1619 个方法（含变体与重复）；主干 20 接口 33.4%。
+> 1. 全局 29.6% 覆盖 1619 个方法（含变体与重复）；主干 20 接口 37.0%。
 > 2. 它是**方法名匹配**的近似值，同名方法会误计（`IVGNode` 44% 是假的——我们拿不到节点集合）。
-> 3. `IVGColor` 的 9% 是**故意的**：实测 `IVGColor` 不暴露任何分量属性（`Red`/`Cyan`/`Gray`
+> 3. `IVGColor` 的 12% 是**故意的**：实测 `IVGColor` 不暴露任何分量属性（`Red`/`Cyan`/`Gray`
 >    全部 AttributeError，`ConvertToCMYK` 只改类型不返回值），所以色彩运算迁到纯 Python
 >    （`src/cdrx8_mcp/colors.py`），COM 只负责把颜色**应用**到对象。
 > 4. 未调用的方法里很大一部分是变体：`CreateArrowHead`×5、`CreateBitmap`×3、
@@ -180,6 +180,7 @@ python scripts/live_smoke.py     # 46 项端到端（真实 CorelDRAW）
 | 复制填充 / 描边 | `cdr_modify(changes={"fill_from"/"outline_from"})` | ✅ |
 | 仿射变换 / 对齐到页面中心·点·网格 | `cdr_modify(changes={"affine":[...], "align_to":{mode}})` | ✅ |
 | 视图刷新与坐标换算 | `cdr_view(action="refresh"/"to_screen"/"to_document"/"distance_to_screen")` | ✅ |
+| 路径查询 | `cdr_path(action="curvature"/"perpendicular"/"evenly_spaced"/"closest_segment"/"is_on_path"/"segment_at"/"is_rect_on_edge")` | ✅ |
 
 ## 七之二、仍未接入（第三轮候选）
 

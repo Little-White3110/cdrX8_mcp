@@ -508,6 +508,16 @@ def main() -> int:
         si = server.cdr_path(doc_id, target={"name": cname}, action="subpath_info", subpath=1)
         if no_error("cdr_path(subpath_info)", si):
             check("子路径信息可读", "position" in si, str(si.get("position")))
+        for qact, kw in (("curvature", {"t": 0.5}), ("perpendicular", {"t": 0.5}),
+                         ("closest_segment", {"x": 40, "y": 130}),
+                         ("is_on_path", {"x": 40, "y": 130}),
+                         ("segment_at", {"t": 0.5})):
+            qr = server.cdr_path(doc_id, target={"name": cname}, action=qact,
+                                 subpath=1, **kw)
+            if no_error(f"cdr_path({qact})", qr):
+                check(f"路径查询 {qact} 可用",
+                      any(k in qr for k in ("curvature", "angle", "result", "on_path", "segment")),
+                      str({k: v for k, v in qr.items() if k != "action"})[:60])
 
     print("\n[15d] 文字内容 / 类型互转 / 文本区间")
     tpara = server.cdr_create(doc_id, items=[

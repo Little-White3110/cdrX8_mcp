@@ -622,7 +622,10 @@ def cdr_path(document_id: str, target: dict, action: str = "info",
     """曲线 / 子路径级操作（对象需是曲线，可先 `cdr_shape_ops(op="to_curves")` 转曲）。
 
     只读：info（长度/面积/子路径）、polyline、point_inside、intersects、
-          subpath_info、get_point、get_tangent
+          subpath_info、get_point、get_tangent、
+          curvature（曲率）、perpendicular（法线角度）、evenly_spaced（等距点）、
+          closest_segment（最近线段）、is_on_path（点是否在路径上）、
+          segment_at（某位置所在线段）、is_rect_on_edge（矩形是否贴边）
 
     变更：contour（偏移出刀模线）、add_subpath、
           append_circle / append_ellipse / append_rectangle / append_arc / append_bezier
@@ -633,7 +636,10 @@ def cdr_path(document_id: str, target: dict, action: str = "info",
     def _run():
         act = (action or "info").lower()
         readonly = act in {"info", "polyline", "point_inside", "intersects",
-                           "subpath_info", "get_point", "get_tangent"}
+                           "subpath_info", "get_point", "get_tangent",
+                           "curvature", "perpendicular", "evenly_spaced",
+                           "closest_segment", "is_on_path", "segment_at",
+                           "is_rect_on_edge"}
         doc, sess = _with_doc(document_id)
         kwargs = dict(offset=offset, direction=direction, x=x, y=y, radius=radius,
                       rx=rx, ry=ry, rect=rect, arc=arc, bezier=bezier, other=other,
