@@ -282,7 +282,8 @@ DOC_ACTIONS = ("info", "clear_selection", "clear_undo", "palette", "arrowhead",
                "units", "sample_color", "show_all", "layout", "repeat",
                "fonts", "palettes", "palette_color",
                "palette_open_fixed", "palette_colors", "spot_color",
-               "pattern_canvas", "textures")
+               "pattern_canvas", "textures", "metadata", "set_metadata",
+               "palette_create")
 
 
 def doc_ops(doc: Any, action: str, *, target: dict | None = None,
@@ -296,7 +297,10 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
             color_index: int = 1, palette_id: int | None = None,
             spot_name: str | None = None, tint: float = 100.0,
             pattern_fills: list | None = None, pattern_pixels: list | None = None,
-            pattern_lines: list | None = None, clear_canvas: bool = True) -> dict:
+            pattern_lines: list | None = None, clear_canvas: bool = True,
+            metadata: dict | None = None, palette_name: str | None = None,
+            palette_path: str | None = None, palette_colors: list | None = None,
+            overwrite: bool = False) -> dict:
     """文档级操作。
 
     action:
@@ -554,6 +558,64 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
                 "matched": len(matched), "textures": matched[:cap],
                 "truncated": len(matched) > cap,
                 "note": "用 fill={\"type\":\"texture\",\"name\":<名称>,\"library\":\"Textures\"}"}
+    if act in {"metadata", "set_metadata"}:
+        md = _s(lambda: doc.Metadata)
+        if md is None:
+            raise CdrBadArgument("该文档没有 Metadata 对象")
+        read_fields = ("Title", "Author", "LastAuthor", "Subject", "Keywords",
+                       "Notes", "Copyright", "Revision", "DocLanguage", "DocID")
+        writable = {"Title", "Author", "Subject", "Keywords", "Notes", "Copyright"}
+        applied: list[str] = []
+        warnings: list[str] = []
+        if act == "set_metadata":
+            if not isinstance(metadata, dict) or not metadata:
+                raise CdrBadArgument("set_metadata 需要 metadata 对象")
+            for key, val in metadata.items():
+                if key not in writable:
+                    warnings.append(f"{key} 不可写（可用：{', '.join(sorted(writable))}）")
+                    continue
+                try:
+                    setattr(md, key, str(val))
+                    applied.append(key)
+                except Exception as exc:  # noqa: BLE001
+                    warnings.append(f"{key} 写入失败：{exc}")
+        values = {f: _s(lambda f=f: str(getattr(md, f))) for f in read_fields}
+        result = {"action": act, "metadata": values, "writable": sorted(writable)}
+        if act == "set_metadata":
+            result["applied"] = applied
+            result["warnings"] = warnings
+        return result
+    if act == "palette_create":
+        if not palette_name or not palette_path:
+            raise CdrBadArgument("palette_create 需要 palette_name 与 palette_path")
+        app = _app_of(doc)
+        pal = app.Palettes.Create(str(palette_name), str(palette_path), bool(overwrite))
+        if pal is None:
+            raise CdrBadArgument("Palettes.Create 返回空（检查路径/名称）")
+        added: list = []
+        add_warnings: list[str] = []
+        for spec in (palette_colors or []):
+            try:
+                pal.AddColor(_color(doc, spec))
+                added.append(spec)
+            except Exception as exc:  # noqa: BLE001
+                add_warnings.append(f"{spec!r}: {exc}")
+        pal.SaveAs(str(palette_path))
+        ident = _s(lambda: str(pal.Identifier), "")
+        count = _n(lambda: int(app.Palettes.Count), 0)
+        index = None
+        for i in range(1, count + 1):
+            if str(_s(lambda i=i: str(app.Palettes.Item(i).Identifier), "")) == ident:
+                index = i
+                break
+        return {"action": act, "name": _s(lambda: str(pal.Name)),
+                "identifier": ident or None, "palette_index": index,
+                "color_count": _n(lambda: int(pal.ColorCount)),
+                "added": len(added), "path": str(palette_path),
+                "exists": os.path.exists(str(palette_path)),
+                "bytes": os.path.getsize(str(palette_path))
+                if os.path.exists(str(palette_path)) else 0,
+                "warnings": add_warnings}
     # arrowhead
     with mm_units(doc):
         page = _page(doc, page_index)
@@ -3069,6 +3131,8 @@ SHAPE_OPS = (
     "batch_outline_to_curves", "fill_mode", "pixel_aligned", "range_boundary",
     # 第九波：投影平面
     "project", "unproject",
+    # 第十波：把对象/选区提取成新文档
+    "to_document",
 )
 
 
@@ -3143,6 +3207,22 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
                 still_grouped = int(_s(lambda: int(shape.Type), -1)) == 7
             return {"op": op, "done": True,
                     "warning": "该对象未完全解开（可能含子组合）" if still_grouped else None}
+
+        if op == "to_document":
+            with atomic(doc, label):
+                if target:
+                    src_shape = find_shape(doc, page, target)
+                    new_doc = src_shape.CreateDocumentFrom(False)
+                else:
+                    sr = selection_range(doc)
+                    if _n(lambda: int(sr.Count), 0) < 1:
+                        raise CdrBadArgument("to_document 需要 target 或先选中对象")
+                    new_doc = sr.CreateDocumentFrom(False)
+            return {"op": op,
+                    "document_name": _s(lambda: str(new_doc.Name)),
+                    "pages": _n(lambda: int(new_doc.Pages.Count), 0),
+                    "shapes": total_shapes(new_doc),
+                    "note": "新文档已创建；可用 cdr_documents 获取 document_id"}
 
         shape = find_shape(doc, page, target or {})
 

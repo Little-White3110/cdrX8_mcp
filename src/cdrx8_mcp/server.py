@@ -531,6 +531,7 @@ def cdr_shape_ops(document_id: str, op: str, target: dict | None = None,
       compare（other,compare_type,condition）对象比较（返回 same 布尔）
       project / unproject（plane 0=front 1=right 2=top, reference_point 1~9,
                           apply_to_duplicate）把对象投影到 3D 平面/反投影
+      to_document（target 或当前选择集）把对象/选区提取成**新文档**（返回 document_id）
     """
     def _run():
         doc, sess = _with_doc(document_id)
@@ -553,6 +554,10 @@ def cdr_shape_ops(document_id: str, op: str, target: dict | None = None,
             plane=plane, reference_point=reference_point,
             apply_to_duplicate=apply_to_duplicate,
         ), label="cdr_shape_ops")
+        if str(op).lower() == "to_document" and result.get("document_name"):
+            new_sess = registry().get_or_create(result["document_name"])
+            result["document_id"] = new_sess.sid
+            result["hint"] = "新文档已建会话；调用 cdr_inspect(document_id) 获取 revision/token"
         return _commit(doc, sess, result, warnings)
 
     return _guard(_run)
@@ -951,6 +956,9 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
             tint: float = 100.0,
             pattern_fills: list | None = None, pattern_pixels: list | None = None,
             pattern_lines: list | None = None, clear_canvas: bool = True,
+            metadata: dict | None = None, palette_name: str | None = None,
+            palette_path: str | None = None, palette_colors: list | None = None,
+            overwrite: bool = False,
             expected_revision: int | None = None, snapshot_token: str | None = None,
             page_index: int | None = None) -> dict:
     """文档级操作。
@@ -977,9 +985,15 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
                        pattern_pixels=[[x,y],…] / pattern_lines=[[x1,y1,x2,y2],…]；
                        返回 canvas_index，供 cdr_modify 图案填充/图案透明使用
       textures         列出 Corel 纹理库名称（供 fill={"type":"texture","name":...}）
+      metadata         读文档元数据（Title/Author/Subject/Keywords/Notes/Copyright…）
+      set_metadata     写文档元数据（metadata={...}，只写白名单字段）
+      palette_create   新建自定义调色板并落盘：palette_name + palette_path +
+                       palette_colors=[...]；返回 palette_index（可用于位图 9 号调色板模式）
     """
     def _run():
         doc, sess = _with_doc(document_id)
+        resolved_palette_path = str(resolve_write_path(palette_path, overwrite=overwrite)[0]) \
+            if palette_path else None
         kwargs = dict(target=target, page_index=page_index, value=value,
                       from_unit=from_unit, to_unit=to_unit, x=x, y=y, x2=x2, y2=y2,
                       x_samples=x_samples, y_samples=y_samples, layout=layout,
@@ -987,13 +1001,16 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
                       color_index=color_index, palette_id=palette_id,
                       spot_name=spot_name, tint=tint,
                       pattern_fills=pattern_fills, pattern_pixels=pattern_pixels,
-                      pattern_lines=pattern_lines, clear_canvas=clear_canvas)
+                      pattern_lines=pattern_lines, clear_canvas=clear_canvas,
+                      metadata=metadata, palette_name=palette_name,
+                      palette_path=resolved_palette_path,
+                      palette_colors=palette_colors, overwrite=overwrite)
         if action == "info":
             return _com(lambda _b: ops.doc_ops(doc, "info", **kwargs), label="cdr_doc")
         if action in {"clear_selection", "units", "sample_color", "fonts",
                       "palettes", "palette_color", "palette_open_fixed",
                       "palette_colors", "spot_color", "pattern_canvas",
-                      "textures"}:
+                      "textures", "metadata", "palette_create"}:
             return _com(lambda _b: ops.doc_ops(doc, action, **kwargs), label="cdr_doc")
         warnings = _check_view(sess, expected_revision, snapshot_token, doc)
         result = _com(lambda _b: ops.doc_ops(doc, action, **kwargs), label="cdr_doc")

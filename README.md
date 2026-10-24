@@ -7,9 +7,9 @@
 
 > **已在真机验证**：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）+ Python 3.11.9 64 位
 > - 单元测试 **55 项通过**
-> - 端到端联调（真实 CorelDRAW）**180/180 通过**
+> - 端到端联调（真实 CorelDRAW）**187/187 通过**
 > - 能力边界来自对 `vgcoreauto.tlb` 的反解（196 个自动化类 / 1619 个方法）+ 逐项实跑
-> - 方法级覆盖 **41.0%**（主干 20 接口 53.3%），可用 `python scripts/coverage_audit.py` 复现
+> - 方法级覆盖 **41.4%**（主干 20 接口 53.6%），可用 `python scripts/coverage_audit.py` 复现
 > - 完整清单见 [docs/COVERAGE.md](docs/COVERAGE.md)
 
 ---
@@ -70,7 +70,7 @@ python -m cdrx8_mcp              # 启动 MCP 服务器（stdio）
 | `cdr_text` | 排版级：内容 / 字体 / 字号 / 粗斜体 / 下划线 / 对齐 / 大小写 / 项目符号 / 首字下沉 / 行距字距 / 前后插入 / 沿路径 / 自适应 / 转曲 / 艺术字↔段落字互转 / 段落内容读写与替换 / 文本区间 / **读取全文·指定区间·导出纯文本** / **字体属性读取·断字设置读取** / **OpenType 特性** |
 | `cdr_replace_text` | 全文档文字替换（底层用 X8 原生 `Page.TextReplace`） |
 | `cdr_select` | 按名字 / 类型 / 矩形框选，加入选择集；**可移除或清空选择集** |
-| `cdr_shape_ops` | **布尔与整形**：weld / trim / intersect / combine / group / ungroup / break_apart / to_curves / **outline_to_curves** / to_symbol / powerclip / fillet / chamfer / scallop / **step_repeat / distribute / boundary / perspective / separate / parallel_curves / rasterize / batch_outline_to_curves / fill_mode / pixel_aligned / range_boundary / envelope_from_shape / compare / project / unproject** |
+| `cdr_shape_ops` | **布尔与整形**：weld / trim / intersect / combine / group / ungroup / break_apart / to_curves / **outline_to_curves** / to_symbol / powerclip / fillet / chamfer / scallop / **step_repeat / distribute / boundary / perspective / separate / parallel_curves / rasterize / batch_outline_to_curves / fill_mode / pixel_aligned / range_boundary / envelope_from_shape / compare / project / unproject / to_document** |
 | `cdr_align` | 对齐与分布（左中右 / 上下中 / 等间距，对齐对象或页面） |
 | `cdr_find` | 按名字或类型查找（跨图层） |
 | `cdr_style` | **对象样式**：列出 / 从对象创建（fill·outline·character·paragraph）/ **基于已有样式派生** / 按名套用 / 改名 / 删除 / **读可读属性·改属性** / 列派生样式 / **样式表 .cdst 导入导出** / **颜色样式与颜色协调** |
@@ -78,7 +78,7 @@ python -m cdrx8_mcp              # 启动 MCP 服务器（stdio）
 | `cdr_node` | **节点/线段级编辑（第五波打通）**：列节点·列线段 / 移动·选中·删除 / 圆角·倒角· scallop·平滑 / 拉伸·旋转·斜切·断开 / 加节点·断线 / 读写贝塞尔控制点 / 按坐标找节点与线段 |
 | `cdr_bitmap` | 位图：信息 / 转色彩模式（rgb·cmyk·gray·bw）/ **阈值二值化** / **调色板模式 0~9（9=自定义调色板）** / **双色调 0~3（可给 .cpd 预设）** / **取像素颜色** / 图像缓冲信息 / 重采样 / **扩边** / 裁剪 |
 | `cdr_color` | **颜色运算（纯 Python）**：解析成 HEX/RGB/CMYK/Gray/HLS/Lab、转换、两色混合 |
-| `cdr_doc` | **文档级**：概况 / 清空选择集 / 清撤销栈 / **登记调色板** / **用曲线生成自定义箭头** / **单位换算** / **取色（点/区域）** / **字体列表** / **调色板列表·取色·固定调色板打开·颜色枚举·专色创建** / **图案画布创建** / **纹理库列表** / **显示隐藏对象** / **页面版式** / **重复上一操作** |
+| `cdr_doc` | **文档级**：概况 / 清空选择集 / 清撤销栈 / **登记调色板** / **用曲线生成自定义箭头** / **单位换算** / **取色（点/区域）** / **字体列表** / **调色板列表·取色·固定调色板打开·颜色枚举·专色创建·自定义调色板创建** / **图案画布创建** / **纹理库列表** / **文档元数据读写** / **显示隐藏对象** / **页面版式** / **重复上一操作** |
 | `cdr_view` | **视图**：刷新重绘 / 激活窗口 / 文档↔屏幕坐标换算 / **屏幕距离↔文档距离** |
 
 ### 图层 / 页面 / 文件
@@ -183,7 +183,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ---
 
-## X8 特有问题（56 条，全部实测）
+## X8 特有问题（61 条，全部实测）
 
 这些是 **X8 与 2024+ 的差异**，也是本项目存在的主要理由。
 
@@ -245,6 +245,11 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 | 54 | **`Text.GetFontProperties` 返回默认结构体** | Name=''、Size≈1e-38；真实字体用 `Text.Story.Font/Size/Bold/Italic/Underline` | 用结构体会读到空字体 |
 | 55 | **断字设置与 HTML 兼容文本写不进去** | `SetHyphenationSettings` 调用不报错但值不变；`MakeHTMLCompatible` 返回 False | 只提供断字读取 |
 | 56 | **`OpenDocumentAsCopy` 参数无法传递** | Options 传 0 / None 都是 `TypeError: Python instance can not be converted to a COM object` | 需要副本请用 SaveAs 新路径 |
+| 57 | **文档元数据在 `Document.Metadata` 下，不是 Document 直接属性** | `Metadata.Title/Author/Subject/Keywords/Notes/Copyright` 可读写；`Revision/DocLanguage/DocID/LastAuthor` 只读 | 直接 `doc.Keywords` 会 AttributeError |
+| 58 | **对象/选区可以直接变成新文档** | `Shape.CreateDocumentFrom(False)` / `ShapeRange.CreateDocumentFrom(False)` 返回 `IVGDocument` | 新文档关闭时偶发「服务器出现意外情况」，需容错 |
+| 59 | **自定义调色板可创建并落盘** | `app.Palettes.Create(名称, 路径, True)` + `AddColor(颜色)` + `SaveAs(路径)`；文件约 260 B | 路径必须是绝对路径 |
+| 60 | **`Metadata.Localizable*` 是 `IVGLocalizableString` 对象** | 不能直接 `str()` 当文本用；读取普通 Title/Keywords 即可 | 读 Localizable 字段会得到对象 repr |
+| 61 | **混合/曲线贴笔触确定不可用** | `CreateBlend` 传 Shape/ShapeRange/`_oleobj_` 全部 TypeError；`CreateCurveMappedToStroke` 传 shape/curve/`_oleobj_` 全部「类型不匹配」 | 不要再尝试绕过 |
 
 改代码前请先读 [`src/cdrx8_mcp/constants.py`](src/cdrx8_mcp/constants.py) 里的注释。
 
@@ -292,7 +297,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ```powershell
 python -m pytest -q                # 55 项纯逻辑测试，任何平台可跑
-python scripts/live_smoke.py       # 180 项端到端，需要 CorelDRAW X8
+python scripts/live_smoke.py       # 187 项端到端，需要 CorelDRAW X8
 python scripts/live_smoke.py --keep   # 保留文档方便肉眼看效果
 python scripts/coverage_audit.py   # 覆盖率审计（复现 README/COVERAGE 里的数字）
 ```
@@ -314,6 +319,7 @@ weld/fillet → 框选/组合/解组 → 对齐 → 图层 → 查找 → 分页
 **图案画布填充/图案透明 → 剪贴板复制/剪切（同文档+跨文档）→ 对象移入/复制到图层** →
 **模板创建文档 → 样式表 .cdst 导出/导入 → 颜色样式/颜色协调 → 纹理库列表与纹理填充 →
 3D 平面投影/反投影 → 字体属性与断字设置读取** →
+**文档元数据读写 → 对象/选区提取为新文档 → 自定义调色板创建与位图应用** →
 过期 token 拒绝 → 关闭。
 
 完整能力矩阵见 [docs/COVERAGE.md](docs/COVERAGE.md)。

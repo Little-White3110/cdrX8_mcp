@@ -1533,6 +1533,84 @@ def main() -> int:
                   f"font={font}")
             check("断字设置可读", (hyph.get("min_word_length") or 0) > 0, f"hyph={hyph}")
 
+    # ---------------- 15p. 第十波：文档元数据 / 对象提取成新文档 / 自定义调色板 ----------------
+    print("\n[15p] 第十波：文档元数据 + 提取新文档 + 自定义调色板")
+    fresh10 = server.cdr_inspect(doc_id)
+    if "state" in fresh10:
+        state = fresh10["state"]
+    w10 = server.cdr_create(doc_id, items=[
+        {"type": "rectangle", "x": 20, "y": 260, "width": 40, "height": 25,
+         "fill": "#CC0000", "outline": {"width": 1, "color": "#000000"}},
+        {"type": "bitmap", "x": 90, "y": 260, "width": 24, "height": 24,
+         "color": "#00FF00", "pixels_w": 8, "pixels_h": 8},
+    ], expected_revision=state["revision"], snapshot_token=state["snapshot_token"])
+    if no_error("创建第十波测试对象", w10):
+        state = w10["state"]
+        e1 = w10["created"][0]["name"]
+        eb = w10["created"][1]["name"]
+
+        # --- 文档元数据 ---
+        md0 = server.cdr_doc(doc_id, "metadata")
+        if no_error("cdr_doc(metadata get)", md0):
+            check("文档元数据可读", isinstance(md0.get("metadata"), dict)
+                  and "DocID" in (md0.get("metadata") or {}),
+                  f"keys={list((md0.get('metadata') or {}).keys())[:6]}")
+        md1 = server.cdr_doc(doc_id, "set_metadata", metadata={
+            "Title": "W10 Smoke", "Author": "cdrX8_mcp",
+            "Keywords": "mcp;coreldraw", "Notes": "wave10"},
+            expected_revision=state["revision"], snapshot_token=state["snapshot_token"])
+        if no_error("cdr_doc(set_metadata)", md1):
+            vals = md1.get("metadata") or {}
+            check("文档元数据可写", vals.get("Title") == "W10 Smoke"
+                  and vals.get("Author") == "cdrX8_mcp",
+                  f"Title={vals.get('Title')} Author={vals.get('Author')}")
+            state = md1["state"]
+
+        # --- 对象提取成新文档 ---
+        td = server.cdr_shape_ops(doc_id, "to_document", target={"name": e1},
+                                  expected_revision=state["revision"],
+                                  snapshot_token=state["snapshot_token"])
+        if no_error("cdr_shape_ops(to_document)", td):
+            check("对象提取为新文档", bool(td.get("document_name"))
+                  and (td.get("pages") or 0) >= 1 and (td.get("shapes") or 0) >= 1,
+                  f"name={td.get('document_name')} shapes={td.get('shapes')}")
+            state = td["state"]
+            ndoc = td.get("document_id")
+            if ndoc:
+                nin = server.cdr_inspect(ndoc)
+                if no_error("cdr_inspect(提取出的文档)", nin):
+                    check("新文档可独立查看", (nin.get("state") or {}).get("shapes") >= 1,
+                          str((nin.get("state") or {}).get("shapes")))
+                # 关闭失败也不影响主流程（可能因无其他文档而报服务器错误）
+                server.cdr_close(ndoc)
+
+        # --- 自定义调色板 ---
+        pal_file = os.path.join(out, "w10_palette.xml")
+        if os.path.exists(pal_file):
+            os.remove(pal_file)
+        pal = server.cdr_doc(doc_id, "palette_create", palette_name="W10Palette",
+                             palette_path=pal_file,
+                             palette_colors=["#FF0000", "#00FF00", "#0000FF"],
+                             overwrite=True)
+        if no_error("cdr_doc(palette_create)", pal):
+            check("自定义调色板已创建并落盘", bool(pal.get("palette_index"))
+                  and pal.get("color_count") == 3 and pal.get("exists") is True,
+                  f"index={pal.get('palette_index')} bytes={pal.get('bytes')}")
+            pcol = server.cdr_doc(doc_id, "palette_colors",
+                                  palette_index=pal.get("palette_index"), limit=5)
+            if no_error("cdr_doc(palette_colors 自定义)", pcol):
+                check("自定义调色板颜色可枚举", (pcol.get("matched") or 0) == 3,
+                      f"matched={pcol.get('matched')}")
+            pb = server.cdr_bitmap(doc_id, {"name": eb}, action="paletted",
+                                   palette_type=9,
+                                   palette_index=pal.get("palette_index"),
+                                   expected_revision=state["revision"],
+                                   snapshot_token=state["snapshot_token"])
+            if no_error("cdr_bitmap(paletted 自定义调色板)", pb):
+                check("自定义调色板可用于位图", pb.get("mode") == 3,
+                      f"mode={pb.get('mode')}")
+                state = pb["state"]
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,
