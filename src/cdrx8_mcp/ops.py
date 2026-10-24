@@ -231,6 +231,48 @@ def save_as_copy(doc: Any, path: str) -> dict:
     }
 
 
+VIEW_ACTIONS = ("refresh", "activate", "to_screen", "to_document", "distance_to_screen")
+
+
+def view_ops(doc: Any, action: str, *, x: float | None = None, y: float | None = None,
+             distance: float = 10.0) -> dict:
+    """视图/窗口操作（IVGWindow，实测可用）。"""
+    act = (action or "refresh").lower()
+    if act not in VIEW_ACTIONS:
+        raise CdrBadArgument(f"未知 action {action!r}；可用：{', '.join(VIEW_ACTIONS)}")
+    win = _s(lambda: doc.ActiveWindow)
+    if win is None:
+        # 实测：按名取回的 Document 偶尔取不到 ActiveWindow，退到 Application 层
+        app = _app_of(doc)
+        win = _s(lambda: app.ActiveWindow)
+        if win is None:
+            wins = _s(lambda: app.Windows)
+            if wins is not None and _n(lambda: int(wins.Count), 0) > 0:
+                win = _s(lambda: wins.Item(1))
+    if win is None:
+        raise CdrBadArgument(
+            "当前没有活动窗口（文档可能未激活）；可先调用 cdr_pages(action='activate')")
+
+    if act == "refresh":
+        win.Refresh()
+        return {"action": act, "refreshed": True}
+    if act == "activate":
+        win.Activate()
+        return {"action": act, "activated": True}
+    if act == "to_screen":
+        if x is None or y is None:
+            raise CdrBadArgument("to_screen 需要 x 与 y（文档坐标）")
+        pt = _s(lambda: tuple(win.DocumentToScreen(float(x), float(y))))
+        return {"action": act, "screen": [_round(v) for v in pt] if pt else None}
+    if act == "to_document":
+        if x is None or y is None:
+            raise CdrBadArgument("to_document 需要 x 与 y（屏幕坐标）")
+        pt = _s(lambda: tuple(win.ScreenToDocument(float(x), float(y))))
+        return {"action": act, "document": [_round(v) for v in pt] if pt else None}
+    val = _s(lambda: float(win.DocumentDistanceToScreenDistance(float(distance))))
+    return {"action": act, "document_distance": distance, "screen_distance": _round(val)}
+
+
 DOC_ACTIONS = ("info", "clear_selection", "clear_undo", "palette", "arrowhead")
 
 
@@ -1487,6 +1529,41 @@ def _apply_changes(doc: Any, shape: Any, changes: dict) -> dict:
         except Exception as exc:  # noqa: BLE001
             warnings.append(f"复制描边失败：{exc}")
 
+    if "fill_from" in changes:
+        try:
+            src = find_shape(doc, doc.ActivePage, changes["fill_from"])
+            shape.Fill.CopyAssign(src.Fill)
+            applied.append("fill_from")
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"复制填充失败：{exc}")
+
+    if changes.get("affine"):
+        try:
+            m = list(changes["affine"])
+            if len(m) != 6:
+                raise CdrBadArgument("affine 需要 6 个数字 [d11,d12,d21,d22,centerX,centerY]")
+            shape.AffineTransform(*[float(v) for v in m])
+            applied.append("affine")
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"仿射变换失败：{exc}")
+
+    if changes.get("align_to"):
+        try:
+            spec = changes["align_to"] if isinstance(changes["align_to"], dict) else {}
+            mode = str(spec.get("mode", "page_center")).lower()
+            typ = int(spec.get("type", 1))
+            if mode == "page_center":
+                shape.AlignToPageCenter(typ, 0)
+            elif mode == "point":
+                shape.AlignToPoint(typ, float(spec.get("x", 0)), float(spec.get("y", 0)), 0)
+            elif mode == "grid":
+                shape.AlignToGrid(typ, 0)
+            else:
+                raise CdrBadArgument("align_to.mode 可用 page_center / point / grid")
+            applied.append("align_to")
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"对齐失败：{exc}")
+
     if changes.get("flip") is not None:
         try:
             shape.Flip(int(changes["flip"]))
@@ -1764,6 +1841,52 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
         elif op == "powerclip":
             shape.AddToPowerClip(target_shape, bool(center_in_container))
         return {"op": op, "done": True}
+
+
+def batch_modify(doc: Any, page_index: int | None, selector: dict, changes: dict,
+                 label: str = "cdr_modify_all") -> dict:
+    """对一批对象套用同样的改动。
+
+    selector 支持：
+      {"all": true}                 本页所有对象
+      {"type_id": 1}                按类型（1矩形 2椭圆 3曲线 4多边形 6文字 7组合体）
+      {"name": "cdr_xxx"}           按名字
+      {"selection": true}           当前选择集
+    整批合成**一个 undo 步**；单个对象失败不会中断整批，失败原因会汇总返回。
+    """
+    if not isinstance(selector, dict) or not selector:
+        raise CdrBadArgument("selector 不能为空")
+    matched: list[Any] = []
+    errors: list[str] = []
+    with mm_units(doc):
+        page = _page(doc, page_index)
+        if selector.get("selection"):
+            sel = doc.Selection().Shapes
+            for i in range(1, int(sel.Count) + 1):
+                matched.append(sel.Item(i))
+        else:
+            want_type = selector.get("type_id")
+            want_name = selector.get("name")
+            for _idx, _li, _j, shape in _iter_page_shapes(page):
+                if want_type and int(_s(lambda s=shape: int(s.Type), -1)) != int(want_type):
+                    continue
+                if want_name and str(_s(lambda s=shape: str(s.Name), "")) != str(want_name):
+                    continue
+                matched.append(shape)
+        if not matched:
+            raise CdrBadArgument("没有匹配到任何对象")
+
+        done = 0
+        with atomic(doc, label):
+            for i, shape in enumerate(matched, 1):
+                try:
+                    _apply_changes(doc, shape, changes)
+                    done += 1
+                except Exception as exc:  # noqa: BLE001
+                    if len(errors) < 5:
+                        errors.append(f"#{i}: {exc}")
+        return {"matched": len(matched), "modified": done, "errors": errors,
+                "changes": sorted(changes)}
 
 
 def align_shapes(doc: Any, page_index: int | None = None, horizontal: str = "none",

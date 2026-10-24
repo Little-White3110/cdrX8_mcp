@@ -114,31 +114,34 @@ python scripts/live_smoke.py     # 46 项端到端（真实 CorelDRAW）
 用 AST 扫描 `src/cdrx8_mcp/*.py`，收集所有 `.方法名(` 调用与 `setattr/getattr` 的属性名，
 与主干接口的方法名求交集。
 
-**全局：447 / 1619 = 27.6%**（第一轮为 21.2%）
+**全局：461 / 1619 = 28.5%**（第一轮 21.2% → 第二轮 27.6% → 本轮 28.5%）
+**主干 20 接口：261 / 743 = 35.1%**
+
+复现命令：`python scripts/coverage_audit.py`（会临时展开类型库到 `tmp/gen_py`，跑完自动清理）
 
 | 接口 | 方法数 | 已调用 | 覆盖 |
 |---|---:|---:|---:|
 | `IVGPage` | 21 | 18 | **86%** |
 | `IVGFountainFill` | 6 | 5 | 83% |
+| `IVGWindow` | 8 | 6 | **75%** |
 | `IVGNode` ⚠️ | 18 | 8 | 44%（同名误计，实际无节点入口） |
-| `IVGCurve` | 36 | 15 | **42%** |
+| `IVGCurve` | 36 | 15 | 42% |
 | `IVGTextRange` | 31 | 13 | 42% |
 | `IVGFill` | 12 | 5 | 42% |
+| `IVGShape` | 123 | 49 | 40% |
 | `IVGSubPath` | 38 | 15 | 39% |
+| `IVGShapeRange` | 125 | 48 | 38% |
 | `IVGText` | 29 | 11 | 38% |
 | `IVGOutline` | 8 | 3 | 38% |
 | `IVGTransparency` | 8 | 3 | 38% |
-| `IVGShape` | 123 | 45 | 37% |
-| `IVGShapeRange` | 125 | 44 | 35% |
 | `IVGLayer` | 49 | 16 | 33% |
 | `IVGBitmap` | 15 | 5 | 33% |
 | `IVGDocument` | 74 | 22 | 30% |
-| `IVGWindow` | 8 | 2 | 25% |
+| `IVGApplication` | 78 | 13 | 17% |
 | `IVGColorContext` | 6 | 1 | 17% |
-| `IVGApplication` | 78 | 12 | 15% |
 | `IVGColor` | 43 | 4 | 9%（色彩运算已改纯 Python，见下） |
 | `IVGStyle` | 15 | 1 | 7% |
-| **合计** | **743** | **248** | **33.4%** |
+| **合计** | **743** | **261** | **35.1%** |
 
 > **怎么读这两个数**：
 > 1. 全局 27.6% 覆盖 1619 个方法（含变体与重复）；主干 20 接口 33.4%。
@@ -173,19 +176,22 @@ python scripts/live_smoke.py     # 46 项端到端（真实 CorelDRAW）
 | 自定义箭头 | `cdr_doc(action="arrowhead")` | ✅ |
 | 清撤销栈 / 清选区 | `cdr_doc(action="clear_undo"/"clear_selection")` | ✅ |
 | 另存副本（不换当前路径） | `cdr_save(as_copy=true)` | ✅（注意：X8 仍会改文档名） |
+| **批量样式** | `cdr_modify(target={"all":true}/{"type_id":n})` | ✅ 21 个对象一批改完，0 失败 |
+| 复制填充 / 描边 | `cdr_modify(changes={"fill_from"/"outline_from"})` | ✅ |
+| 仿射变换 / 对齐到页面中心·点·网格 | `cdr_modify(changes={"affine":[...], "align_to":{mode}})` | ✅ |
+| 视图刷新与坐标换算 | `cdr_view(action="refresh"/"to_screen"/"to_document"/"distance_to_screen")` | ✅ |
 
 ## 七之二、仍未接入（第三轮候选）
 
 | 能力 | 接口 | 为什么还没做 |
 |---|---|---|
-| 仿射变换 / 对齐到点·页面中心·网格 | `Shape.AffineTransform`、`AlignToPoint/PageCenter/Grid` | 参数形态未验，优先级低于已接入项 |
-| 视图刷新与坐标换算 | `IVGWindow`（6 个） | Agent 场景价值低（做预览截图才用） |
 | 从内存图建位图 | `Layer.CreateBitmap/CreateBitmap2` | 需要 ImageData 对象，未找到构造入口 |
 | 位图转黑白/双色调/调色板 | `Bitmap.ConvertToBW/Duotone/Paletted` | 需要 RenderType / Duotone / Palette 选项对象 |
 | 自定义描边图案 | `Fill.ApplyPostscriptFill/ApplyHatchFill` | 需要 PostScript 索引 / Hatch 库 |
 | 色彩管理 | `IVGColorContext`（6 个） | 交付环节，非创作环节 |
 | 对象样式 | `IVGStyle`（15 个） | 类别常量未找到有效取值（0~8 全失败） |
 | 打印 | `Document.PrintOut()` | **故意不接**：会真的发出打印任务 |
+| 整页插入 / 跨文档合并 | `Document.InsertPages` | 传 Page 对象报「找不到成员」，未找到正确形态 |
 | 事件订阅 | `IVGApplicationEvents` / `IVGDocumentEvents` | 需要 COM 连接点，pywin32 支持有限 |
 | CorelScript 工具函数 | `ICorelScriptTools`（45 个：单位换算、三角、日期、文件夹遍历） | 大部分与 CorelDRAW 无关；单位换算已在 `mm_units` 内部处理 |
 | 数学工具 | `IVGMathUtils`（19 个） | 同上 |

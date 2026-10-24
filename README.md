@@ -7,9 +7,10 @@
 
 > **已在真机验证**：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）+ Python 3.11.9 64 位
 > - 单元测试 **55 项通过**
-> - 端到端联调（真实 CorelDRAW）**75/75 通过**
+> - 端到端联调（真实 CorelDRAW）**81/81 通过**
 > - 能力边界来自对 `vgcoreauto.tlb` 的反解（196 个自动化类 / 1619 个方法）+ 逐项实跑
-> - 方法级覆盖 **27.6%**（主干 20 接口 33.4%），完整清单见 [docs/COVERAGE.md](docs/COVERAGE.md)
+> - 方法级覆盖 **28.5%**（主干 20 接口 35.1%），可用 `python scripts/coverage_audit.py` 复现
+> - 完整清单见 [docs/COVERAGE.md](docs/COVERAGE.md)
 
 ---
 
@@ -45,7 +46,7 @@ python -m cdrx8_mcp              # 启动 MCP 服务器（stdio）
 
 ---
 
-## 工具一览（24 个）
+## 工具一览（25 个）
 
 ### 会话与文档
 
@@ -65,7 +66,7 @@ python -m cdrx8_mcp              # 启动 MCP 服务器（stdio）
 | 工具 | 作用 |
 |---|---|
 | `cdr_create` | 批量创建：矩形（含圆角）/ 椭圆（含圆弧、扇形）/ 多边形 / 星形 / 螺旋 / 网格 / 直线 / 贝塞尔 / 文字 / 段落文字 / 参考线 |
-| `cdr_modify` | 移动、缩放、旋转、翻转、斜切、矩阵变换、克隆、锁定；填充（纯色/渐变/纹理/无色）；描边（含**虚线**与**箭头**）；**透明度**；投影、轮廓图、封套；层级、复制、删除 |
+| `cdr_modify` | 单个或**批量**修改：移动、缩放、旋转、翻转、斜切、矩阵/仿射变换、克隆、锁定；填充（纯色/渐变/纹理/无色/**从别的对象复制**）；描边（含**虚线**与**箭头**）；**透明度**；投影、轮廓图、封套；**渐变微调**；**色彩滤镜**；层级、复制、删除。批量用 `target={"all":true}` 或 `{"type_id":n}` |
 | `cdr_text` | 排版级：内容 / 字体 / 字号 / 粗斜体 / 下划线 / 对齐 / **大小写** / **项目符号** / **首字下沉** / **行距字距** / 前后插入 / **沿路径** / 文本框自适应 / **转曲** / **艺术字↔段落字互转** / **段落内容读写与替换** / **文本区间选择·基线对齐·属性复制** |
 | `cdr_replace_text` | 全文档文字替换（底层用 X8 原生 `Page.TextReplace`） |
 | `cdr_select` | 按名字 / 类型 / 矩形框选，加入选择集 |
@@ -76,6 +77,7 @@ python -m cdrx8_mcp              # 启动 MCP 服务器（stdio）
 | `cdr_bitmap` | 位图：信息 / 转色彩模式（rgb·cmyk·gray·bw）/ 重采样 / 裁剪 |
 | `cdr_color` | **颜色运算（纯 Python）**：解析成 HEX/RGB/CMYK/Gray/HLS/Lab、转换、两色混合 |
 | `cdr_doc` | **文档级**：概况 / 清空选择集 / 清撤销栈 / **登记调色板** / **用曲线生成自定义箭头** |
+| `cdr_view` | **视图**：刷新重绘 / 激活窗口 / 文档↔屏幕坐标换算 |
 
 ### 图层 / 页面 / 文件
 
@@ -178,7 +180,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ---
 
-## X8 特有问题（24 条，全部实测）
+## X8 特有问题（25 条，全部实测）
 
 这些是 **X8 与 2024+ 的差异**，也是本项目存在的主要理由。
 
@@ -208,6 +210,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 | 22 | **`IVGColor` 不暴露任何分量属性** | `Red`/`Cyan`/`Gray` 全 AttributeError；`ConvertToCMYK` 只改 Type | 色彩运算改到纯 Python（`colors.py`） |
 | 23 | **`SubPath.GetPointAt` 返回 `IVGPoint`** | 坐标取 `.x` / `.y`（小写） | 取 `PositionX`/元组会失败 |
 | 24 | **文本 `GetContents/SetContents/Replace` 只支持段落文本** | 艺术字上调用会报「该操作需要段落文本对象」 | 先 `to_paragraph` |
+| 25 | **按名取回的 Document 有时取不到 `ActiveWindow`** | 退到 `app.ActiveWindow`，再退到 `app.Windows.Item(1)`（已内置） | 视图类操作报「没有活动窗口」 |
 
 改代码前请先读 [`src/cdrx8_mcp/constants.py`](src/cdrx8_mcp/constants.py) 里的注释。
 
@@ -244,8 +247,9 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ```powershell
 python -m pytest -q                # 55 项纯逻辑测试，任何平台可跑
-python scripts/live_smoke.py       # 75 项端到端，需要 CorelDRAW X8
+python scripts/live_smoke.py       # 81 项端到端，需要 CorelDRAW X8
 python scripts/live_smoke.py --keep   # 保留文档方便肉眼看效果
+python scripts/coverage_audit.py   # 覆盖率审计（复现 README/COVERAGE 里的数字）
 ```
 
 联调产物默认写到 `tmp/live_smoke/`（已在 `.gitignore` 内，可随时整个删掉）。

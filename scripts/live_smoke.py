@@ -642,6 +642,56 @@ def main() -> int:
                       str(ef.get("applied")))
                 state = ef["state"]
 
+    # ---------------- 15i. 批量样式 / 填充复制 / 对齐增强 / 视图 ----------------
+    print("\n[15i] 批量样式 + 填充复制 + 对齐增强 + 视图")
+    pr = server.cdr_create(doc_id, items=[
+        {"type": "rectangle", "x": 20, "y": 120, "width": 30, "height": 20,
+         "fill": "#22AA22"},
+        {"type": "rectangle", "x": 60, "y": 120, "width": 30, "height": 20}],
+        expected_revision=state["revision"], snapshot_token=state["snapshot_token"])
+    if no_error("创建批量测试对象", pr):
+        state = pr["state"]
+        src_name, dst_name = pr["created"][0]["name"], pr["created"][1]["name"]
+        ff = server.cdr_modify(doc_id, target={"name": dst_name},
+                               changes={"fill_from": {"name": src_name}},
+                               expected_revision=state["revision"],
+                               snapshot_token=state["snapshot_token"])
+        if no_error("cdr_modify(fill_from)", ff):
+            check("复制填充已应用", "fill_from" in ff.get("applied", []),
+                  str(ff.get("applied")))
+            state = ff["state"]
+        al = server.cdr_modify(doc_id, target={"name": dst_name},
+                               changes={"align_to": {"mode": "page_center"}},
+                               expected_revision=state["revision"],
+                               snapshot_token=state["snapshot_token"])
+        if no_error("cdr_modify(align_to page_center)", al):
+            check("对齐页面中心已应用", "align_to" in al.get("applied", []),
+                  str(al.get("applied")))
+            state = al["state"]
+        # 批量：按类型给所有矩形换描边
+        bm = server.cdr_modify(doc_id, target={"type_id": 1},
+                               changes={"outline": {"width": 0.5, "color": "#999999"}},
+                               expected_revision=state["revision"],
+                               snapshot_token=state["snapshot_token"])
+        if no_error("cdr_modify(type_id=1 批量)", bm):
+            check("批量修改命中多个对象",
+                  (bm.get("matched") or 0) >= 2 and bm.get("modified") == bm.get("matched"),
+                  f"matched={bm.get('matched')} modified={bm.get('modified')}")
+            state = bm["state"]
+        bm2 = server.cdr_modify(doc_id, target={"all": True}, changes={"locked": False},
+                                expected_revision=state["revision"],
+                                snapshot_token=state["snapshot_token"])
+        if no_error("cdr_modify(all 批量)", bm2):
+            check("全页批量修改可用", (bm2.get("matched") or 0) >= 1,
+                  f"matched={bm2.get('matched')} errors={len(bm2.get('errors') or [])}")
+            state = bm2["state"]
+    vw = server.cdr_view(doc_id, action="refresh")
+    if no_error("cdr_view(refresh)", vw):
+        check("视图刷新可用", vw.get("refreshed") is True)
+    vs = server.cdr_view(doc_id, action="to_screen", x=100, y=100)
+    if no_error("cdr_view(to_screen)", vs):
+        check("文档->屏幕坐标可用", vs.get("screen") is not None, str(vs.get("screen")))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

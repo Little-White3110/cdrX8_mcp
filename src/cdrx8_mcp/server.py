@@ -140,7 +140,7 @@ def cdr_status() -> dict:
             info.update({"running": False, "probe_error": str(exc)})
         except Exception as exc:  # noqa: BLE001
             info.update({"running": False, "probe_error": f"{type(exc).__name__}: {exc}"})
-        info["tools"] = 24
+        info["tools"] = 25
         return info
 
     return _guard(_run)
@@ -282,20 +282,22 @@ def cdr_create(document_id: str, items: list[dict],
 def cdr_modify(document_id: str, target: dict, changes: dict,
                expected_revision: int | None = None, snapshot_token: str | None = None,
                page_index: int | None = None) -> dict:
-    """修改单个对象。target 定位，changes 描述改动。
+    """修改对象。target 定位，changes 描述改动。
 
-    target: {"index":1} / {"name":"cdr_ab12cd34"} / {"selection":true}
+    **单个** target:{"index":1} / {"name":"cdr_ab12"} / {"selection":true}
+    **批量** target:{"all":true} 或 {"type_id":1}（本页所有 / 按类型）—— 一批一个 undo 步
+
     changes 可用键：
       dx,dy（相对移动）｜x,y（绝对左下角）｜width,height[,keep_aspect]｜rotate
-      fill（纯色/渐变/纹理/"none"）｜outline（宽度或
-        {width,color,caps,join,behind_fill,dash,start_arrow,end_arrow}）
+      affine [d11,d12,d21,d22,cx,cy]｜align_to {mode:"page_center"|"point"|"grid", x,y,type}
+      fill（纯色/渐变/纹理/"none"）｜fill_from（复制另一对象的填充：{"name":"..."}）
+      outline（宽度或 {width,color,caps,join,behind_fill,dash,start_arrow,end_arrow}）
+      outline_from（复制另一对象的描边：{"name":"..."}）
       drop_shadow {opacity,offset_x,offset_y,color}｜contour {offset,steps}｜envelope 1..39
       transparency（0~100 均匀透明度 / {type:"fountain",start,end,angle} / "none"）
       gradient {angle, edge_pad, translate:[dx,dy], transformations:[d11,d12,d21,d22], opaque}
       effect {type:"bci"|"gamma"|"hsl"|"invert"|"posterize"|"color_balance", ...}
-      outline_from（复制另一个对象的描边：{"name":"..."}）
-      flip（0 水平 / 1 垂直）｜skew {x,y}｜clone {dx,dy}
-      align_to_page 1~3｜align_to_shape {target,type}
+      flip（0 水平 / 1 垂直）｜skew {x,y}｜clone {dx,dy}｜locked true/false
       text｜font｜size｜bold｜italic｜underline｜alignment
       fit_to_path（{"name":"曲线对象"}）｜fit_frame（文本适应文本框）
       name｜to_front｜to_back｜duplicate[,dup_dx,dup_dy]｜delete
@@ -309,6 +311,13 @@ def cdr_modify(document_id: str, target: dict, changes: dict,
             return {"error": "bad_argument", "message": "changes 不能为空"}
         doc, sess = _with_doc(document_id)
         warnings = _check_view(sess, expected_revision, snapshot_token, doc)
+        # 批量选择器：{"all":true} / {"type_id":n} / {"name":...} / {"selection":true}
+        if isinstance(target, dict) and (target.get("all") or "type_id" in target
+                                         or target.get("selection")):
+            result = _com(lambda _b: ops.batch_modify(doc, page_index, target, changes),
+                          label="cdr_modify:batch")
+            result.setdefault("warnings", [])
+            return _commit(doc, sess, result, warnings + result["warnings"])
         result = _com(lambda _b: ops.modify_shape(doc, page_index, target, changes),
                       label="cdr_modify")
         result.setdefault("warnings", [])
@@ -686,6 +695,27 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
         if action == "clear_selection":
             return result
         return _commit(doc, sess, result, warnings)
+
+    return _guard(_run)
+
+
+@mcp.tool()
+def cdr_view(document_id: str, action: str = "refresh",
+             x: float | None = None, y: float | None = None,
+             distance: float = 10.0) -> dict:
+    """视图/窗口操作。
+
+    action:
+      refresh              强制重绘（导出前刷新、或改完看效果）
+      activate             激活窗口
+      to_screen（x,y）      文档坐标 -> 屏幕坐标
+      to_document（x,y）    屏幕坐标 -> 文档坐标
+      distance_to_screen（distance）  文档距离 -> 屏幕距离
+    """
+    def _run():
+        doc, _sess = _with_doc(document_id)
+        return _com(lambda _b: ops.view_ops(doc, action, x=x, y=y, distance=distance),
+                    label="cdr_view")
 
     return _guard(_run)
 
