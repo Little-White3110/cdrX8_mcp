@@ -1219,7 +1219,8 @@ def cdr_bitmap(document_id: str, target: dict, action: str = "info",
                image_color: Any = "#FFFFFF", image_pixels_w: int = 16,
                image_pixels_h: int = 16, image_fills: list | None = None,
                image_pixels: list | None = None, offset_x: int = 0,
-               offset_y: int = 0,
+               offset_y: int = 0, effect_name: str | None = None,
+               effect_command: str | None = None,
                expected_revision: int | None = None,
                snapshot_token: str | None = None,
                page_index: int | None = None) -> dict:
@@ -1240,6 +1241,12 @@ def cdr_bitmap(document_id: str, target: dict, action: str = "info",
                     image_fills=[{x,y,width,height,color}] +
                     image_pixels=[[x,y,color],…] + offset_x/y
                     （实测 SetImageData 必须把 Alpha 传 None）
+      effect        位图特效：effect_name + effect_command（命令串语法见 X8 文档），
+                    例：effect_name="Whirlpool",
+                        effect_command="WhirlpoolEffect WhirpoolSpacing=20,"
+                                       "WhirlpoolSmear=9,WhirlpoolTwist=70,"
+                                       "WhirlpoolStreak=60,WhirpoolWarp=1,"
+                                       "WhirlpoolRandomSeed=0"
       resample      重采样，width/height 目标像素、dpi 目标分辨率
       inflate       四周扩边，inflate_x / inflate_y 毫米
       crop          执行裁剪
@@ -1267,7 +1274,8 @@ def cdr_bitmap(document_id: str, target: dict, action: str = "info",
             palette_index=palette_index, image_color=image_color,
             image_pixels_w=image_pixels_w, image_pixels_h=image_pixels_h,
             image_fills=image_fills, image_pixels=image_pixels,
-            offset_x=offset_x, offset_y=offset_y), label="cdr_bitmap")
+            offset_x=offset_x, offset_y=offset_y,
+            effect_name=effect_name, effect_command=effect_command), label="cdr_bitmap")
         return _commit(doc, sess, result, warnings)
 
     return _guard(_run)

@@ -1968,6 +1968,45 @@ def main() -> int:
                   and (ce.get("effects") or 0) == 0, str(ce))
             state = ce["state"]
 
+    # ---------------- 15v. 第十六波：位图特效（ApplyBitmapEffect 命令串） ----------------
+    print("\n[15v] 第十六波：位图特效命令串")
+    fresh16 = server.cdr_inspect(doc_id)
+    if "state" in fresh16:
+        state = fresh16["state"]
+    w16 = server.cdr_create(doc_id, items=[
+        {"type": "bitmap", "x": 60, "y": 260, "width": 30, "height": 30,
+         "color": "#FF0000", "pixels_w": 16, "pixels_h": 16},
+    ], expected_revision=state["revision"], snapshot_token=state["snapshot_token"])
+    if no_error("创建第十六波位图", w16):
+        state = w16["state"]
+        b16 = w16["created"][0]["name"]
+        ri16 = server.cdr_bitmap(doc_id, {"name": b16}, action="replace_image",
+                                 image_color="#0000FF",
+                                 image_fills=[{"x": 0, "y": 0, "width": 7,
+                                               "height": 7, "color": "#00FF00"}],
+                                 expected_revision=state["revision"],
+                                 snapshot_token=state["snapshot_token"])
+        if no_error("cdr_bitmap(replace_image 前置)", ri16):
+            state = ri16["state"]
+        p_before = server.cdr_bitmap(doc_id, {"name": b16}, action="pixel",
+                                     x_px=1, y_px=1)
+        eff16 = server.cdr_bitmap(doc_id, {"name": b16}, action="effect",
+                                  effect_name="Whirlpool",
+                                  effect_command="WhirlpoolEffect WhirpoolSpacing=20,"
+                                                 "WhirlpoolSmear=9,WhirlpoolTwist=70,"
+                                                 "WhirlpoolStreak=60,WhirpoolWarp=1,"
+                                                 "WhirlpoolRandomSeed=0",
+                                  expected_revision=state["revision"],
+                                  snapshot_token=state["snapshot_token"])
+        if no_error("cdr_bitmap(effect Whirlpool)", eff16):
+            check("位图特效命令串可执行", eff16.get("action") == "effect",
+                  f"action={eff16.get('action')}")
+            state = eff16["state"]
+            p_after = server.cdr_bitmap(doc_id, {"name": b16}, action="pixel",
+                                        x_px=1, y_px=1)
+            check("位图特效改变像素", (p_before.get("color") != p_after.get("color")),
+                  f"before={p_before.get('color')} after={p_after.get('color')}")
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

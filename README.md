@@ -7,9 +7,9 @@
 
 > **已在真机验证**：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）+ Python 3.11.9 64 位
 > - 单元测试 **55 项通过**
-> - 端到端联调（真实 CorelDRAW）**217/217 通过**
+> - 端到端联调（真实 CorelDRAW）**219/219 通过**
 > - 能力边界来自对 `vgcoreauto.tlb` 的反解（196 个自动化类 / 1619 个方法）+ 逐项实跑
-> - 方法级覆盖 **42.4%**（主干 20 接口 55.0%），可用 `python scripts/coverage_audit.py` 复现
+> - 方法级覆盖 **42.5%**（主干 20 接口 55.2%），可用 `python scripts/coverage_audit.py` 复现
 > - 完整清单见 [docs/COVERAGE.md](docs/COVERAGE.md)
 
 ---
@@ -76,7 +76,7 @@ python -m cdrx8_mcp              # 启动 MCP 服务器（stdio）
 | `cdr_style` | **对象样式**：列出 / 从对象创建（fill·outline·character·paragraph）/ **基于已有样式派生** / 按名套用 / 改名 / 删除 / **读可读属性·改属性** / 列派生样式 / **样式表 .cdst 导入导出** / **颜色样式与颜色协调** |
 | `cdr_path` | 曲线/子路径级：长度面积 / 偏移轮廓（刀模线）/ **折线采样** / **追加圆·椭圆·矩形·三点弧·贝塞尔** / **节点精简** / **自焊接** / **路径等分** / **加节点·断开·移动子路径** / **点在形状内·曲线求交·取点取切向** / **参数取点·切向量·法向量·速度·交点·按坐标找节点/线段·反转方向·焊接子路径·去重叠** |
 | `cdr_node` | **节点/线段级编辑（第五波打通）**：列节点·列线段 / 移动·选中·删除 / 圆角·倒角· scallop·平滑 / 拉伸·旋转·斜切·断开 / 加节点·断线 / 读写贝塞尔控制点 / 按坐标找节点与线段 |
-| `cdr_bitmap` | 位图：信息 / 转色彩模式（rgb·cmyk·gray·bw）/ **阈值二值化** / **调色板模式 0~9（9=自定义调色板）** / **双色调 0~3（可给 .cpd 预设）** / **取像素颜色** / 图像缓冲信息 / 重采样 / **扩边** / 裁剪 / **内容替换（SetImageData，支持色块/像素绘制）** |
+| `cdr_bitmap` | 位图：信息 / 转色彩模式（rgb·cmyk·gray·bw）/ **阈值二值化** / **调色板模式 0~9（9=自定义调色板）** / **双色调 0~3（可给 .cpd 预设）** / **取像素颜色** / 图像缓冲信息 / 重采样 / **扩边** / 裁剪 / **内容替换（SetImageData，支持色块/像素绘制）** / **位图特效命令串（ApplyBitmapEffect）** |
 | `cdr_color` | **颜色运算（纯 Python）**：解析成 HEX/RGB/CMYK/Gray/HLS/Lab、转换、两色混合 |
 | `cdr_doc` | **文档级**：概况 / 清空选择集 / 清撤销栈 / **登记调色板** / **用曲线生成自定义箭头（可登记全局箭头库）** / **单位换算** / **取色（点/区域）** / **字体列表** / **调色板列表·取色·固定调色板打开·颜色枚举·专色创建·自定义调色板创建** / **图案画布创建（含区域变换）** / **纹理库列表** / **文档元数据读写** / **数据字段·对象数据·色彩管理·线型样式** / **文档设置读写** / **应用信息·文档回滚** / **显示隐藏对象** / **页面版式** / **重复上一操作** |
 | `cdr_view` | **视图**：刷新重绘 / 激活窗口 / 文档↔屏幕坐标换算 / **屏幕距离↔文档距离** |
@@ -183,7 +183,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ---
 
-## X8 特有问题（80 条，全部实测）
+## X8 特有问题（83 条，全部实测）
 
 这些是 **X8 与 2024+ 的差异**，也是本项目存在的主要理由。
 
@@ -269,6 +269,9 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 | 78 | **`CreateExtrude`/`CreateLens` 必须传全参数（含颜色对象）** | 只传前几个 int 参数报 `TypeError: Python instance can not be converted to a COM object`；补齐 Color 对象后成功 | 已封装默认颜色参数 |
 | 79 | **效果通过 `Shape.Effects` 访问** | `Effects.Count/Item(i)`；`Effect.Extrude` → IVGEffectExtrude、`Effect.Lens` → IVGEffectLens；`Separate()/Clear()` 可用 | 属性可读写（Depth/Angle/Shading/Rate/Color…） |
 | 80 | **`MathUtils` 无法创建点对象** | CLSID `{E98800C5-8C42-45FD-81EA-2E751150E40F}` 报「没有注册类」，Application 无 MathUtils 属性 | 尺寸标注/连接线因此仍不可用 |
+| 81 | **`ApplyBitmapEffect` 用命令串控制效果** | `ApplyBitmapEffect("Whirlpool", "WhirlpoolEffect WhirpoolSpacing=20,WhirlpoolSmear=9,WhirlpoolTwist=70,WhirlpoolStreak=60,WhirpoolWarp=1,WhirlpoolRandomSeed=0")`；执行后像素由绿(0,255,0)变(0,243,0) | 命令串格式：`效果名Effect 参数=值,…` |
+| 82 | **`CreateFreeConnector` 报「未实现」** | 即使只传 4 个数字也返回 E_NOTIMPL；`CreateLinearDimension/CreateConnector` 需要点对象 | 连接线/尺寸标注仍不可用 |
+| 83 | **本机 `SymbolLibraries.Count=0`** | 没有符号库，`CreateSymbol` 无法取到符号名 | 需先安装符号库文件 |
 
 改代码前请先读 [`src/cdrx8_mcp/constants.py`](src/cdrx8_mcp/constants.py) 里的注释。
 
@@ -317,7 +320,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ```powershell
 python -m pytest -q                # 55 项纯逻辑测试，任何平台可跑
-python scripts/live_smoke.py       # 217 项端到端，需要 CorelDRAW X8
+python scripts/live_smoke.py       # 219 项端到端，需要 CorelDRAW X8
 python scripts/live_smoke.py --keep   # 保留文档方便肉眼看效果
 python scripts/coverage_audit.py   # 覆盖率审计（复现 README/COVERAGE 里的数字）
 ```
@@ -345,6 +348,7 @@ weld/fillet → 框选/组合/解组 → 对齐 → 图层 → 查找 → 分页
 **图案画布区域变换 → 图案填充微调 → 文本格式查询（@font/@bold）** →
 **位图内容替换 → 文本格式段读取 → 应用信息 → 文档回滚（已保存副本）** →
 **立体化 → 立体化微调 → 透镜 → 效果枚举/清除** →
+**位图内容替换 → 位图 Whirlpool 特效（命令串）** →
 过期 token 拒绝 → 关闭。
 
 完整能力矩阵见 [docs/COVERAGE.md](docs/COVERAGE.md)。

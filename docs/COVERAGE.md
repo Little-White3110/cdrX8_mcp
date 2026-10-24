@@ -2,7 +2,7 @@
 
 > 目的：证明"还有多少没探"。每一行要么有对应的工具，要么有实测失败证据。
 > 环境：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）/ Python 3.11.9 64 位
-> 最近更新：2026-10-25 第十五波（立体化 / 透镜 / 效果管理）
+> 最近更新：2026-10-25 第十六波（位图特效命令串）
 
 ## 怎么得出这份清单
 
@@ -33,7 +33,7 @@
 | `IVGText` | 30 | 已用：Story（**Font / Size / Bold / Italic / Underline 读取**）/ GetSpaceProperties / SetSpaceProperties / GetAlignProperties / SetAlignProperties / FitToPath / FitTextToFrame / **GetContents / Range / ExportToFile / GetHyphenationSettings**；GetFontProperties 结构体返回默认值不可信 |
 | `IVGTextRange` | 35 | 已用：Text / Font / Size / Bold / Italic / Underline / ChangeCase / ApplyBulletEffect / ApplyDropCapEffect / ApplyNoEffect / InsertBefore / InsertAfter / **SetOpenTypeFeature / GetOpenTypeFeature / Delete / Copy / Paste / Straighten / FindRanges / EnumRanges**；ApplyStyle 调用不报错但未观测到效果 |
 | `IVGColor` | 44 | 通过 Create*Color 间接使用（RGB/CMYK/Gray/Lab/HLS/Registration）；**ToString / GetName / CopyAppearance / StringAssign / IsSame / BlendWith / GetColorDistanceFrom** 均已实测 |
-| `IVGBitmap` | 16 | 已用：ConvertTo / ConvertToBW / **ConvertToPaletted（0~9） / ConvertToDuotone** / Resample / Crop / ResetCropEnvelope / Inflate / Mode / ResolutionX / Size / Image / Duotone / **SetImageData（Alpha 必须传 None）**；Trace 禁用（见下） |
+| `IVGBitmap` | 16 | 已用：ConvertTo / ConvertToBW / **ConvertToPaletted（0~9） / ConvertToDuotone** / Resample / Crop / ResetCropEnvelope / Inflate / Mode / ResolutionX / Size / Image / Duotone / **SetImageData（Alpha 必须传 None） / ApplyBitmapEffect（命令串）**；Trace 禁用（见下） |
 | `IVGFountainFill` | 7 | 通过 ApplyFountainFill 设置，未做二次编辑 |
 | `IVGTransparency` | 9 | 已用：ApplyUniformTransparency / ApplyFountainTransparency / **ApplyPatternTransparency（PatternCanvas 可用）** / ApplyNoTransparency / **Freeze / Unfreeze / Frozen** |
 | `IVGStyle` / `IVGStyleSheet` | 16 / 16 | **已覆盖（第六/七/九波）**：`CreateStyleFromShape`、`CreateStyle(category, based_on, name)`、`Styles.Find/Item/Count`、`Style.Name/CategoryName/DisplayName/BasedOn`、`Rename / Delete / GetAllPropertyNames / GetPropertyAsString / SetPropertyAsString / SetProperty / DerivedStyles / ToString`、`Shape.ApplyStyle("样式名")`；**`Document.SaveStyleSheet/LoadStyleSheet` 可导出/恢复 .cdst**；**`Document.CreateColorStyles(harmony>0)` 会生成颜色样式（AllColorStyles）**；`fill`/`outline` 分组名不可直接读写 |
@@ -72,7 +72,7 @@
 | 图层 | `cdr_layers`（增删改/显隐/锁定/打印/移动/**上下相邻查询·下移·粘贴剪贴板**） | ✅ |
 | **跨文档 / 对象到图层** | `cdr_modify(copy_clipboard/cut_clipboard)` + `cdr_layers(action="paste")`；`cdr_modify(move_to_layer/copy_to_layer)` | ✅ 第八波 |
 | 页面 | `cdr_pages`（列表/增删/插入空白页/切页/自定义尺寸/纸张预设/参考线/角度参考线/**吸附点**/解锁/包围盒） | ✅ |
-| 位图 | `cdr_bitmap`（信息/转色彩模式/重采样/裁剪/取消裁剪/取像素色·图像缓冲信息·调色板模式 0~9·双色调/**内容替换 SetImageData**） | ✅（Trace 除外） |
+| 位图 | `cdr_bitmap`（信息/转色彩模式/重采样/裁剪/取消裁剪/取像素色·图像缓冲信息·调色板模式 0~9·双色调/内容替换 SetImageData/**位图特效命令串 ApplyBitmapEffect**） | ✅（Trace 除外） |
 | 路径 | `cdr_path`（长度面积/偏移轮廓/追加子路径/折线点/反转方向·焊子路径·去重叠·参数取点·切/法向量·速度·交点·找节点/线段） | ✅ |
 | 导入导出 | `cdr_import` `cdr_export`（png/jpg/svg/pdf，可指定 DPI，可只导选区） | ✅ |
 | 文档 | `cdr_doc`（概况/清选区/清撤销栈/调色板/箭头/箭头登记/单位换算·取色·显示隐藏·版式·重复操作/字体列表·调色板列表·调色板取色/固定调色板打开·颜色枚举·专色创建/图案画布创建（**含区域变换**）/纹理库列表/文档元数据读写/自定义调色板创建/数据字段·对象数据·色彩管理·线型样式/文档设置读写/**应用信息·文档回滚**） | ✅ |
@@ -102,6 +102,9 @@
 | 文本区间套样式 | `TextRange.ApplyStyle(样式名)` | 调用不报错，但实测 `Bold/Size` 未变化（字符样式未生效或需其他条件） | 不推荐；整体样式用 `Shape.ApplyStyle` |
 | 文本格式查询的尺寸比较 | `TextRange.FindRanges("@size > 10")` | 报 `Incompatible unit powers of the operands: 'pt' and 'pt^0'`；`@size > 10pt` 解析失败 | 尺寸条件暂不可用；`@font = 'Arial'`、`@bold = true` 可用 |
 | 位图换内容 | `Bitmap.SetImageData(Image, Alpha, X, Y)` | `Alpha=0` 报 `TypeError: Python instance can not be converted to a COM object`；**Alpha=None 可用**，像素内容被替换 | 替换像素必须传 None |
+| 位图特效 | `Bitmap.ApplyBitmapEffect(UndoString, Command)` | 两个都是字符串；`Command` 是**效果命令串**，如 `"WhirlpoolEffect WhirpoolSpacing=20,WhirlpoolSmear=9,WhirlpoolTwist=70,WhirlpoolStreak=60,WhirpoolWarp=1,WhirlpoolRandomSeed=0"`，实测像素被改变 | 效果名/参数名需按 Corel 文档；已封装 `cdr_bitmap(action="effect")` |
+| 尺寸/连接线 | `Layer.CreateLinearDimension/CreateConnector` | 需要 IVGPoint；`MathUtils` CLSID 未注册，SubPath 取的点仍报 TypeError/类型不匹配 | 仍不可用；`CreateFreeConnector` 报「未实现」 |
+| 符号库 | `Application.SymbolLibraries` | 本机 Count=0，无符号库可 Add/插入 | 需先安装符号库文件 |
 | 文档回滚 | `Document.Revert()` | 可用（修改后 15→16→15 对象）；**破坏性**，丢弃未保存修改 | 已封装为 `cdr_doc(action="revert")`，调用前确认已保存 |
 | 立体化/透镜创建 | `Shape.CreateExtrude(...)` / `Shape.CreateLens(...)` | 只传前几个 int 参数报 `TypeError: Python instance can not be converted to a COM object`；**传全参数（含颜色对象）即可** | 已封装并补齐默认颜色参数 |
 | 点对象创建 | `Application.MathUtils.CreatePoint` | `MathUtils` CLSID `{E98800C5-…}` 报「没有注册类」，Application 上也没有 MathUtils 属性 | 尺寸标注/连接线仍不可用 |
@@ -171,6 +174,10 @@
 > * 立体化/透镜 **可用（第十五波）**：`CreateExtrude/CreateLens` 传**全参数（含颜色对象）**可创建；
 >   效果经 `Shape.Effects.Item(i).Extrude/.Lens` 读写（IVGEffectExtrude/IVGEffectLens）。
 > * 效果管理 **可用**：`Shape.Effects.Count/Item`、`Effect.Separate()/Clear()`；`clear_effects` 可一键清除。
+> * 位图特效 **可用（第十六波）**：`ApplyBitmapEffect(UndoString, Command)` 命令串，
+>   例 Whirlpool 命令串实测改变像素。
+> * 尺寸标注/连接线 **仍不可用**：`MathUtils` 未注册、点对象无法构造；
+>   `CreateFreeConnector` 报「未实现」；本机无符号库。
 
 ---
 
@@ -202,7 +209,7 @@
 
 ```powershell
 python -m pytest -q              # 55 项纯逻辑
-python scripts/live_smoke.py     # 217 项端到端（真实 CorelDRAW）
+python scripts/live_smoke.py     # 219 项端到端（真实 CorelDRAW）
 ```
 
 联调断言覆盖了上表所有 ✅ 项。反解脚本属于过程产物，已按要求放在 `tmp/` 并在完成时清理；
@@ -210,14 +217,14 @@ python scripts/live_smoke.py     # 217 项端到端（真实 CorelDRAW）
 
 ---
 
-## 六、量化覆盖率（2026-10-25 第十五波实测）
+## 六、量化覆盖率（2026-10-25 第十六波实测）
 
 方法：反解类型库拿到 196 个自动化类 / **1619** 个方法（已剔除 `QueryInterface` 等 COM 基础设施）；
 用 AST 扫描 `src/cdrx8_mcp/*.py`，收集所有 `.方法名(` 调用与 `setattr/getattr` 的属性名，
 与主干接口的方法名求交集。**注意：属性名（如 `curve.Nodes`）也会被计入**，所以本波数字含真实属性访问。
 
-**全局：687 / 1619 = 42.4%**（21.2% → … → 42.3% → 本轮 42.4%）
-**主干 20 接口：409 / 743 = 55.0%**
+**全局：688 / 1619 = 42.5%**（21.2% → … → 42.4% → 本轮 42.5%）
+**主干 20 接口：410 / 743 = 55.2%**
 
 复现命令：`python scripts/coverage_audit.py`（会临时展开类型库到 `tmp/gen_py`，跑完自动清理）
 
@@ -234,7 +241,7 @@ python scripts/live_smoke.py     # 217 项端到端（真实 CorelDRAW）
 | `IVGApplication` | 78 | 21 | 27% |
 | `IVGText` | 29 | 16 | **55%** |
 | `IVGNode` | 18 | 9 | 50% |
-| `IVGBitmap` | 15 | 10 | **67%** |
+| `IVGBitmap` | 15 | 11 | **73%** |
 | `IVGFill` | 12 | 7 | **58%** |
 | `IVGWindow` | 8 | 7 | **88%** |
 | `IVGFountainFill` | 6 | 5 | 83% |
@@ -243,10 +250,10 @@ python scripts/live_smoke.py     # 217 项端到端（真实 CorelDRAW）
 | `IVGTransparency` | 8 | 6 | **75%** |
 | `IVGStyle` | 15 | 8 | **53%** |
 | `IVGColorContext` | 6 | 1 | 17% |
-| **合计** | **743** | **409** | **55.0%** |
+| **合计** | **743** | **410** | **55.2%** |
 
 > **怎么读这两个数**：
-> 1. 全局 42.4% 覆盖 1619 个方法（含变体与重复）；主干 20 接口 55.0%。
+> 1. 全局 42.5% 覆盖 1619 个方法（含变体与重复）；主干 20 接口 55.2%。
 > 2. 它是**方法/属性名匹配**的近似值，同名方法会跨接口误计。
 > 3. `IVGColor` 的 21% 是**故意的**：实测不暴露分量属性，色彩运算在纯 Python 完成。
 > 4. 未调用方法多为变体（Wide/Ex/2/3 后缀）与事件订阅、CorelScriptTools/MathUtils。
@@ -442,6 +449,15 @@ python scripts/live_smoke.py     # 217 项端到端（真实 CorelDRAW）
 | MathUtils | `Application.MathUtils` | ❌ CLSID `{E98800C5-…}` 未注册、Application 无属性；尺寸/连接线点对象不可得 |
 | 混合 | `CreateBlend` | ❌ gen/raw 均失败，确定不可用 |
 
+## 七之十四、第十六波已接入（2026-10-25，位图特效命令串）
+
+| 能力 | 落地位置 | 实测 |
+|---|---|---|
+| **位图特效** | `cdr_bitmap(action="effect", effect_name=..., effect_command=...)` | ✅ `ApplyBitmapEffect("Whirlpool", "WhirlpoolEffect WhirpoolSpacing=20,WhirlpoolSmear=9,WhirlpoolTwist=70,WhirlpoolStreak=60,WhirpoolWarp=1,WhirlpoolRandomSeed=0")`；执行后像素 (1,1) 由绿(0,255,0) → (0,243,0) |
+| 命令串格式 | 第一参数 Undo 名，第二参数 `效果名Effect 参数=值,…` | 参考 Corel VBA 文档；Whirlpool 已实测，其他效果需按文档给参数 |
+| 尺寸/连接线 | `Layer.CreateLinearDimension/CreateConnector` | ❌ 点对象无法构造（MathUtils 未注册）；`CreateFreeConnector` 报「未实现」 |
+| 符号库 | `Application.SymbolLibraries` | ❌ Count=0，本机无库 |
+
 ## 七之二、仍未接入（第三轮候选）
 
 | 能力 | 接口 | 为什么还没做 |
@@ -463,15 +479,14 @@ python scripts/live_smoke.py     # 217 项端到端（真实 CorelDRAW）
 
 ## 八、一句话总结
 
-* **能力域覆盖**：38 个能力域 / 27 个工具，日常出图闭环完整；节点编辑、对象样式、专色、
+* **能力域覆盖**：39 个能力域 / 27 个工具，日常出图闭环完整；节点编辑、对象样式、专色、
   图案/纹理填充、跨文档复制、模板/样式表/颜色样式、文档元数据、对象数据字段、自定义虚线、
   文档设置、文本区间编辑、自定义箭头、图案微调、文本格式查询、位图内容替换、文档回滚、
-  立体化/透镜/效果管理都已补上。
-* **方法级覆盖**：全局 42.4%（687/1619），主干 20 接口 55.0%（409/743）。
+  立体化/透镜/效果管理、位图特效命令串都已补上。
+* **方法级覆盖**：全局 42.5%（688/1619），主干 20 接口 55.2%（410/743）。
 * **明确不可用**：位图描摹、文本导入、点集数组建曲线、混合（CreateBlend）、
   尺寸标注/连接线（MathUtils 点对象不可创建）、符号库、文件型图案/影线填充（本机无库）、
   曲线贴笔触、OpenDocumentAsCopy、HTML 兼容文本、断字写入、填充字符串、文本尺寸查询。
-* **第十五波修正的历史结论**：立体化/透镜可创建（须传全参数）；效果可通过
-  `Shape.Effects` + `Effect.Extrude/Lens` 读写；`Effect.Separate/Clear` 可用。
+* **第十六波新增**：`ApplyBitmapEffect` 用命令串执行位图特效（Whirlpool 实测改变像素）。
 
 

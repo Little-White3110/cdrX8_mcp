@@ -1064,7 +1064,8 @@ def objects_bounds(doc: Any, page_index: int | None = None,
 # --------------------------------------------------------------------------- #
 BITMAP_MODES = {"rgb": 1, "cmyk": 2, "gray": 3, "grayscale": 3, "bw": 4, "blackwhite": 4}
 BITMAP_ACTIONS = ("info", "convert", "resample", "crop", "reset_crop", "bw", "inflate",
-                  "pixel", "image_info", "duotone", "paletted", "replace_image")
+                  "pixel", "image_info", "duotone", "paletted", "replace_image",
+                  "effect")
 
 
 def _bitmap_of(shape: Any) -> Any:
@@ -1089,7 +1090,8 @@ def bitmap_action(doc: Any, page_index: int | None, target: dict, action: str, *
                   image_color: Any = "#FFFFFF", image_pixels_w: int = 16,
                   image_pixels_h: int = 16, image_fills: list | None = None,
                   image_pixels: list | None = None, offset_x: int = 0,
-                  offset_y: int = 0,
+                  offset_y: int = 0, effect_name: str | None = None,
+                  effect_command: str | None = None,
                   label: str = "cdr_bitmap") -> dict:
     """位图处理。
 
@@ -1218,6 +1220,10 @@ def bitmap_action(doc: Any, page_index: int | None, target: dict, action: str, *
                                    _color(doc, px[2]))
                 # ImageAlpha 必须传 None（传 0 会 TypeError）
                 bmp.SetImageData(image, None, int(offset_x), int(offset_y))
+            elif act == "effect":
+                if not effect_name or not effect_command:
+                    raise CdrBadArgument("effect 需要 effect_name 与 effect_command")
+                bmp.ApplyBitmapEffect(str(effect_name), str(effect_command))
     return {"action": act, **info()}
 
 
