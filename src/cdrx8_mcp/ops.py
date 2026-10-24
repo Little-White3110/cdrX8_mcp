@@ -283,7 +283,8 @@ DOC_ACTIONS = ("info", "clear_selection", "clear_undo", "palette", "arrowhead",
                "fonts", "palettes", "palette_color",
                "palette_open_fixed", "palette_colors", "spot_color",
                "pattern_canvas", "textures", "metadata", "set_metadata",
-               "palette_create")
+               "palette_create", "data_fields", "add_data_field", "object_data",
+               "color_context", "outline_styles")
 
 
 def doc_ops(doc: Any, action: str, *, target: dict | None = None,
@@ -300,7 +301,8 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
             pattern_lines: list | None = None, clear_canvas: bool = True,
             metadata: dict | None = None, palette_name: str | None = None,
             palette_path: str | None = None, palette_colors: list | None = None,
-            overwrite: bool = False) -> dict:
+            overwrite: bool = False, field_name: str | None = None,
+            field_format: str = "0") -> dict:
     """文档级操作。
 
     action:
@@ -616,6 +618,69 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
                 "bytes": os.path.getsize(str(palette_path))
                 if os.path.exists(str(palette_path)) else 0,
                 "warnings": add_warnings}
+    if act in {"data_fields", "add_data_field"}:
+        fields = doc.DataFields
+        if act == "add_data_field":
+            if not field_name:
+                raise CdrBadArgument("add_data_field 需要 field_name")
+            field = fields.Add(str(field_name), str(field_format), False, False, False)
+            if field is None:
+                raise CdrBadArgument("数据字段创建失败（格式字符串无效？实测 '0' 可用）")
+            return {"action": act,
+                    "field": {"name": _s(lambda: str(field.Name)),
+                              "data_type": _n(lambda: int(field.DataType)),
+                              "default_value": _s(lambda: str(field.DefaultValue))},
+                    "count": _n(lambda: int(fields.Count))}
+        count = _n(lambda: int(fields.Count), 0)
+        items = []
+        for i in range(1, min(count, 300) + 1):
+            try:
+                f = fields.Item(i)
+            except Exception:
+                continue
+            items.append({"name": _s(lambda f=f: str(f.Name)),
+                          "data_type": _n(lambda f=f: int(f.DataType)),
+                          "default_value": _s(lambda f=f: str(f.DefaultValue))})
+        return {"action": act, "count": count, "fields": items}
+    if act == "object_data":
+        page = _page(doc, page_index)
+        shape = find_shape(doc, page, target or {})
+        od = shape.ObjectData
+        count = _n(lambda: int(od.Count), 0)
+        items = []
+        for i in range(1, min(count, 200) + 1):
+            try:
+                it = od.Item(i)
+            except Exception:
+                continue
+            items.append({"field": _s(lambda it=it: str(it.DataField.Name)),
+                          "value": _s(lambda it=it: str(it.Value)),
+                          "formatted": _s(lambda it=it: str(it.FormattedValue))})
+        return {"action": act, "target": _s(lambda: str(shape.Name)),
+                "count": count, "data": items}
+    if act == "color_context":
+        cc = _s(lambda: doc.ColorContext)
+        if cc is None:
+            raise CdrBadArgument("该文档没有 ColorContext")
+        return {"action": act,
+                "read_only": bool(_s(lambda: bool(cc.ReadOnly), False)),
+                "rendering_intent": _n(lambda: int(cc.RenderingIntent)),
+                "blending_color_model": _n(lambda: int(cc.BlendingColorModel)),
+                "profile_count": _n(lambda: int(cc.ColorProfiles.Count), 0),
+                "profile_names": _s(lambda: str(cc.ColorProfileNameList)) or ""}
+    if act == "outline_styles":
+        app = _app_of(doc)
+        count = _n(lambda: int(app.OutlineStyles.Count), 0)
+        items = []
+        for i in range(1, min(count, 300) + 1):
+            try:
+                st = app.OutlineStyles.Item(i)
+            except Exception:
+                continue
+            items.append({"index": _n(lambda st=st: int(st.Index)),
+                          "dash_count": _n(lambda st=st: int(st.DashCount)),
+                          "enhanced": bool(_s(lambda st=st: bool(st.Enhanced), False))})
+        return {"action": act, "count": count, "styles": items}
     # arrowhead
     with mm_units(doc):
         page = _page(doc, page_index)
@@ -2309,6 +2374,7 @@ def _align(value: Any) -> int:
 
 
 _CREATED = {"n": 0}
+_OUTLINE_STYLE_CACHE: dict = {}
 
 
 def _short_id() -> str:
@@ -2418,6 +2484,23 @@ def _spot_color(doc: Any, spec: dict) -> Any:
     return color
 
 
+def _outline_style(app: Any, pattern: tuple) -> Any:
+    """创建/复用自定义虚线样式（虚拟样式必须 AddStyle 进集合才能赋值给 Outline）。"""
+    cache = _OUTLINE_STYLE_CACHE.setdefault("styles", {})
+    style = cache.get(pattern)
+    if style is not None:
+        try:
+            _ = int(style.Index)
+            return style
+        except Exception:
+            cache.pop(pattern, None)
+    virtual = app.CreateOutlineStyle(*[float(v) for v in pattern])
+    style = app.OutlineStyles.AddStyle(virtual)
+    if style is not None:
+        cache[pattern] = style
+    return style
+
+
 def apply_fill(doc: Any, shape: Any, spec: Any) -> str:
     """填充：纯色 / 渐变 / 纹理 / 专色 / 无色。返回实际应用的种类。"""
     if spec in (None, False, "none", {"type": "none"}):
@@ -2488,6 +2571,18 @@ def apply_outline(doc: Any, shape: Any, spec: Any) -> None:
         return
     if str(spec.get("type", "")).lower() == "spot":
         _outline_color(doc, shape, spec)
+
+    if spec.get("dash_pattern"):
+        pattern = tuple(float(v) for v in spec["dash_pattern"])
+        if len(pattern) not in (2, 4, 6):
+            raise CdrBadArgument("dash_pattern 需 2/4/6 个数字（实线段/空白段交替长度）")
+        app = _app_of(doc)
+        style = _outline_style(app, pattern)
+        if style is None:
+            raise CdrBadArgument("自定义虚线样式创建失败")
+        shape.Outline.Style = style
+        if spec.get("save_outline_styles"):
+            app.OutlineStyles.Save()
 
     app = None
     if "width" in spec:
@@ -3056,6 +3151,27 @@ def _apply_changes(doc: Any, shape: Any, changes: dict) -> dict:
             applied.append("copy_clipboard")
         except Exception as exc:  # noqa: BLE001
             warnings.append(f"复制到剪贴板失败：{exc}")
+
+    if isinstance(changes.get("data"), dict) and changes["data"]:
+        try:
+            data_format = str(changes.get("data_format", "0"))
+            fields = doc.DataFields
+            obj_data = shape.ObjectData
+            for field_name, val in changes["data"].items():
+                name = str(field_name)
+                field = None
+                if _s(lambda: bool(fields.IsPresent(name)), False):
+                    field = _s(lambda: fields.Item(name))
+                if field is None:
+                    field = fields.Add(name, data_format, False, False, False)
+                existing = _s(lambda: obj_data.Item(name))
+                if existing is not None:
+                    existing.Value = str(val)
+                else:
+                    obj_data.Add(field, str(val))
+                applied.append(f"data:{name}")
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"对象数据字段设置失败：{exc}")
 
     if changes.get("cut_clipboard"):
         try:

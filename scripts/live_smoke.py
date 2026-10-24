@@ -1611,6 +1611,81 @@ def main() -> int:
                       f"mode={pb.get('mode')}")
                 state = pb["state"]
 
+    # ---------------- 15q. 第十一波：对象数据字段 / 自定义虚线 / 色彩管理读取 ----------------
+    print("\n[15q] 第十一波：对象数据字段 + 自定义虚线 + 色彩管理")
+    fresh11 = server.cdr_inspect(doc_id)
+    if "state" in fresh11:
+        state = fresh11["state"]
+    w11 = server.cdr_create(doc_id, items=[
+        {"type": "rectangle", "x": 20, "y": 280, "width": 50, "height": 10,
+         "fill": "none", "outline": {"width": 2, "color": "#000000"}},
+    ], expected_revision=state["revision"], snapshot_token=state["snapshot_token"])
+    if no_error("创建第十一波测试对象", w11):
+        state = w11["state"]
+        q11 = w11["created"][0]["name"]
+
+        # --- 自定义虚线 ---
+        os_before = server.cdr_doc(doc_id, "outline_styles")
+        os_count_before = (os_before.get("count") or 0) if "error" not in os_before else 0
+        dash = server.cdr_modify(doc_id, {"name": q11}, {
+            "outline": {"width": 2, "color": "#000000",
+                        "dash_pattern": [2, 2, 0.5, 2]}},
+            expected_revision=state["revision"],
+            snapshot_token=state["snapshot_token"])
+        if no_error("cdr_modify(outline dash_pattern)", dash):
+            check("自定义虚线已应用", "outline" in (dash.get("applied") or []),
+                  str(dash.get("applied")) + " " + str(dash.get("warnings")))
+            state = dash["state"]
+        os_after = server.cdr_doc(doc_id, "outline_styles")
+        if no_error("cdr_doc(outline_styles)", os_after):
+            check("线型样式已注册", (os_after.get("count") or 0) >= os_count_before,
+                  f"{os_count_before} -> {os_after.get('count')}")
+
+        # --- 对象数据字段 ---
+        adf = server.cdr_doc(doc_id, "add_data_field", field_name="W11SKU",
+                             field_format="0",
+                             expected_revision=state["revision"],
+                             snapshot_token=state["snapshot_token"])
+        if no_error("cdr_doc(add_data_field)", adf):
+            check("数据字段创建成功", (adf.get("field") or {}).get("name") == "W11SKU",
+                  str(adf.get("field")))
+            state = adf["state"]
+        df = server.cdr_doc(doc_id, "data_fields")
+        if no_error("cdr_doc(data_fields)", df):
+            check("数据字段列表可读", isinstance(df.get("fields"), list),
+                  f"count={df.get('count')}")
+        md = server.cdr_modify(doc_id, {"name": q11},
+                               {"data": {"W11SKU": "A-123"}},
+                               expected_revision=state["revision"],
+                               snapshot_token=state["snapshot_token"])
+        if no_error("cdr_modify(data)", md):
+            check("对象数据字段已写入",
+                  any(a == "data:W11SKU" for a in md.get("applied", [])),
+                  str(md.get("applied")))
+            state = md["state"]
+        od = server.cdr_doc(doc_id, "object_data", target={"name": q11})
+        if no_error("cdr_doc(object_data)", od):
+            item = next((x for x in od.get("data", []) if x.get("field") == "W11SKU"),
+                        {})
+            check("对象数据字段可读", item.get("value") == "A-123", str(item))
+        upd = server.cdr_modify(doc_id, {"name": q11},
+                                {"data": {"W11SKU": "B-456"}},
+                                expected_revision=state["revision"],
+                                snapshot_token=state["snapshot_token"])
+        if no_error("cdr_modify(data update)", upd):
+            state = upd["state"]
+            od2 = server.cdr_doc(doc_id, "object_data", target={"name": q11})
+            item2 = next((x for x in od2.get("data", []) if x.get("field") == "W11SKU"),
+                         {})
+            check("对象数据字段可更新", item2.get("value") == "B-456", str(item2))
+
+        # --- 色彩管理读取 ---
+        cc = server.cdr_doc(doc_id, "color_context")
+        if no_error("cdr_doc(color_context)", cc):
+            check("色彩管理信息可读", isinstance(cc.get("rendering_intent"), int)
+                  and bool(cc.get("profile_names")),
+                  f"intent={cc.get('rendering_intent')} profiles={str(cc.get('profile_names'))[:50]}")
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

@@ -313,6 +313,9 @@ def cdr_modify(document_id: str, target: dict, changes: dict,
       （先 cdr_doc(action="palette_open_fixed", palette_id=3) 打开 PANTONE 调色板）
       outline（宽度或 {width,color,caps,join,behind_fill,dash,start_arrow,end_arrow}）
       outline 的 color 也可用专色：{"type":"spot","palette_index":1,"color_index":1}
+      自定义虚线：outline={"width":2,"dash_pattern":[2,2],"save_outline_styles":false}
+                （2/4/6 个数字，实线/空白交替；实测会注册成新的线型样式）
+      对象数据：changes={"data":{"SKU":"A-123"},"data_format":"0"}（数据合并字段，持久化在文档里）
       outline_from（复制另一对象的描边：{"name":"..."}）
       drop_shadow {opacity,offset_x,offset_y,color}｜contour {offset,steps}｜envelope 1..39
       transparency（0~100 均匀透明度 / {type:"fountain",start,end,angle} /
@@ -958,7 +961,8 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
             pattern_lines: list | None = None, clear_canvas: bool = True,
             metadata: dict | None = None, palette_name: str | None = None,
             palette_path: str | None = None, palette_colors: list | None = None,
-            overwrite: bool = False,
+            overwrite: bool = False, field_name: str | None = None,
+            field_format: str = "0",
             expected_revision: int | None = None, snapshot_token: str | None = None,
             page_index: int | None = None) -> dict:
     """文档级操作。
@@ -989,6 +993,11 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
       set_metadata     写文档元数据（metadata={...}，只写白名单字段）
       palette_create   新建自定义调色板并落盘：palette_name + palette_path +
                        palette_colors=[...]；返回 palette_index（可用于位图 9 号调色板模式）
+      data_fields      列出文档数据字段（数据合并用）
+      add_data_field   新增数据字段：field_name + field_format（实测 "0" 可用）
+      object_data      读对象的数据字段值（target 指定对象）
+      color_context    读文档色彩管理（渲染意图、混合模式、配置文件列表）
+      outline_styles   列出线型样式（索引/虚线段数/enhanced）
     """
     def _run():
         doc, sess = _with_doc(document_id)
@@ -1004,13 +1013,15 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
                       pattern_lines=pattern_lines, clear_canvas=clear_canvas,
                       metadata=metadata, palette_name=palette_name,
                       palette_path=resolved_palette_path,
-                      palette_colors=palette_colors, overwrite=overwrite)
+                      palette_colors=palette_colors, overwrite=overwrite,
+                      field_name=field_name, field_format=field_format)
         if action == "info":
             return _com(lambda _b: ops.doc_ops(doc, "info", **kwargs), label="cdr_doc")
         if action in {"clear_selection", "units", "sample_color", "fonts",
                       "palettes", "palette_color", "palette_open_fixed",
                       "palette_colors", "spot_color", "pattern_canvas",
-                      "textures", "metadata", "palette_create"}:
+                      "textures", "metadata", "palette_create", "data_fields",
+                      "object_data", "color_context", "outline_styles"}:
             return _com(lambda _b: ops.doc_ops(doc, action, **kwargs), label="cdr_doc")
         warnings = _check_view(sess, expected_revision, snapshot_token, doc)
         result = _com(lambda _b: ops.doc_ops(doc, action, **kwargs), label="cdr_doc")
