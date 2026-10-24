@@ -517,6 +517,15 @@ def cdr_shape_ops(document_id: str, op: str, target: dict | None = None,
                   condition: int = 0, pixel_aligned: bool = True,
                   fill_mode: int = 0, plane: int = 0,
                   reference_point: int = 9, apply_to_duplicate: bool = False,
+                  extrude_type: int = 1, vp_type: int = 1,
+                  vp_x: float | None = None, vp_y: float | None = None,
+                  depth: float = 20.0, shading: int = 0,
+                  base_color: Any = "#808080", shading_color: Any = "#404040",
+                  bevel_depth: float = 0.0, bevel_angle: float = 45.0,
+                  bevel_color: Any = "#000000", bevel_only: bool = False,
+                  lens_type: int = 1, rate: float = 50.0,
+                  color1: Any = "#FFFFFF", color2: Any = "#000000",
+                  color_map_palette: int = 0, effect: dict | None = None,
                   expected_revision: int | None = None,
                   snapshot_token: str | None = None,
                   page_index: int | None = None) -> dict:
@@ -548,6 +557,14 @@ def cdr_shape_ops(document_id: str, op: str, target: dict | None = None,
       project / unproject（plane 0=front 1=right 2=top, reference_point 1~9,
                           apply_to_duplicate）把对象投影到 3D 平面/反投影
       to_document（target 或当前选择集）把对象/选区提取成**新文档**（返回 document_id）
+      extrude（extrude_type,vp_type,vp_x/vp_y,depth,shading,base_color,shading_color,
+               bevel_depth,bevel_angle,bevel_color,bevel_only）创建立体化效果；
+               effect={depth,angle_x,angle_y,angle_z,use_bevel,...} 微调
+      lens（lens_type,rate,color1,color2,color_map_palette）创建透镜效果；
+               effect={rate,magnification,fill_color,...} 微调
+      extrude_set / lens_set  只改已有效果属性（effect={...}）
+      effect_info            列出对象上的效果
+      clear_effects          清除对象上的所有效果
     """
     def _run():
         doc, sess = _with_doc(document_id)
@@ -569,6 +586,13 @@ def cdr_shape_ops(document_id: str, op: str, target: dict | None = None,
             condition=condition, pixel_aligned=pixel_aligned, fill_mode=fill_mode,
             plane=plane, reference_point=reference_point,
             apply_to_duplicate=apply_to_duplicate,
+            extrude_type=extrude_type, vp_type=vp_type, vp_x=vp_x, vp_y=vp_y,
+            depth=depth, shading=shading, base_color=base_color,
+            shading_color=shading_color, bevel_depth=bevel_depth,
+            bevel_angle=bevel_angle, bevel_color=bevel_color,
+            bevel_only=bevel_only, lens_type=lens_type, rate=rate,
+            color1=color1, color2=color2, color_map_palette=color_map_palette,
+            effect=effect,
         ), label="cdr_shape_ops")
         if str(op).lower() == "to_document" and result.get("document_name"):
             new_sess = registry().get_or_create(result["document_name"])

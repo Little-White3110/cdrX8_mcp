@@ -7,9 +7,9 @@
 
 > **已在真机验证**：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）+ Python 3.11.9 64 位
 > - 单元测试 **55 项通过**
-> - 端到端联调（真实 CorelDRAW）**212/212 通过**
+> - 端到端联调（真实 CorelDRAW）**217/217 通过**
 > - 能力边界来自对 `vgcoreauto.tlb` 的反解（196 个自动化类 / 1619 个方法）+ 逐项实跑
-> - 方法级覆盖 **42.3%**（主干 20 接口 54.8%），可用 `python scripts/coverage_audit.py` 复现
+> - 方法级覆盖 **42.4%**（主干 20 接口 55.0%），可用 `python scripts/coverage_audit.py` 复现
 > - 完整清单见 [docs/COVERAGE.md](docs/COVERAGE.md)
 
 ---
@@ -70,7 +70,7 @@ python -m cdrx8_mcp              # 启动 MCP 服务器（stdio）
 | `cdr_text` | 排版级：内容 / 字体 / 字号 / 粗斜体 / 下划线 / 对齐 / 大小写 / 项目符号 / 首字下沉 / 行距字距 / 前后插入 / 沿路径 / 自适应 / 转曲 / 艺术字↔段落字互转 / 段落内容读写与替换 / 文本区间 / 区间删除·复制·粘贴·拉直 / 读取全文·指定区间·导出纯文本 / **字体属性读取·断字设置读取·格式段列表·按格式查询区间（@font/@bold）** / OpenType 特性 |
 | `cdr_replace_text` | 全文档文字替换（底层用 X8 原生 `Page.TextReplace`） |
 | `cdr_select` | 按名字 / 类型 / 矩形框选，加入选择集；**可移除或清空选择集** |
-| `cdr_shape_ops` | **布尔与整形**：weld / trim / intersect / combine / group / ungroup / break_apart / to_curves / **outline_to_curves** / to_symbol / powerclip / fillet / chamfer / scallop / **step_repeat / distribute / boundary / perspective / separate / parallel_curves / rasterize / batch_outline_to_curves / fill_mode / pixel_aligned / range_boundary / envelope_from_shape / compare / project / unproject / to_document** |
+| `cdr_shape_ops` | **布尔与整形**：weld / trim / intersect / combine / group / ungroup / break_apart / to_curves / **outline_to_curves** / to_symbol / powerclip / fillet / chamfer / scallop / **step_repeat / distribute / boundary / perspective / separate / parallel_curves / rasterize / batch_outline_to_curves / fill_mode / pixel_aligned / range_boundary / envelope_from_shape / compare / project / unproject / to_document / extrude / lens / extrude_set / lens_set / effect_info / clear_effects** |
 | `cdr_align` | 对齐与分布（左中右 / 上下中 / 等间距，对齐对象或页面） |
 | `cdr_find` | 按名字或类型查找（跨图层） |
 | `cdr_style` | **对象样式**：列出 / 从对象创建（fill·outline·character·paragraph）/ **基于已有样式派生** / 按名套用 / 改名 / 删除 / **读可读属性·改属性** / 列派生样式 / **样式表 .cdst 导入导出** / **颜色样式与颜色协调** |
@@ -183,7 +183,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ---
 
-## X8 特有问题（77 条，全部实测）
+## X8 特有问题（80 条，全部实测）
 
 这些是 **X8 与 2024+ 的差异**，也是本项目存在的主要理由。
 
@@ -266,6 +266,9 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 | 75 | **`TextRange.EnumRanges(-1)` 可列格式段** | 每段返回 Text/Font/Size/Bold/Italic/Start/End | 混合格式文本可逐段读取 |
 | 76 | **`Document.Revert()` 可回滚到上次保存** | 实测 15→16→15 对象；**破坏性**，丢弃未保存修改 | 调用前确认已保存 |
 | 77 | **应用信息可读** | `GetSupportedOpenTypeFeatures()` 230 项；`CheckPlatformVersion(16/17)=true、18=false`；`IsUILanguageAvailable(1033/2052)=false` | 平台/语言判断语义未完全确认，按返回值展示 |
+| 78 | **`CreateExtrude`/`CreateLens` 必须传全参数（含颜色对象）** | 只传前几个 int 参数报 `TypeError: Python instance can not be converted to a COM object`；补齐 Color 对象后成功 | 已封装默认颜色参数 |
+| 79 | **效果通过 `Shape.Effects` 访问** | `Effects.Count/Item(i)`；`Effect.Extrude` → IVGEffectExtrude、`Effect.Lens` → IVGEffectLens；`Separate()/Clear()` 可用 | 属性可读写（Depth/Angle/Shading/Rate/Color…） |
+| 80 | **`MathUtils` 无法创建点对象** | CLSID `{E98800C5-8C42-45FD-81EA-2E751150E40F}` 报「没有注册类」，Application 无 MathUtils 属性 | 尺寸标注/连接线因此仍不可用 |
 
 改代码前请先读 [`src/cdrx8_mcp/constants.py`](src/cdrx8_mcp/constants.py) 里的注释。
 
@@ -289,10 +292,11 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
   `Document.HatchLibraries.Count = 0`（本机无影线库）。**内存图案画布填充已可用**：
   `cdr_doc(action="pattern_canvas")` 画掩码 → `fill={"type":"pattern","canvas_index":N,...}`。
   专色也已可用：`palette_open_fixed(3)` 打开 PANTONE 后按精确色名创建。
-* **立体化 / 透镜 / 尺寸标注 / 连接线 / 符号插入 / 混合 / 曲线贴笔触**：
-  `CreateExtrude` `CreateLens` `CreateLinearDimension` `CreateConnector` `CreateSymbol`
-  `Shape.CreateBlend` 全部卡在 `TypeError: Python instance can not be converted to a COM object`
-  （需要 pywin32 无法构造的结构体/枚举参数）；`Curve.CreateCurveMappedToStroke` 报「类型不匹配」
+* **尺寸标注 / 连接线 / 符号插入 / 混合 / 曲线贴笔触**：
+  `CreateLinearDimension` `CreateConnector` 需要 `MathUtils.CreatePoint` 创建的 IVGPoint，
+  但 MathUtils CLSID 未注册、Application 无该属性；`CreateSymbol` 需要符号库；
+  `Shape.CreateBlend` gen/raw 调用全部失败；`Curve.CreateCurveMappedToStroke` 报「类型不匹配」
+* **立体化/透镜**：**可用**（须传全参数含颜色对象），见 `cdr_shape_ops(op="extrude"/"lens")`
 * **按副本打开 / HTML 兼容文本 / 断字写入**：`OpenDocumentAsCopy` 参数 TypeError；
   `MakeHTMLCompatible` 返回 False；`SetHyphenationSettings` 写回不生效（只提供断字读取）
 
@@ -313,7 +317,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ```powershell
 python -m pytest -q                # 55 项纯逻辑测试，任何平台可跑
-python scripts/live_smoke.py       # 212 项端到端，需要 CorelDRAW X8
+python scripts/live_smoke.py       # 217 项端到端，需要 CorelDRAW X8
 python scripts/live_smoke.py --keep   # 保留文档方便肉眼看效果
 python scripts/coverage_audit.py   # 覆盖率审计（复现 README/COVERAGE 里的数字）
 ```
@@ -340,6 +344,7 @@ weld/fillet → 框选/组合/解组 → 对齐 → 图层 → 查找 → 分页
 **文档设置读写 → 文本区间删除/复制/粘贴 → 自定义箭头登记** →
 **图案画布区域变换 → 图案填充微调 → 文本格式查询（@font/@bold）** →
 **位图内容替换 → 文本格式段读取 → 应用信息 → 文档回滚（已保存副本）** →
+**立体化 → 立体化微调 → 透镜 → 效果枚举/清除** →
 过期 token 拒绝 → 关闭。
 
 完整能力矩阵见 [docs/COVERAGE.md](docs/COVERAGE.md)。

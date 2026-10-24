@@ -2,7 +2,7 @@
 
 > 目的：证明"还有多少没探"。每一行要么有对应的工具，要么有实测失败证据。
 > 环境：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）/ Python 3.11.9 64 位
-> 最近更新：2026-10-25 第十四波（位图内容替换 / 文本格式段 / 应用信息 / 文档回滚）
+> 最近更新：2026-10-25 第十五波（立体化 / 透镜 / 效果管理）
 
 ## 怎么得出这份清单
 
@@ -21,7 +21,7 @@
 | `IVGDocument` | 78 | 已用：Unit / Pages / AddPages / DeletePages / ActivePage / ActiveLayer / Selection / Save·SaveAs / ExportEx / ExportBitmap(不适用) / PublishToPDF / Undo / Redo / Begin·EndCommandGroup / FileName / Dirty / Name / StyleSheet / **Metadata / DataFields / ColorContext / Revert** / **设置：EditAcrossLayers / ApplyToDuplicate / CurvePrecision / Resolution / ReferencePoint / ShapeEnumDirection / TextFormatter / WorldScale / FacingPages / FirstPageOnRightSide / Layout / Unit / DrawingOriginX·Y / PreserveSelection** / **Keywords·Notes（可写，读需走 Metadata）** / **ToUnits / FromUnits / SampleColorAtPoint / SampleColorInArea / ShowAllHiddenObjects / SetLayout / Repeat / CreateImage / CreateColorStyles / InsertPages / HatchLibraries / SaveStyleSheet / LoadStyleSheet / CreateFill / CreateOutline（字符串格式无效）** |
 | `IVGPage` | 22 | **全覆盖**：SetSize / SelectSize / GetSize / CreateLayer / Activate / Delete / MoveTo / FindShape(s) / TextFind / TextReplace / GetGuides / UnlockAllShapes / GetObjectsBoundingBox(改用自算) / SelectShapesFromRectangle / Shapes / Layers / Orientation / **FindClosestSnapPoint** |
 | `IVGLayer` | 50 | 已用：Create*（矩形/椭圆/多边形/螺旋/网格/线/贝塞尔/艺术字/段落字/参考线/**角度参考线**/**位图 CreateBitmap·CreateBitmap2**）/ Import / ImportEx / CreateCurve / Activate / Delete / MoveAbove / **MoveBelow / GetAbove / GetBelow / Paste** / Visible / Editable / Printable / Master / FindShape |
-| `IVGShape` | 124 | 已用：几何 / Fill / Outline / Transparency / Locked / Name / Type / GetBoundingBox / Duplicate / Clone / Delete / **层级 / StepAndRepeat / Distribute / CreateBoundary / CreatePerspective / Separate / CreateEnvelopeFromCurve / CreateEnvelopeFromShape / CompareTo / CreateSelection / RemoveFromSelection / IsOnShape / Copy / Cut / CopyToLayer / MoveToLayer / Project / Unproject / CreateDocumentFrom** / ConvertToCurves / ConvertToSymbol / Weld·Trim·Intersect / AddToPowerClip / CreateDropShadow·Contour·Envelope / AlignToPage·AlignToShape / Fillet·Chamfer·Scallop / Group / Ungroup / BreakApart / Combine；CreateBlend 参数传不进去 |
+| `IVGShape` | 124 | 已用：几何 / Fill / Outline / Transparency / Locked / Name / Type / GetBoundingBox / Duplicate / Clone / Delete / **层级 / StepAndRepeat / Distribute / CreateBoundary / CreatePerspective / Separate / CreateEnvelopeFromCurve / CreateEnvelopeFromShape / CompareTo / CreateSelection / RemoveFromSelection / IsOnShape / Copy / Cut / CopyToLayer / MoveToLayer / Project / Unproject / CreateDocumentFrom / CreateExtrude / CreateLens** / ConvertToCurves / ConvertToSymbol / Weld·Trim·Intersect / AddToPowerClip / CreateDropShadow·Contour·Envelope / AlignToPage·AlignToShape / Fillet·Chamfer·Scallop / Group / Ungroup / BreakApart / Combine；CreateBlend 参数传不进去 |
 | `IVGShapeRange` | 131 | 已用：Group / Combine / AlignAndDistribute / ApplyFountainFill / SetOutlineProperties(不适用，改属性直写) / ConvertToCurves / Add / Count / **CreateParallelCurves / ConvertToBitmap / ConvertOutlineToObject / CreateBoundary / SetFillMode / SetPixelAlignedRendering / ApplyFill / ApplyOutline / CreateDocumentFrom** |
 | `IVGFill` | 13 | 已用：ApplyUniformFill / ApplyFountainFill / ApplyTextureFill / **ApplyPatternFill（内存 PatternCanvas 可用；文件型 Pattern 仍需图像文件）** / ApplyPostscriptFill / ApplyNoFill / **GetCopy / CompareWith**；Hatch 需本机 Hatch 库（本机为空） |
 | `IVGOutline` | 9 | 已用：Width / Color / **Style（可赋自定义线型）** / StartArrow·EndArrow(赋对象) / LineCaps / LineJoin / BehindFill / ScaleWithShape / SetNoOutline / **GetCopy / CompareWith** |
@@ -40,6 +40,9 @@
 | `IVGWindow` | 9 | 已用：Refresh / Activate / DocumentToScreen / ScreenToDocument / DocumentDistanceToScreenDistance / **ScreenDistanceToDocumentDistance**；缩放/新建窗口未封装 |
 | `IVGColors`（颜色样式集合） | 8 | **新打通（第九波）**：`StyleSheet.AllColorStyles` 的 `Count / Item(i) / GetName / ToString`；配合 `Document.CreateColorStyles(harmonies=1..3)` 生成颜色协调 |
 | `IVGMetadata` | 21 | **新打通（第十波）**：`Document.Metadata` 的 Title / Author / LastAuthor / Subject / Keywords / Notes / Copyright / Revision / DocLanguage / DocID；前六项可写；Localizable* 是 `IVGLocalizableString` 对象，未纳入读取 |
+| `IVGEffects` / `IVGEffect` | 12 / 12 | **新打通（第十五波）**：`Shape.Effects.Count/Item(i)`、`ExtrudeEffect/LensEffect/DropShadowEffect/BlendEffects` 等；`Effect.Type/Extrude/Lens/Separate/Clear` 可用 |
+| `IVGEffectExtrude` | 18 | **新打通（第十五波）**：Type/Depth/AngleX·Y·Z/Shading/BaseColor/ShadingColor/UseBevel/BevelDepth/BevelAngle/ShowBevelOnly/UseExtrudeColorForBevel/UseFullColorRange/VanishingPoint 可读写；`Rotate/SetBevel/SetLight` 未封装 |
+| `IVGEffectLens` | 18 | **新打通（第十五波）**：Type/Rate/Magnification/Color/FillColor/OutlineColor/FromColor/ToColor/UseFillColor/UseOutlineColor/PaletteRotation/ColorMapPalette/RemoveFace/ViewPointX·Y/UseViewPoint/Frozen 可读写；`Freeze/Unfreeze/Ungroup` 未封装 |
 | `IVGArrowHeads` | 7 | **新打通（第十二波）**：`Application.ArrowHeads.Add(自定义箭头)` 把 `CreateArrowHead(curve)` 的结果登记进全局箭头库（89→90），可赋给 `Outline.StartArrow/EndArrow` |
 | `IVGColorContext` | 7 | **已读（第十一波）**：`Document.ColorContext` 的 RenderingIntent / BlendingColorModel / ColorProfiles.Count / ColorProfileNameList（如 "sRGB IEC61966-2.1,Japan Color 2001 Coated,Dot Gain 15%"）；`CreateColorContext()` 参数无法传递，不改色 │
 | `IVGImage` | 5 | **新打通**：`Document.CreateImage` 返回像素缓冲区；`Width / Height / Type / ReadOnly / Pixel / FillArea / Blit` 可用（`cdr_create(type="bitmap")`、`cdr_bitmap(action="pixel")`） |
@@ -63,7 +66,7 @@
 | **对象样式** | `cdr_style`（列出/从对象创建/派生/套用/改名/删除/读定义/改属性/**样式表 .cdst 导入导出**/**颜色样式与颜色协调**） | ✅ 第六/七/九波 |
 | **节点/线段** | `cdr_node`（列节点/列线段/移动/选中/删除/圆角/倒角/scallop/平滑/拉伸/旋转/斜切/断开/加节点/断线/控制点/按坐标查找） | ✅ 第五波 |
 | 文字排版 | `cdr_text`（字体字号粗斜体下划线 / 对齐 / 大小写 / 项目符号 / 首字下沉 / 行距字距 / 前后插入 / 沿路径 / 自适应 / 转曲 / 读取全文·区间·导出纯文本 / 字体属性读取·断字设置读取·**格式段列表** / 区间删除·复制·粘贴·拉直 / 按格式查询区间（@font/@bold…） / OpenType 特性） | ✅ |
-| 布尔与整形 | `cdr_shape_ops`（weld/trim/intersect/combine/group/ungroup/break_apart/to_curves/to_symbol/powerclip/fillet/chamfer/scallop/step_repeat/distribute/boundary/perspective/separate/parallel_curves/rasterize/batch_outline_to_curves/fill_mode/pixel_aligned/range_boundary/envelope_from_shape/compare/project/unproject/**to_document（提取为新文档）**） | ✅ |
+| 布尔与整形 | `cdr_shape_ops`（weld/trim/intersect/combine/group/ungroup/break_apart/to_curves/to_symbol/powerclip/fillet/chamfer/scallop/step_repeat/distribute/boundary/perspective/separate/parallel_curves/rasterize/batch_outline_to_curves/fill_mode/pixel_aligned/range_boundary/envelope_from_shape/compare/project/unproject/to_document/**extrude/lens/extrude_set/lens_set/effect_info/clear_effects**） | ✅ |
 | 对齐 | `cdr_align`（左中右/上下中/等间距，对齐对象或页面）+ `cdr_modify(align_to_shape/align_to_page)` | ✅ |
 | 选择与查找 | `cdr_select`（加入/**移除/清空**）`cdr_find` | ✅ |
 | 图层 | `cdr_layers`（增删改/显隐/锁定/打印/移动/**上下相邻查询·下移·粘贴剪贴板**） | ✅ |
@@ -100,6 +103,9 @@
 | 文本格式查询的尺寸比较 | `TextRange.FindRanges("@size > 10")` | 报 `Incompatible unit powers of the operands: 'pt' and 'pt^0'`；`@size > 10pt` 解析失败 | 尺寸条件暂不可用；`@font = 'Arial'`、`@bold = true` 可用 |
 | 位图换内容 | `Bitmap.SetImageData(Image, Alpha, X, Y)` | `Alpha=0` 报 `TypeError: Python instance can not be converted to a COM object`；**Alpha=None 可用**，像素内容被替换 | 替换像素必须传 None |
 | 文档回滚 | `Document.Revert()` | 可用（修改后 15→16→15 对象）；**破坏性**，丢弃未保存修改 | 已封装为 `cdr_doc(action="revert")`，调用前确认已保存 |
+| 立体化/透镜创建 | `Shape.CreateExtrude(...)` / `Shape.CreateLens(...)` | 只传前几个 int 参数报 `TypeError: Python instance can not be converted to a COM object`；**传全参数（含颜色对象）即可** | 已封装并补齐默认颜色参数 |
+| 点对象创建 | `Application.MathUtils.CreatePoint` | `MathUtils` CLSID `{E98800C5-…}` 报「没有注册类」，Application 上也没有 MathUtils 属性 | 尺寸标注/连接线仍不可用 |
+| 混合 | `Shape.CreateBlend(shape)` | gen 调用与 raw `InvokeTypes` 都失败（TypeError/类型不匹配） | 确定不可用 |
 | 图案填充（文件型） | `Fill.ApplyPatternFill(Type=1/2, FileName=…)` | 提示「无法装入以下图样文件」 | 需要图案图像文件；**内存画布型（Type=0 + PatternCanvas）已可用** |
 | 影线填充 | `Fill.ApplyHatchFill` / `Document.HatchLibraries` | `HatchLibraries.Count = 0`、`ActiveLibrary = None`（本机未装 Hatch 库） | 需要先安装 Corel 的 Hatch 填充库 |
 | 曲线贴到笔触 | `Curve.CreateCurveMappedToStroke` | `com_error(-2147352571, 类型不匹配)`（Stroke 参数不是普通 Curve） | 需要 Artistic Media 的笔触对象，暂不封装 |
@@ -162,6 +168,9 @@
 >   Alpha 传 None；可直接把新建像素缓冲写进已有位图。
 > * 文本格式段 **可读**：`TextRange.EnumRanges(-1)` 逐段返回文字/字体/字号/粗斜体/起止。
 > * 文档回滚 **可用**：`Document.Revert()` 丢弃未保存修改、回到上次保存状态（破坏性）。
+> * 立体化/透镜 **可用（第十五波）**：`CreateExtrude/CreateLens` 传**全参数（含颜色对象）**可创建；
+>   效果经 `Shape.Effects.Item(i).Extrude/.Lens` 读写（IVGEffectExtrude/IVGEffectLens）。
+> * 效果管理 **可用**：`Shape.Effects.Count/Item`、`Effect.Separate()/Clear()`；`clear_effects` 可一键清除。
 
 ---
 
@@ -193,7 +202,7 @@
 
 ```powershell
 python -m pytest -q              # 55 项纯逻辑
-python scripts/live_smoke.py     # 212 项端到端（真实 CorelDRAW）
+python scripts/live_smoke.py     # 217 项端到端（真实 CorelDRAW）
 ```
 
 联调断言覆盖了上表所有 ✅ 项。反解脚本属于过程产物，已按要求放在 `tmp/` 并在完成时清理；
@@ -201,20 +210,20 @@ python scripts/live_smoke.py     # 212 项端到端（真实 CorelDRAW）
 
 ---
 
-## 六、量化覆盖率（2026-10-25 第十四波实测）
+## 六、量化覆盖率（2026-10-25 第十五波实测）
 
 方法：反解类型库拿到 196 个自动化类 / **1619** 个方法（已剔除 `QueryInterface` 等 COM 基础设施）；
 用 AST 扫描 `src/cdrx8_mcp/*.py`，收集所有 `.方法名(` 调用与 `setattr/getattr` 的属性名，
 与主干接口的方法名求交集。**注意：属性名（如 `curve.Nodes`）也会被计入**，所以本波数字含真实属性访问。
 
-**全局：685 / 1619 = 42.3%**（21.2% → … → 41.9% → 本轮 42.3%）
-**主干 20 接口：407 / 743 = 54.8%**
+**全局：687 / 1619 = 42.4%**（21.2% → … → 42.3% → 本轮 42.4%）
+**主干 20 接口：409 / 743 = 55.0%**
 
 复现命令：`python scripts/coverage_audit.py`（会临时展开类型库到 `tmp/gen_py`，跑完自动清理）
 
 | 接口 | 方法数 | 已调用 | 覆盖 |
 |---|---:|---:|---:|
-| `IVGShape` | 123 | 77 | **63%** |
+| `IVGShape` | 123 | 79 | **64%** |
 | `IVGShapeRange` | 125 | 77 | 62% |
 | `IVGSubPath` | 38 | 29 | **76%** |
 | `IVGDocument` | 74 | 37 | 50% |
@@ -234,10 +243,10 @@ python scripts/live_smoke.py     # 212 项端到端（真实 CorelDRAW）
 | `IVGTransparency` | 8 | 6 | **75%** |
 | `IVGStyle` | 15 | 8 | **53%** |
 | `IVGColorContext` | 6 | 1 | 17% |
-| **合计** | **743** | **407** | **54.8%** |
+| **合计** | **743** | **409** | **55.0%** |
 
 > **怎么读这两个数**：
-> 1. 全局 42.3% 覆盖 1619 个方法（含变体与重复）；主干 20 接口 54.8%。
+> 1. 全局 42.4% 覆盖 1619 个方法（含变体与重复）；主干 20 接口 55.0%。
 > 2. 它是**方法/属性名匹配**的近似值，同名方法会跨接口误计。
 > 3. `IVGColor` 的 21% 是**故意的**：实测不暴露分量属性，色彩运算在纯 Python 完成。
 > 4. 未调用方法多为变体（Wide/Ex/2/3 后缀）与事件订阅、CorelScriptTools/MathUtils。
@@ -421,6 +430,18 @@ python scripts/live_smoke.py     # 212 项端到端（真实 CorelDRAW）
 | 位图 SetImageData Alpha | `Bitmap.SetImageData(img, None, x, y)` | ✅ Alpha=None；传 0 会 TypeError |
 | 文本区间套样式 | `TextRange.ApplyStyle` | ⚠️ 仍未观测到效果（沿用第十三波结论） |
 
+## 七之十三、第十五波已接入（2026-10-25，立体化、透镜、效果管理）
+
+| 能力 | 落地位置 | 实测 |
+|---|---|---|
+| **立体化（Extrude）** | `cdr_shape_ops(op="extrude", extrude_type, vp_type, vp_x/y, depth, shading, base_color, shading_color, bevel_depth, bevel_angle, bevel_color, bevel_only, effect={...})` | ✅ 创建后 `Effects.Count=1`、`Item(1).Extrude` 为 `IVGEffectExtrude`；depth=25；`extrude_set` 改到 35 |
+| **透镜（Lens）** | `cdr_shape_ops(op="lens", lens_type, rate, color1, color2, color_map_palette, effect={...})` | ✅ 创建后 `Effects.Count=1`、kind=lens、rate=60；`Effect.Type=9` |
+| **效果枚举/清除** | `cdr_shape_ops(op="effect_info"/"clear_effects")` | ✅ effect_info 返回 count/kind/props；clear_effects 清 1 个后 count=0 |
+| 效果属性 | `IVGEffectExtrude` / `IVGEffectLens` | ✅ Type/Depth/AngleX·Y·Z/Shading/BaseColor/ShadingColor/UseBevel/BevelDepth/BevelAngle；Lens 的 Type/Rate/Color/FillColor/OutlineColor/FromColor/ToColor/ViewPoint 等可读写 |
+| 关键坑 | `CreateExtrude/CreateLens` | 只传前几个 int 参数报 TypeError；**必须传全参数（含颜色对象）** |
+| MathUtils | `Application.MathUtils` | ❌ CLSID `{E98800C5-…}` 未注册、Application 无属性；尺寸/连接线点对象不可得 |
+| 混合 | `CreateBlend` | ❌ gen/raw 均失败，确定不可用 |
+
 ## 七之二、仍未接入（第三轮候选）
 
 | 能力 | 接口 | 为什么还没做 |
@@ -442,14 +463,15 @@ python scripts/live_smoke.py     # 212 项端到端（真实 CorelDRAW）
 
 ## 八、一句话总结
 
-* **能力域覆盖**：36 个能力域 / 27 个工具，日常出图闭环完整；节点编辑、对象样式、专色、
+* **能力域覆盖**：38 个能力域 / 27 个工具，日常出图闭环完整；节点编辑、对象样式、专色、
   图案/纹理填充、跨文档复制、模板/样式表/颜色样式、文档元数据、对象数据字段、自定义虚线、
-  文档设置、文本区间编辑、自定义箭头、图案微调、文本格式查询、位图内容替换、文档回滚都已补上。
-* **方法级覆盖**：全局 42.3%（685/1619），主干 20 接口 54.8%（407/743）。
+  文档设置、文本区间编辑、自定义箭头、图案微调、文本格式查询、位图内容替换、文档回滚、
+  立体化/透镜/效果管理都已补上。
+* **方法级覆盖**：全局 42.4%（687/1619），主干 20 接口 55.0%（409/743）。
 * **明确不可用**：位图描摹、文本导入、点集数组建曲线、混合（CreateBlend）、
-  立体化/透镜/尺寸/连接线、符号库、文件型图案/影线填充（本机无库）、曲线贴笔触、
-  OpenDocumentAsCopy、HTML 兼容文本、断字写入、填充字符串、文本尺寸查询。
-* **第十四波修正的历史结论**：`SetImageData` 可替换位图内容（Alpha 传 None）；
-  `EnumRanges` 可列格式段；`Document.Revert` 可回滚；应用 OpenType/平台/UI 语言信息可读。
+  尺寸标注/连接线（MathUtils 点对象不可创建）、符号库、文件型图案/影线填充（本机无库）、
+  曲线贴笔触、OpenDocumentAsCopy、HTML 兼容文本、断字写入、填充字符串、文本尺寸查询。
+* **第十五波修正的历史结论**：立体化/透镜可创建（须传全参数）；效果可通过
+  `Shape.Effects` + `Effect.Extrude/Lens` 读写；`Effect.Separate/Clear` 可用。
 
 

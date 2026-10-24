@@ -3399,7 +3399,70 @@ SHAPE_OPS = (
     "project", "unproject",
     # 第十波：把对象/选区提取成新文档
     "to_document",
+    # 第十五波：立体化 / 透镜 / 效果管理
+    "extrude", "lens", "extrude_set", "lens_set", "effect_info", "clear_effects",
 )
+
+
+_EXTRUDE_PROPS = {
+    "type": "Type", "shading": "Shading", "depth": "Depth",
+    "angle_x": "AngleX", "angle_y": "AngleY", "angle_z": "AngleZ",
+    "use_bevel": "UseBevel", "bevel_depth": "BevelDepth",
+    "bevel_angle": "BevelAngle", "show_bevel_only": "ShowBevelOnly",
+    "use_extrude_color_for_bevel": "UseExtrudeColorForBevel",
+    "use_full_color_range": "UseFullColorRange",
+}
+_LENS_PROPS = {
+    "type": "Type", "rate": "Rate", "magnification": "Magnification",
+    "remove_face": "RemoveFace", "use_view_point": "UseViewPoint",
+    "view_point_x": "ViewPointX", "view_point_y": "ViewPointY",
+    "use_fill_color": "UseFillColor", "use_outline_color": "UseOutlineColor",
+    "palette_rotation": "PaletteRotation", "color_map_palette": "ColorMapPalette",
+}
+_EFFECT_COLORS = ("BaseColor", "ShadingColor", "BevelColor", "Color", "FillColor",
+                  "OutlineColor", "FromColor", "ToColor")
+
+
+def _apply_effect_props(doc: Any, effect: Any, spec: dict, mapping: dict) -> list:
+    applied = []
+    for key, attr in mapping.items():
+        if key in spec and spec[key] is not None:
+            setattr(effect, attr, spec[key])
+            applied.append(key)
+    for key, attr in (("base_color", "BaseColor"), ("shading_color", "ShadingColor"),
+                      ("bevel_color", "BevelColor"), ("color", "Color"),
+                      ("fill_color", "FillColor"), ("outline_color", "OutlineColor"),
+                      ("from_color", "FromColor"), ("to_color", "ToColor")):
+        if spec.get(key) is not None:
+            setattr(effect, attr, _color(doc, spec[key]))
+            applied.append(key)
+    return applied
+
+
+def _effect_info(shape: Any) -> dict:
+    effects = _s(lambda: shape.Effects)
+    if effects is None:
+        return {"count": 0, "effects": []}
+    count = _n(lambda: int(effects.Count), 0)
+    items = []
+    for i in range(1, count + 1):
+        eff = _s(lambda i=i: effects.Item(i))
+        if eff is None:
+            continue
+        info = {"type": _n(lambda eff=eff: int(eff.Type))}
+        for name in ("Extrude", "Lens", "Contour", "Blend", "DropShadow",
+                     "Envelope", "Perspective", "Distortion"):
+            obj = _s(lambda name=name, eff=eff: getattr(eff, name))
+            if obj is None:
+                continue
+            info["kind"] = name.lower()
+            info["props"] = {k: _s(lambda obj=obj, a=a: getattr(obj, a))
+                             for a, k in (("Type", "type"), ("Depth", "depth"),
+                                          ("Rate", "rate"),
+                                          ("Magnification", "magnification"))}
+            break
+        items.append(info)
+    return {"count": count, "effects": items}
 
 
 def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = None,
@@ -3419,6 +3482,15 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
              pixel_aligned: bool = True, fill_mode: int = 0,
              plane: int = 0, reference_point: int = 9,
              apply_to_duplicate: bool = False,
+             extrude_type: int = 1, vp_type: int = 1,
+             vp_x: float | None = None, vp_y: float | None = None,
+             depth: float = 20.0, shading: int = 0,
+             base_color: Any = "#808080", shading_color: Any = "#404040",
+             bevel_depth: float = 0.0, bevel_angle: float = 45.0,
+             bevel_color: Any = "#000000", bevel_only: bool = False,
+             lens_type: int = 1, rate: float = 50.0,
+             color1: Any = "#FFFFFF", color2: Any = "#000000",
+             color_map_palette: int = 0, effect: dict | None = None,
              label: str = "cdr_shape_ops") -> dict:
     op = (op or "").lower().replace("-", "_")
     if op not in SHAPE_OPS:
@@ -3490,7 +3562,60 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
                     "shapes": total_shapes(new_doc),
                     "note": "新文档已创建；可用 cdr_documents 获取 document_id"}
 
+        if op == "effect_info":
+            src = find_shape(doc, page, target or {})
+            return {"op": op, "target": _s(lambda: str(src.Name)),
+                    **_effect_info(src)}
+
         shape = find_shape(doc, page, target or {})
+
+        if op in {"extrude", "lens", "extrude_set", "lens_set", "clear_effects"}:
+            with atomic(doc, label):
+                if op == "clear_effects":
+                    effects = shape.Effects
+                    cleared = 0
+                    while _n(lambda: int(effects.Count), 0) > 0:
+                        effects.Item(1).Clear()
+                        cleared += 1
+                    return {"op": op, "cleared": cleared,
+                            "effects": _effect_info(shape)["count"]}
+                if op == "extrude":
+                    if vp_x is None or vp_y is None:
+                        bb = _bbox(shape) or {}
+                        vp_x = float(bb.get("x", 0)) + float(bb.get("width", 0)) / 2
+                        vp_y = float(bb.get("y", 0)) + float(bb.get("height", 0)) / 2
+                    shape.CreateExtrude(
+                        int(extrude_type), int(vp_type), float(vp_x), float(vp_y),
+                        float(depth), int(shading), _color(doc, base_color),
+                        _color(doc, shading_color), float(bevel_depth),
+                        float(bevel_angle), _color(doc, bevel_color), bool(bevel_only))
+                    eff = shape.Effects.Item(int(shape.Effects.Count))
+                    typed = eff.Extrude
+                    mapping = _EXTRUDE_PROPS
+                elif op == "lens":
+                    shape.CreateLens(int(lens_type), float(rate),
+                                     _color(doc, color1), _color(doc, color2),
+                                     int(color_map_palette))
+                    eff = shape.Effects.Item(int(shape.Effects.Count))
+                    typed = eff.Lens
+                    mapping = _LENS_PROPS
+                elif op == "extrude_set":
+                    eff = shape.Effects.ExtrudeEffect
+                    if eff is None:
+                        raise CdrBadArgument("对象没有立体化效果")
+                    typed = eff.Extrude
+                    mapping = _EXTRUDE_PROPS
+                else:  # lens_set
+                    eff = shape.Effects.LensEffect
+                    if eff is None:
+                        raise CdrBadArgument("对象没有透镜效果")
+                    typed = eff.Lens
+                    mapping = _LENS_PROPS
+                applied = _apply_effect_props(doc, typed, effect or {}, mapping)
+            return {"op": op, "target": _s(lambda: str(shape.Name)),
+                    "effect_type": _n(lambda: int(eff.Type)),
+                    "applied": applied,
+                    "effects": _effect_info(shape)}
 
         if op == "break_apart":
             shape.BreakApart()

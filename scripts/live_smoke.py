@@ -1902,6 +1902,72 @@ def main() -> int:
                       f"{before} -> {mid} -> {after}")
             no_error("关闭回滚测试文档", server.cdr_close(did))
 
+    # ---------------- 15u. 第十五波：立体化 / 透镜 / 效果管理 ----------------
+    print("\n[15u] 第十五波：立体化 + 透镜 + 效果管理")
+    fresh15 = server.cdr_inspect(doc_id)
+    if "state" in fresh15:
+        state = fresh15["state"]
+    w15 = server.cdr_create(doc_id, items=[
+        {"type": "ellipse", "x": 20, "y": 190, "width": 40, "height": 30,
+         "fill": "#FFCC00", "outline": {"width": 1, "color": "#000000"}},
+        {"type": "rectangle", "x": 80, "y": 190, "width": 40, "height": 30,
+         "fill": "#00CCFF"},
+    ], expected_revision=state["revision"], snapshot_token=state["snapshot_token"])
+    if no_error("创建第十五波测试对象", w15):
+        state = w15["state"]
+        e15 = w15["created"][0]["name"]
+        r15 = w15["created"][1]["name"]
+
+        # --- 立体化 ---
+        ex = server.cdr_shape_ops(doc_id, "extrude", target={"name": e15},
+                                  extrude_type=1, vp_type=1, vp_x=40, vp_y=205,
+                                  depth=25, effect={"angle_x": 30, "shading": 1},
+                                  expected_revision=state["revision"],
+                                  snapshot_token=state["snapshot_token"])
+        if no_error("cdr_shape_ops(extrude)", ex):
+            eff = (ex.get("effects") or {}).get("effects") or [{}]
+            props = eff[0].get("props") or {}
+            check("立体化效果已创建", (ex.get("effects") or {}).get("count") == 1
+                  and eff[0].get("kind") == "extrude" and props.get("depth") == 25,
+                  f"effects={ex.get('effects')}")
+            state = ex["state"]
+        exs = server.cdr_shape_ops(doc_id, "extrude_set", target={"name": e15},
+                                   effect={"depth": 35},
+                                   expected_revision=state["revision"],
+                                   snapshot_token=state["snapshot_token"])
+        if no_error("cdr_shape_ops(extrude_set)", exs):
+            eff = (exs.get("effects") or {}).get("effects") or [{}]
+            check("立体化深度可微调", ((eff[0].get("props") or {}).get("depth")) == 35,
+                  str(eff[0].get("props")))
+            state = exs["state"]
+
+        # --- 透镜 ---
+        ln = server.cdr_shape_ops(doc_id, "lens", target={"name": r15},
+                                  lens_type=1, rate=60,
+                                  expected_revision=state["revision"],
+                                  snapshot_token=state["snapshot_token"])
+        if no_error("cdr_shape_ops(lens)", ln):
+            eff = (ln.get("effects") or {}).get("effects") or [{}]
+            props = eff[0].get("props") or {}
+            check("透镜效果已创建", (ln.get("effects") or {}).get("count") == 1
+                  and eff[0].get("kind") == "lens" and props.get("rate") == 60,
+                  f"effects={ln.get('effects')}")
+            state = ln["state"]
+
+        # --- 效果信息 / 清除 ---
+        ei = server.cdr_shape_ops(doc_id, "effect_info", target={"name": r15})
+        if no_error("cdr_shape_ops(effect_info)", ei):
+            check("效果可枚举", (ei.get("count") or 0) == 1, f"count={ei.get('count')}")
+            if "state" in ei:
+                state = ei["state"]
+        ce = server.cdr_shape_ops(doc_id, "clear_effects", target={"name": r15},
+                                  expected_revision=state["revision"],
+                                  snapshot_token=state["snapshot_token"])
+        if no_error("cdr_shape_ops(clear_effects)", ce):
+            check("效果可清除", (ce.get("cleared") or 0) == 1
+                  and (ce.get("effects") or 0) == 0, str(ce))
+            state = ce["state"]
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,
