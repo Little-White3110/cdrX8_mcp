@@ -140,7 +140,7 @@ def cdr_status() -> dict:
             info.update({"running": False, "probe_error": str(exc)})
         except Exception as exc:  # noqa: BLE001
             info.update({"running": False, "probe_error": f"{type(exc).__name__}: {exc}"})
-        info["tools"] = 22
+        info["tools"] = 24
         return info
 
     return _guard(_run)
@@ -291,6 +291,9 @@ def cdr_modify(document_id: str, target: dict, changes: dict,
         {width,color,caps,join,behind_fill,dash,start_arrow,end_arrow}）
       drop_shadow {opacity,offset_x,offset_y,color}｜contour {offset,steps}｜envelope 1..39
       transparency（0~100 均匀透明度 / {type:"fountain",start,end,angle} / "none"）
+      gradient {angle, edge_pad, translate:[dx,dy], transformations:[d11,d12,d21,d22], opaque}
+      effect {type:"bci"|"gamma"|"hsl"|"invert"|"posterize"|"color_balance", ...}
+      outline_from（复制另一个对象的描边：{"name":"..."}）
       flip（0 水平 / 1 垂直）｜skew {x,y}｜clone {dx,dy}
       align_to_page 1~3｜align_to_shape {target,type}
       text｜font｜size｜bold｜italic｜underline｜alignment
@@ -325,19 +328,25 @@ def cdr_text(document_id: str, target: dict, text: str | None = None,
              line_spacing: float | None = None, char_spacing: float | None = None,
              word_spacing: float | None = None,
              insert_before: str | None = None, insert_after: str | None = None,
+             to_paragraph: bool = False, to_artistic: bool = False,
+             contents: str | None = None, find: str | None = None,
+             replace_old: str | None = None, replace_new: str | None = None,
+             select_all: bool = False, align_to_baseline: bool = False,
+             copy_attributes_from: dict | None = None,
              expected_revision: int | None = None, snapshot_token: str | None = None,
              page_index: int | None = None) -> dict:
-    """文字的排版级操作：内容、字体、字号、粗斜体、下划线、对齐、大小写、项目符号、
-    首字下沉、行距/字距/词距、前后插入、沿路径、文本框自适应、转曲。
+    """文字的排版级操作。
 
-    Args:
-        change_case: sentence / lower / upper / title / toggle（实测枚举 0~4）
-        bullet: 项目符号字符（如 "•"），**需要段落文字**
-        drop_cap: 首字下沉行数（**需要段落文字**）
-        line_spacing / char_spacing / word_spacing: 百分比，如 150
-        fit_to_path: 让文字沿曲线排布，如 {"name": "cdr_ab12"}
-        fit_frame: 段落文本溢出时自动收缩字号
-        to_curves: 转成曲线（发排前必做）
+    内容与类型：text / contents（段落文本整体替换）/ find / replace_old+replace_new /
+                to_paragraph / to_artistic（艺术字↔段落字互转）
+    样式：font / size / bold / italic / underline / alignment /
+          change_case（sentence·lower·upper·title·toggle）/ bullet / drop_cap /
+          line_spacing / char_spacing / word_spacing
+    文本区间：select_all / align_to_baseline / copy_attributes_from（复制另一对象的文字属性）
+    版式：fit_to_path（沿曲线）/ fit_frame（自动适配文本框）/ insert_before / insert_after
+    输出：to_curves（转曲，发排前必做）
+
+    注意：contents / replace_old / find 走的是段落文本接口，对艺术字会返回 warning。
     """
     def _run():
         doc, sess = _with_doc(document_id)
@@ -349,7 +358,11 @@ def cdr_text(document_id: str, target: dict, text: str | None = None,
             bullet=bullet, drop_cap=drop_cap, no_effect=no_effect,
             line_spacing=line_spacing, char_spacing=char_spacing,
             word_spacing=word_spacing, insert_before=insert_before,
-            insert_after=insert_after,
+            insert_after=insert_after, to_paragraph=to_paragraph, to_artistic=to_artistic,
+            contents=contents, find=find, replace_old=replace_old,
+            replace_new=replace_new, select_all=select_all,
+            align_to_baseline=align_to_baseline,
+            copy_attributes_from=copy_attributes_from,
         ), label="cdr_text")
         return _commit(doc, sess, result, warnings)
 
@@ -416,6 +429,7 @@ def cdr_shape_ops(document_id: str, op: str, target: dict | None = None,
       group / ungroup / combine 作用于**当前选择集**（ungroup 用 target 指定组合体）
       break_apart              打散 target
       to_curves                转曲
+      outline_to_curves        描边转曲（对象原地从形状变成曲线轮廓，发排/切割常用）
       to_symbol                把 target 转成符号（需 symbol_name）
       fillet（radius）/ chamfer（distance_a,distance_b）/ scallop（radius）
     """
@@ -508,6 +522,9 @@ def cdr_pages(document_id: str, action: str = "list",
               page_index: int | None = None, count: int = 1,
               width_mm: float | None = None, height_mm: float | None = None,
               preset: str | None = None, landscape: bool = False,
+              x: float | None = None, y: float | None = None,
+              text: str | None = None, move_to_index: int | None = None,
+              hot_area: float = 2.0,
               expected_revision: int | None = None,
               snapshot_token: str | None = None) -> dict:
     """页面管理。
@@ -522,6 +539,11 @@ def cdr_pages(document_id: str, action: str = "list",
       guides                        列出参考线
       unlock                        解锁本页所有对象
       bounds                        读取本页所有对象的总包围盒
+      geometry                      读页面尺寸与中心
+      shape_at（x,y）               按坐标点找对象
+      select_at（x,y）              按坐标点选择对象
+      text_find（text）             在页面上查找文本
+      move_to（move_to_index）      把当前页移到指定位置
     """
     def _run():
         doc, sess = _with_doc(document_id)
@@ -537,6 +559,10 @@ def cdr_pages(document_id: str, action: str = "list",
             return _com(lambda _b: ops.list_guides(doc, page_index), label="cdr_pages:guides")
         if act == "bounds":
             return _com(lambda _b: ops.objects_bounds(doc, page_index), label="cdr_pages:bounds")
+        if act in {"geometry", "shape_at", "select_at", "text_find", "move_to"}:
+            return _com(lambda _b: ops.page_query(
+                doc, act, page_index=page_index, x=x, y=y, text=text,
+                to_index=move_to_index, hot_area=hot_area), label="cdr_pages:query")
 
         warnings = _check_view(sess, expected_revision, snapshot_token, doc)
         if act == "unlock":
@@ -577,27 +603,38 @@ def cdr_pages(document_id: str, action: str = "list",
 def cdr_path(document_id: str, target: dict, action: str = "info",
              offset: float = 1.0, direction: int = 0,
              x: float | None = None, y: float | None = None,
+             radius: float | None = None, rx: float | None = None, ry: float | None = None,
+             rect: list | None = None, arc: list | None = None, bezier: list | None = None,
+             other: dict | None = None, amount: float = 30.0,
+             subpath: int = 1, t: float = 0.5, dx: float = 0.0, dy: float = 0.0,
              expected_revision: int | None = None,
              snapshot_token: str | None = None,
              page_index: int | None = None) -> dict:
-    """曲线级操作（对象需是曲线，可先 `cdr_shape_ops(op="to_curves")` 转曲）。
+    """曲线 / 子路径级操作（对象需是曲线，可先 `cdr_shape_ops(op="to_curves")` 转曲）。
 
-    action:
-      info          读长度、面积、子路径数、包围盒
-      contour       沿曲线偏移出一条新轮廓（做刀模线/切割线、外扩描边），offset 毫米
-      add_subpath   在 (x, y) 新建一条子路径
-      polyline      取折线近似点（X8 该接口常取不到变体数组，取不到会返回空并说明）
+    只读：info（长度/面积/子路径）、polyline、point_inside、intersects、
+          subpath_info、get_point、get_tangent
+
+    变更：contour（偏移出刀模线）、add_subpath、
+          append_circle / append_ellipse / append_rectangle / append_arc / append_bezier
+          （往同一条曲线里拼更多子路径）、
+          reduce_nodes（节点精简）、self_weld（自焊接）、
+          equal_divide（等分）、add_node、break_apart、move_subpath
     """
     def _run():
         act = (action or "info").lower()
+        readonly = act in {"info", "polyline", "point_inside", "intersects",
+                           "subpath_info", "get_point", "get_tangent"}
         doc, sess = _with_doc(document_id)
-        if act == "info":
-            return _com(lambda _b: ops.path_ops(doc, page_index, target, "info"),
+        kwargs = dict(offset=offset, direction=direction, x=x, y=y, radius=radius,
+                      rx=rx, ry=ry, rect=rect, arc=arc, bezier=bezier, other=other,
+                      amount=amount, subpath=subpath, t=t, dx=dx, dy=dy)
+        if readonly:
+            return _com(lambda _b: ops.path_ops(doc, page_index, target, act, **kwargs),
                         label="cdr_path")
         warnings = _check_view(sess, expected_revision, snapshot_token, doc)
-        result = _com(lambda _b: ops.path_ops(
-            doc, page_index, target, act, offset=offset, direction=direction, x=x, y=y,
-        ), label="cdr_path")
+        result = _com(lambda _b: ops.path_ops(doc, page_index, target, act, **kwargs),
+                      label="cdr_path")
         return _commit(doc, sess, result, warnings)
 
     return _guard(_run)
@@ -606,6 +643,53 @@ def cdr_path(document_id: str, target: dict, action: str = "info",
 # --------------------------------------------------------------------------- #
 # 导入 / 导出 / 保存
 # --------------------------------------------------------------------------- #
+@mcp.tool()
+def cdr_color(action: str = "info", color: Any = None, color2: Any = None,
+              ratio: float = 0.5) -> dict:
+    """颜色运算：解析 / 转换色彩空间 / 两色混合。
+
+    Args:
+        action: info（解析并返回各通道）/ convert（转空间，color2 给目标空间名）/
+                blend（按 ratio 混合 color 与 color2，0=全 color，1=全 color2）
+        color: 任意颜色写法：#RRGGBB / {c,m,y,k} / {r,g,b} / {gray} / {lab} / {hls}
+        color2: blend 的第二个颜色；convert 时传目标空间名（cmyk/rgb/gray/lab/hls/hsb/cmy）
+
+    注意：这是**颜色对象**运算，不修改文档，所以不需要 document_id。
+    """
+    def _run():
+        return ops.color_ops(None, action, color=color, color2=color2, ratio=ratio)
+
+    return _guard(_run)
+
+
+@mcp.tool()
+def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
+            expected_revision: int | None = None, snapshot_token: str | None = None,
+            page_index: int | None = None) -> dict:
+    """文档级操作。
+
+    action:
+      info             文档概况（路径、脏标记、页数、单位、对象总数）
+      clear_selection  清空选择集
+      clear_undo       清空撤销栈（批处理前后释放内存）
+      palette          把文档用到的颜色登记进调色板（印前交接）
+      arrowhead        用一条曲线生成自定义箭头（target 指向曲线）
+    """
+    def _run():
+        doc, sess = _with_doc(document_id)
+        if action == "info":
+            return _com(lambda _b: ops.doc_ops(doc, "info", page_index=page_index),
+                        label="cdr_doc")
+        warnings = _check_view(sess, expected_revision, snapshot_token, doc)
+        result = _com(lambda _b: ops.doc_ops(doc, action, target=target,
+                                             page_index=page_index), label="cdr_doc")
+        if action == "clear_selection":
+            return result
+        return _commit(doc, sess, result, warnings)
+
+    return _guard(_run)
+
+
 @mcp.tool()
 def cdr_import(document_id: str, path: str, center: bool = True,
                page_index: int | None = None,
@@ -659,13 +743,28 @@ def cdr_export(document_id: str, path: str, format: str = "png",
 
 
 @mcp.tool()
-def cdr_save(document_id: str, path: str, overwrite: bool = False) -> dict:
-    """另存为 .cdr（默认不覆盖已有文件，也不会改动源文档）。"""
+def cdr_save(document_id: str, path: str, overwrite: bool = False,
+             as_copy: bool = False) -> dict:
+    """另存为 .cdr（默认不覆盖已有文件，也不会改动源文档）。
+
+    Args:
+        as_copy: true 时用 SaveAsCopy —— 写副本但**保持当前文档的关联路径不变**
+                 （适合"先存个中间版本再继续改"）。
+    """
     def _run():
         p, warn = resolve_write_path(path, overwrite=overwrite)
         if p.suffix.lower() != ".cdr":
             return {"error": "bad_argument", "message": "保存路径必须以 .cdr 结尾"}
         doc, sess = _with_doc(document_id)
+        if as_copy:
+            info = _com(lambda _b: ops.save_as_copy(doc, str(p)), label="cdr_save:copy")
+            # 实测：SaveAsCopy 会把文档名改成副本名，必须同步会话
+            registry().rename(sess.name, info["name"])
+            result = {"saved": str(p), "bytes": ops._s(lambda: os.path.getsize(p)),
+                      "as_copy": True, "document_name": info["name"]}
+            if warn:
+                result.setdefault("warnings", []).append(warn)
+            return _commit(doc, sess, result)
         info = _com(lambda _b: ops.save_as(doc, str(p)), label="cdr_save")
         registry().rename(sess.name, info["name"])
         result = {"saved": str(p), "bytes": ops._s(lambda: os.path.getsize(p))}

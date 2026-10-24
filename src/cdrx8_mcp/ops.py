@@ -215,6 +215,70 @@ def close_document(doc: Any, save: bool = False) -> dict:
     return {"closed": name, "saved": saved, "file_name": file_name or None}
 
 
+def save_as_copy(doc: Any, path: str) -> dict:
+    """另存副本。
+
+    ⚠️ 实测：X8 的 `SaveAsCopy` 会把**当前文档名也改成副本名**（a.cdr -> b.cdr，
+    FileName 同步变），所以调用方必须用返回的 `name` 更新会话，否则后续按名查找会失败。
+    """
+    old_name = _s(lambda: str(doc.Name), "")
+    doc.SaveAsCopy(path, None)
+    return {
+        "copied_to": path,
+        "name": _s(lambda: str(doc.Name), old_name),
+        "old_name": old_name,
+        "file_name": _s(lambda: str(doc.FileName)) or None,
+    }
+
+
+DOC_ACTIONS = ("info", "clear_selection", "clear_undo", "palette", "arrowhead")
+
+
+def doc_ops(doc: Any, action: str, *, target: dict | None = None,
+            page_index: int | None = None) -> dict:
+    """文档级操作。
+
+    action:
+      info             文档概况（路径、脏标记、页数、单位）
+      clear_selection  清空选择集
+      clear_undo       清空撤销栈（批处理前后释放内存）
+      palette          把文档用到的颜色登记进调色板（AddColorsToDocPalette）
+      arrowhead        用一条曲线生成自定义箭头（返回箭头对象可用信息）
+    """
+    act = (action or "info").lower()
+    if act not in DOC_ACTIONS:
+        raise CdrBadArgument(f"未知 action {action!r}；可用：{', '.join(DOC_ACTIONS)}")
+
+    if act == "info":
+        return {
+            "action": act,
+            "name": _s(lambda: str(doc.Name)),
+            "file_name": _s(lambda: str(doc.FileName)) or None,
+            "dirty": bool(_s(lambda: bool(doc.Dirty), False)),
+            "pages": _n(lambda: int(doc.Pages.Count)),
+            "unit": _n(lambda: int(doc.Unit)),
+            "shapes": total_shapes(doc),
+        }
+    if act == "clear_selection":
+        doc.ClearSelection()
+        return {"action": act, "selected": _n(lambda: int(doc.Selection().Shapes.Count), 0)}
+    if act == "clear_undo":
+        doc.ClearUndoList()
+        return {"action": act, "cleared": True}
+    if act == "palette":
+        doc.AddColorsToDocPalette(False, 0)
+        return {"action": act, "done": True}
+    # arrowhead
+    with mm_units(doc):
+        page = _page(doc, page_index)
+        shape = find_shape(doc, page, target or {})
+        curve = _s(lambda: shape.Curve)
+        if curve is None:
+            raise CdrBadArgument("arrowhead 需要一条曲线对象")
+        head = doc.CreateArrowHead(curve)
+        return {"action": act, "created": head is not None}
+
+
 # --------------------------------------------------------------------------- #
 # 页面
 # --------------------------------------------------------------------------- #
@@ -328,6 +392,58 @@ def unlock_all(doc: Any, page_index: int | None = None) -> dict:
         return {"unlocked": True}
 
 
+def page_query(doc: Any, action: str, *, page_index: int | None = None,
+               x: float | None = None, y: float | None = None,
+               text: str | None = None, to_index: int | None = None,
+               hot_area: float = 2.0) -> dict:
+    """页面查询类操作（实测可用）。
+
+    action:
+      geometry      读页面尺寸与中心（GetSize / GetCenterPosition）
+      shape_at      按坐标点找对象（FindShapeAtPoint）
+      select_at     按坐标点选择对象（SelectShapesAtPoint）
+      text_find     在页面上查找文本（TextFind）
+      move_to       把当前页移动到指定位置（MoveTo）
+    """
+    act = (action or "geometry").lower()
+    with mm_units(doc):
+        page = _page(doc, page_index)
+        if act == "geometry":
+            size = _s(lambda: tuple(page.GetSize()))
+            center = _s(lambda: tuple(page.GetCenterPosition()))
+            return {
+                "action": act,
+                "size": [_round(v) for v in size] if size else None,
+                "center": [_round(v) for v in center] if center else None,
+                "orientation": ORIENTATION.get(_n(lambda: int(page.Orientation), 0), "unknown"),
+            }
+        if act == "shape_at":
+            if x is None or y is None:
+                raise CdrBadArgument("shape_at 需要 x 与 y")
+            found = _s(lambda: page.FindShapeAtPoint(float(x), float(y), True))
+            if found is None:
+                return {"action": act, "found": False, "shape": None}
+            return {"action": act, "found": True,
+                    "shape": {"name": _s(lambda: str(found.Name)),
+                              "type": SHAPE_TYPES.get(_n(lambda: int(found.Type), -1), "unknown")}}
+        if act == "select_at":
+            if x is None or y is None:
+                raise CdrBadArgument("select_at 需要 x 与 y")
+            page.SelectShapesAtPoint(float(x), float(y), False, float(hot_area))
+            return {"action": act,
+                    "selected": _n(lambda: int(doc.Selection().Shapes.Count), 0)}
+        if act == "text_find":
+            if not text:
+                raise CdrBadArgument("text_find 需要 text")
+            return {"action": act, "found": page.TextFind(str(text), True) is not None}
+        if act == "move_to":
+            if to_index is None:
+                raise CdrBadArgument("move_to 需要 to_index")
+            page.MoveTo(int(to_index))
+            return {"action": act, "pages": _n(lambda: int(doc.Pages.Count))}
+    raise CdrBadArgument(f"未知 action {act}；可用 geometry/shape_at/select_at/text_find/move_to")
+
+
 def objects_bounds(doc: Any, page_index: int | None = None,
                    selected_only: bool = False) -> dict:
     """本页所有对象（或当前选中对象）的总包围盒。
@@ -432,14 +548,29 @@ def bitmap_action(doc: Any, page_index: int | None, target: dict, action: str, *
 # --------------------------------------------------------------------------- #
 # 路径（曲线）
 # --------------------------------------------------------------------------- #
-PATH_ACTIONS = ("info", "contour", "add_subpath", "polyline")
+PATH_ACTIONS = (
+    "info", "contour", "add_subpath", "polyline",
+    # 拼接（曲线级）
+    "append_circle", "append_ellipse", "append_rectangle", "append_arc", "append_bezier",
+    # 整形（曲线级）
+    "reduce_nodes", "self_weld",
+    # 判定（曲线级）
+    "point_inside", "intersects",
+    # 子路径级
+    "subpath_info", "equal_divide", "add_node", "break_apart",
+    "get_point", "get_tangent", "move_subpath",
+)
 
 
 def path_ops(doc: Any, page_index: int | None, target: dict, action: str, *,
              offset: float = 1.0, direction: int = 0, x: float | None = None,
              y: float | None = None, precision: int = 50,
+             radius: float | None = None, rx: float | None = None, ry: float | None = None,
+             rect: list | None = None, arc: list | None = None, bezier: list | None = None,
+             other: dict | None = None, amount: float = 30.0, closed: bool = True,
+             subpath: int = 1, t: float = 0.5, dx: float = 0.0, dy: float = 0.0,
              label: str = "cdr_path") -> dict:
-    """曲线级操作：读长度/面积/子路径、偏移轮廓（做刀模/切割线）、追加子路径、取折线点。"""
+    """曲线 / 子路径级操作。所有坐标毫米。"""
     act = (action or "info").lower()
     if act not in PATH_ACTIONS:
         raise CdrBadArgument(f"未知 action {action!r}；可用：{', '.join(PATH_ACTIONS)}")
@@ -459,6 +590,13 @@ def path_ops(doc: Any, page_index: int | None, target: dict, action: str, *,
                 "bbox": _bbox(shape),
             }
 
+        def sub() -> Any:
+            count = _n(lambda: int(curve.SubPaths.Count), 0)
+            if not 1 <= int(subpath) <= count:
+                raise CdrBadArgument(f"subpath 越界：{subpath}（共 {count} 条）")
+            return curve.SubPaths.Item(int(subpath))
+
+        # ---- 只读 ----
         if act == "info":
             return {"action": act, **info()}
         if act == "polyline":
@@ -469,19 +607,116 @@ def path_ops(doc: Any, page_index: int | None, target: dict, action: str, *,
             except Exception:
                 return {"action": act, "points": [],
                         "note": "该曲线无法取折线点（pywin32 取不到变体数组）"}
+        if act == "point_inside":
+            if x is None or y is None:
+                raise CdrBadArgument("point_inside 需要 x 与 y")
+            return {"action": act, "inside": bool(curve.IsPointInside(float(x), float(y)))}
+        if act == "intersects":
+            other_shape = find_shape(doc, page, other or {})
+            oc = _s(lambda: other_shape.Curve)
+            if oc is None:
+                raise CdrBadArgument("other 必须是曲线对象")
+            return {"action": act, "intersects": bool(curve.IntersectsWith(oc))}
+        if act == "subpath_info":
+            sp = sub()
+            pos = _s(lambda: tuple(sp.GetPosition()))
+            return {
+                "action": act,
+                "position": [_round(v) for v in pos] if pos else None,
+                "length": _round(_s(lambda: float(sp.Length))),
+            }
+        if act in {"get_point", "get_tangent"}:
+            sp = sub()
+            if act == "get_tangent":
+                return {"action": act, "t": t,
+                        "tangent": _round(_s(lambda: float(sp.GetTangentAt(float(t), 0))))}
+            pt = _s(lambda: sp.GetPointAt(float(t), 0))
+            # 实测：GetPointAt 返回 IVGPoint，坐标是 .x / .y（小写）
+            if pt is None:
+                return {"action": act, "t": t, "point": None}
+            return {"action": act, "t": t,
+                    "point": [_round(_s(lambda: float(pt.x))),
+                              _round(_s(lambda: float(pt.y)))]}
+
+        # ---- 变更 ----
         with atomic(doc, label):
             if act == "contour":
-                # 实测：Curve.Contour 返回的是一条**未绑定到页面的曲线**，
-                # 必须再用 Layer.CreateCurve(源) 才会变成页面上的对象。
                 new_curve = curve.Contour(float(offset))
                 new_shape = _active_layer(page).CreateCurve(new_curve)
                 return {"action": act, "offset": offset,
                         "created": _s(lambda: str(new_shape.Name)) if new_shape is not None else None,
                         "bbox": _bbox(new_shape) if new_shape is not None else None}
+
             if act == "add_subpath":
                 if x is None or y is None:
                     raise CdrBadArgument("add_subpath 需要 x 与 y")
                 curve.CreateSubPath(float(x), float(y))
+                return {"action": act, **info()}
+
+            if act == "append_circle":
+                if x is None or y is None:
+                    raise CdrBadArgument("append_circle 需要 x,y,radius")
+                curve.AppendSubpathCircle(float(x), float(y), float(radius or 5))
+                return {"action": act, **info()}
+            if act == "append_ellipse":
+                if x is None or y is None:
+                    raise CdrBadArgument("append_ellipse 需要 x,y,rx,ry")
+                curve.AppendSubpathEllipse(float(x), float(y),
+                                           float(rx or radius or 5), float(ry or radius or 5))
+                return {"action": act, **info()}
+            if act == "append_rectangle":
+                r = rect or [x or 0, y or 0, (x or 0) + 20, (y or 0) + 20]
+                if len(r) != 4:
+                    raise CdrBadArgument("append_rectangle 需要 rect=[left,bottom,right,top]")
+                curve.AppendSubpathRectangle(float(r[0]), float(r[1]), float(r[2]), float(r[3]))
+                return {"action": act, **info()}
+            if act == "append_arc":
+                a = arc or []
+                if len(a) != 6:
+                    raise CdrBadArgument("append_arc 需要 arc=[startX,startY,endX,endY,thirdX,thirdY]")
+                curve.AppendSubpathThreePointArc(*[float(v) for v in a])
+                return {"action": act, **info()}
+            if act == "append_bezier":
+                sp = sub()
+                b = bezier or []
+                if len(b) < 2:
+                    raise CdrBadArgument(
+                        "append_bezier 需要 bezier=[x,y,c1x,c1y,c2x,c2y]（追加一段贝塞尔）")
+                pts = [float(v) for v in b]
+                if len(pts) == 6:
+                    sp.AppendCurveSegment2(pts[0], pts[1], pts[2], pts[3],
+                                           pts[4], pts[5], False)
+                elif len(pts) == 2:
+                    sp.AppendLineSegment(pts[0], pts[1])
+                else:
+                    raise CdrBadArgument("bezier 需为 6 个数或 2 个数")
+                return {"action": act, **info()}
+
+            if act == "reduce_nodes":
+                curve.AutoReduceNodes(float(amount), False)
+                return {"action": act, **info()}
+            if act == "self_weld":
+                curve.SelfWeldClosedSubpaths()
+                return {"action": act, **info()}
+
+            if act == "equal_divide":
+                sp = sub()
+                sp.EqualDivide(int(radius or 4), float(offset or 0))
+                return {"action": act, "divisions": int(radius or 4), **info()}
+            if act == "add_node":
+                if t is None:
+                    raise CdrBadArgument("add_node 需要 t（0~1 之间的位置）")
+                sp = sub()
+                sp.AddNodeAt(float(t), 0)
+                return {"action": act, "t": t, **info()}
+            if act == "break_apart":
+                sp = sub()
+                sp.BreakApartAt(float(t), 0)
+                return {"action": act, "t": t, **info()}
+            if act == "move_subpath":
+                sp = sub()
+                sp.Move(float(dx), float(dy))
+                return {"action": act, **info()}
     return {"action": act, **info()}
 
 
@@ -1057,6 +1292,106 @@ def _apply_transparency(doc: Any, shape: Any, spec: Any) -> str:
         'transparency 需为数字（0~100）、"none" 或 {type:"fountain",start,end,angle}')
 
 
+def _apply_gradient_tweak(shape: Any, spec: Any) -> None:
+    """微调已有渐变（实测可用：SetAngle / SetEdgePad / Translate / SetTransformations / MakeOpaque）。"""
+    if not isinstance(spec, dict):
+        raise CdrBadArgument("gradient 需为对象，如 {angle:90, edge_pad:10}")
+    fountain = shape.Fill.Fountain
+    if "angle" in spec:
+        fountain.SetAngle(float(spec["angle"]))
+    if "edge_pad" in spec:
+        fountain.SetEdgePad(float(spec["edge_pad"]))
+    if "mid_point" in spec:
+        # MidPoint 没有 setter，只能通过重设渐变；这里保持兼容性忽略
+        pass
+    if "translate" in spec:
+        dx, dy = spec["translate"]
+        fountain.Translate(float(dx), float(dy))
+    if "transformations" in spec:
+        t = list(spec["transformations"])
+        if len(t) != 4:
+            raise CdrBadArgument("transformations 需要 4 个数字 [d11,d12,d21,d22]")
+        fountain.SetTransformations(float(t[0]), float(t[1]), float(t[2]), float(t[3]))
+    if spec.get("opaque"):
+        fountain.MakeOpaque()
+
+
+EFFECT_KINDS = ("bci", "gamma", "hsl", "invert", "posterize", "color_balance")
+
+
+def _apply_effect(shape: Any, spec: Any) -> str:
+    """对象/位图色彩效果（实测可用）。"""
+    if not isinstance(spec, dict) or "type" not in spec:
+        raise CdrBadArgument(f"effect 需为 {{type:...}}；可用 {', '.join(EFFECT_KINDS)}")
+    kind = str(spec["type"]).lower().replace("-", "_")
+    if kind == "bci":
+        shape.ApplyEffectBCI(float(spec.get("brightness", 0)),
+                             float(spec.get("contrast", 0)),
+                             float(spec.get("intensity", 0)))
+    elif kind == "gamma":
+        shape.ApplyEffectGamma(float(spec.get("gamma", 1.0)))
+    elif kind == "hsl":
+        shape.ApplyEffectHSL(float(spec.get("hue", 0)),
+                             float(spec.get("saturation", 0)),
+                             float(spec.get("lightness", 0)))
+    elif kind == "invert":
+        shape.ApplyEffectInvert()
+    elif kind == "posterize":
+        shape.ApplyEffectPosterize(int(spec.get("level", 4)))
+    elif kind == "color_balance":
+        shape.ApplyEffectColorBalance(
+            float(spec.get("cyan_red", 0)), float(spec.get("magenta_green", 0)),
+            float(spec.get("yellow_blue", 0)),
+            bool(spec.get("shadows", True)), bool(spec.get("midtones", True)),
+            bool(spec.get("highlights", True)), bool(spec.get("preserve_luminance", True)),
+        )
+    else:
+        raise CdrBadArgument(f"未知 effect {kind}；可用 {', '.join(EFFECT_KINDS)}")
+    return kind
+
+
+def color_ops(doc: Any, action: str, *, color: Any = None, color2: Any = None,
+              ratio: float = 0.5, index: int = 1,
+              label: str = "cdr_color") -> dict:
+    """颜色运算（**纯 Python 计算，不依赖 CorelDRAW**）。
+
+    实测原因：X8 的 IVGColor 不暴露任何分量属性（Red/Cyan/Gray 全部 AttributeError），
+    ConvertToCMYK 只改类型不返回值，所以运算在本地做。
+
+    action:
+      info     解析颜色，返回 HEX / RGB / CMYK / Gray / HLS / Lab
+      convert  同上，但把目标空间单独拎出来（color2 = cmyk/rgb/gray/hls/lab）
+      blend    两个颜色按 ratio 混合（0=全 color，1=全 color2）
+    """
+    from . import colors as colorlib
+
+    act = (action or "info").lower()
+    if act not in {"info", "convert", "blend"}:
+        raise CdrBadArgument("action 可用 info / convert / blend")
+    if color is None:
+        raise CdrBadArgument("需要 color")
+
+    try:
+        if act == "blend":
+            if color2 is None:
+                raise CdrBadArgument("blend 需要 color2")
+            a = colorlib.describe(color)["rgb"]
+            b = colorlib.describe(color2)["rgb"]
+            mixed = colorlib.blend(a, b, ratio)
+            out = colorlib.describe({"r": mixed[0], "g": mixed[1], "b": mixed[2]})
+            return {"action": act, "ratio": ratio, **out}
+        base = colorlib.describe(color)
+        if act == "convert":
+            target = str(color2 or "cmyk").lower()
+            if target not in base:
+                raise CdrBadArgument(
+                    f"不支持的目标空间 {target}；可用 {sorted(base)}")
+            return {"action": act, "target": target, "value": base[target], **base}
+        return {"action": act, **base}
+    except ValueError as exc:
+        raise CdrBadArgument(str(exc)) from exc
+
+
 def _hex_to_rgb(text: str) -> tuple[int, int, int]:
     s = str(text).strip().lstrip("#")
     if len(s) != 6:
@@ -1130,6 +1465,27 @@ def _apply_changes(doc: Any, shape: Any, changes: dict) -> dict:
                 doc, shape, changes["transparency"]))
         except Exception as exc:  # noqa: BLE001
             warnings.append(f"透明度失败：{exc}")
+
+    if "gradient" in changes:
+        try:
+            _apply_gradient_tweak(shape, changes["gradient"])
+            applied.append("gradient")
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"渐变调整失败（需要对象已有渐变填充）：{exc}")
+
+    if "effect" in changes:
+        try:
+            applied.append("effect:" + _apply_effect(shape, changes["effect"]))
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"效果失败：{exc}")
+
+    if "outline_from" in changes:
+        try:
+            src = find_shape(doc, doc.ActivePage, changes["outline_from"])
+            shape.Outline.CopyAssign(src.Outline)
+            applied.append("outline_from")
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"复制描边失败：{exc}")
 
     if changes.get("flip") is not None:
         try:
@@ -1304,6 +1660,7 @@ def _set_text_align(shape: Any, value: Any) -> None:
 SHAPE_OPS = (
     "group", "ungroup", "weld", "trim", "intersect", "combine", "break_apart",
     "fillet", "chamfer", "scallop", "to_curves", "powerclip", "to_symbol",
+    "outline_to_curves",
 )
 
 
@@ -1378,6 +1735,14 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
             shape.ConvertToSymbol(str(symbol_name or "Symbol 1"))
             return {"op": op, "symbol": str(symbol_name or "Symbol 1"),
                     "name": _s(lambda: str(shape.Name))}
+        if op == "outline_to_curves":
+            # 实测：ConvertToObject 是**原地转换**——对象本身从矩形变成曲线轮廓
+            before_type = _n(lambda: int(shape.Type), -1)
+            shape.Outline.ConvertToObject()
+            return {"op": op, "type_before": SHAPE_TYPES.get(before_type, before_type),
+                    "type_after": SHAPE_TYPES.get(_n(lambda: int(shape.Type), -1),
+                                                  _n(lambda: int(shape.Type), -1)),
+                    "bbox": _bbox(shape)}
         if op == "fillet":
             shape.Fillet(float(radius), True)
             return {"op": op, "radius": radius, "bbox": _bbox(shape)}
@@ -1457,6 +1822,11 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
              no_effect: bool = False, line_spacing: float | None = None,
              char_spacing: float | None = None, word_spacing: float | None = None,
              insert_before: str | None = None, insert_after: str | None = None,
+             to_paragraph: bool = False, to_artistic: bool = False,
+             contents: str | None = None, find: str | None = None,
+             replace_old: str | None = None, replace_new: str | None = None,
+             select_all: bool = False, align_to_baseline: bool = False,
+             copy_attributes_from: dict | None = None,
              label: str = "cdr_text") -> dict:
     with mm_units(doc):
         page = _page(doc, page_index)
@@ -1467,6 +1837,63 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
             story = shape.Text.Story
             applied: list[str] = []
             warnings: list[str] = []
+
+            # ---- 文本类型转换（实测：艺术字↔段落字互转可用）----
+            if to_paragraph:
+                try:
+                    shape.Text.ConvertToParagraph()
+                    applied.append("to_paragraph")
+                except Exception as exc:  # noqa: BLE001
+                    warnings.append(f"转段落文本失败：{exc}")
+            if to_artistic:
+                try:
+                    shape.Text.ConvertToArtistic()
+                    applied.append("to_artistic")
+                except Exception as exc:  # noqa: BLE001
+                    warnings.append(f"转艺术字失败：{exc}")
+
+            # ---- 段落文本内容（实测：SetContents/GetContents/Replace 仅段落文本可用）----
+            if contents is not None:
+                try:
+                    shape.Text.SetContents(0, str(contents))
+                    applied.append("contents")
+                except Exception as exc:  # noqa: BLE001
+                    warnings.append(f"设置文本内容失败（需段落文本）：{exc}")
+            if replace_old is not None:
+                try:
+                    shape.Text.Replace(str(replace_old), str(replace_new or ""),
+                                       True, 1, True, True, 0)
+                    applied.append("replace")
+                except Exception as exc:  # noqa: BLE001
+                    warnings.append(f"文本替换失败（需段落文本）：{exc}")
+            if find is not None:
+                try:
+                    warnings.append(f"find:{find} -> 位置 {shape.Text.Find(str(find), True, 1, True, 0)}")
+                    applied.append("find")
+                except Exception as exc:  # noqa: BLE001
+                    warnings.append(f"查找失败：{exc}")
+
+            # ---- 选区/基线与属性复制 ----
+            if select_all:
+                try:
+                    story.Select()
+                    applied.append("select_all")
+                except Exception as exc:  # noqa: BLE001
+                    warnings.append(f"全选文本失败：{exc}")
+            if align_to_baseline:
+                try:
+                    story.AlignToBaseline()
+                    applied.append("align_to_baseline")
+                except Exception as exc:  # noqa: BLE001
+                    warnings.append(f"对齐基线失败：{exc}")
+            if copy_attributes_from:
+                try:
+                    src = find_shape(doc, _page(doc, page_index), copy_attributes_from)
+                    story.CopyAttributes(src.Text.Story)
+                    applied.append("copy_attributes")
+                except Exception as exc:  # noqa: BLE001
+                    warnings.append(f"复制文字属性失败：{exc}")
+
             if text is not None:
                 story.Text = str(text)
                 applied.append("text")

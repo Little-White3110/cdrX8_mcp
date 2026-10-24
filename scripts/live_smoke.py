@@ -417,12 +417,230 @@ def main() -> int:
     sv = server.cdr_save(doc_id, path=cdr, overwrite=True)
     if no_error("cdr_save", sv):
         check("cdr 已生成", (sv.get("bytes") or 0) > 1000, f"{sv.get('bytes')}B")
+        state = sv["state"]                      # 保存后 revision 变了，必须刷新
+        fresh = server.cdr_inspect(doc_id)       # 再取一次保证 token 同步
+        if no_error("cdr_inspect(保存后)", fresh):
+            state = fresh["state"]
     un = server.cdr_undo(doc_id, steps=1)
     if no_error("cdr_undo", un):
         check("撤销成功", un.get("undone", 0) >= 1, str(un.get("undone")))
     rd = server.cdr_undo(doc_id, steps=1, redo=True)
     if no_error("cdr_undo(redo)", rd):
         check("重做成功", rd.get("redone", 0) >= 1, str(rd.get("redone")))
+        state = rd["state"]
+
+    # ---------------- 15b. 新能力：渐变微调 / 描边转曲 / 曲线拼接 / 文字内容 / 页面查询 / 文档级 ----------------
+    print("\n[15b] 渐变微调 + 描边转曲")
+    grad = server.cdr_create(doc_id, items=[
+        {"type": "rectangle", "x": 150, "y": 60, "width": 40, "height": 30,
+         "fill": {"type": "fountain", "start": "#FF0000", "end": "#0000FF",
+                  "gradient_type": 1, "angle": 0}}],
+        expected_revision=state["revision"], snapshot_token=state["snapshot_token"])
+    if no_error("创建渐变矩形", grad):
+        state = grad["state"]
+        gt = server.cdr_modify(doc_id, target={"name": grad["created"][0]["name"]},
+                               changes={"gradient": {"angle": 90, "edge_pad": 5}},
+                               expected_revision=state["revision"],
+                               snapshot_token=state["snapshot_token"])
+        if no_error("cdr_modify(gradient)", gt):
+            check("渐变微调已应用", "gradient" in gt.get("applied", []),
+                  f"applied={gt.get('applied')} warns={gt.get('warnings')}")
+            state = gt["state"]
+    otc = server.cdr_create(doc_id, items=[
+        {"type": "rectangle", "x": 160, "y": 20, "width": 30, "height": 20,
+         "outline": {"width": 2, "color": "#000000"}}],
+        expected_revision=state["revision"], snapshot_token=state["snapshot_token"])
+    if no_error("创建描边矩形", otc):
+        state = otc["state"]
+        conv = server.cdr_shape_ops(doc_id, "outline_to_curves",
+                                    target={"name": otc["created"][0]["name"]},
+                                    expected_revision=state["revision"],
+                                    snapshot_token=state["snapshot_token"])
+        if no_error("描边转曲", conv):
+            check("描边转曲后变成曲线", conv.get("type_after") == "curve",
+                  f"{conv.get('type_before')} -> {conv.get('type_after')}")
+            state = conv["state"]
+
+    print("\n[15c] 曲线拼接 / 子路径 / 几何判定")
+    pc = server.cdr_create(doc_id, items=[
+        {"type": "bezier", "x1": 10, "y1": 120, "c1x": 30, "c1y": 140,
+         "c2x": 50, "c2y": 100, "x2": 70, "y2": 120}],
+        expected_revision=state["revision"], snapshot_token=state["snapshot_token"])
+    if no_error("创建测试曲线", pc):
+        state = pc["state"]
+        cname = pc["created"][0]["name"]
+        for act, kw, label in (
+            ("append_circle", {"x": 150, "y": 40, "radius": 8}, "追加圆"),
+            ("append_rectangle", {"rect": [10, 20, 40, 40]}, "追加矩形"),
+        ):
+            r = server.cdr_path(doc_id, target={"name": cname}, action=act,
+                                expected_revision=state["revision"],
+                                snapshot_token=state["snapshot_token"], **kw)
+            if no_error(f"cdr_path({act})", r):
+                check(f"{label}成功", (r.get("subpaths") or 0) >= 2, f"subpaths={r.get('subpaths')}")
+                state = r["state"]
+        rn = server.cdr_path(doc_id, target={"name": cname}, action="reduce_nodes",
+                             amount=20, expected_revision=state["revision"],
+                             snapshot_token=state["snapshot_token"])
+        if no_error("cdr_path(reduce_nodes)", rn):
+            check("节点精简执行", "length" in rn, f"length={rn.get('length')}")
+            state = rn["state"]
+        sw = server.cdr_path(doc_id, target={"name": cname}, action="self_weld",
+                             expected_revision=state["revision"],
+                             snapshot_token=state["snapshot_token"])
+        if no_error("cdr_path(self_weld)", sw):
+            state = sw["state"]
+        pi = server.cdr_path(doc_id, target={"name": cname}, action="point_inside",
+                             x=150, y=40)
+        if no_error("cdr_path(point_inside)", pi):
+            check("点在形状内判定可用", "inside" in pi, f"inside={pi.get('inside')}")
+        ed = server.cdr_path(doc_id, target={"name": cname}, action="equal_divide",
+                             subpath=1, radius=4, offset=1,
+                             expected_revision=state["revision"],
+                             snapshot_token=state["snapshot_token"])
+        if no_error("cdr_path(equal_divide)", ed):
+            check("路径等分执行", ed.get("divisions") == 4, str(ed.get("divisions")))
+            state = ed["state"]
+        gp = server.cdr_path(doc_id, target={"name": cname}, action="get_point",
+                             subpath=1, t=0.5)
+        if no_error("cdr_path(get_point)", gp):
+            check("取路径上的点", gp.get("point") is not None, str(gp.get("point")))
+        si = server.cdr_path(doc_id, target={"name": cname}, action="subpath_info", subpath=1)
+        if no_error("cdr_path(subpath_info)", si):
+            check("子路径信息可读", "position" in si, str(si.get("position")))
+
+    print("\n[15d] 文字内容 / 类型互转 / 文本区间")
+    tpara = server.cdr_create(doc_id, items=[
+        {"type": "paragraph_text", "x": 10, "y": 220, "x2": 120, "y2": 260,
+         "text": "alpha beta", "font": "Arial", "size": 10}],
+        expected_revision=state["revision"], snapshot_token=state["snapshot_token"])
+    if no_error("创建段落文字(内容测试)", tpara):
+        state = tpara["state"]
+        pname2 = tpara["created"][0]["name"]
+        cs = server.cdr_text(doc_id, target={"name": pname2}, contents="gamma delta",
+                             expected_revision=state["revision"],
+                             snapshot_token=state["snapshot_token"])
+        if no_error("cdr_text(contents)", cs):
+            check("整段替换成功", "contents" in cs.get("applied", []),
+                  f"applied={cs.get('applied')} text={cs.get('text')!r}")
+            state = cs["state"]
+        rp = server.cdr_text(doc_id, target={"name": pname2},
+                             replace_old="gamma", replace_new="GAMMA",
+                             expected_revision=state["revision"],
+                             snapshot_token=state["snapshot_token"])
+        if no_error("cdr_text(replace)", rp):
+            check("文本内替换成功", "replace" in rp.get("applied", []), str(rp.get("applied")))
+            state = rp["state"]
+        fd = server.cdr_text(doc_id, target={"name": pname2}, find="GAMMA",
+                             expected_revision=state["revision"],
+                             snapshot_token=state["snapshot_token"])
+        if no_error("cdr_text(find)", fd):
+            check("文本查找返回位置", any("find:" in w for w in fd.get("warnings", [])),
+                  str(fd.get("warnings")))
+            state = fd["state"]
+        to_art = server.cdr_text(doc_id, target={"name": pname2}, to_artistic=True,
+                                 expected_revision=state["revision"],
+                                 snapshot_token=state["snapshot_token"])
+        if no_error("cdr_text(to_artistic)", to_art):
+            check("段落字转艺术字", "to_artistic" in to_art.get("applied", []),
+                  str(to_art.get("applied")))
+            state = to_art["state"]
+        to_par = server.cdr_text(doc_id, target={"name": pname2}, to_paragraph=True,
+                                 expected_revision=state["revision"],
+                                 snapshot_token=state["snapshot_token"])
+        if no_error("cdr_text(to_paragraph)", to_par):
+            check("艺术字转段落字", "to_paragraph" in to_par.get("applied", []),
+                  str(to_par.get("applied")))
+            state = to_par["state"]
+
+    print("\n[15e] 页面查询")
+    geo = server.cdr_pages(doc_id, action="geometry", page_index=1)
+    if no_error("cdr_pages(geometry)", geo):
+        check("读到页面尺寸与中心", bool(geo.get("size")), str(geo.get("size")))
+    p1 = server.cdr_inspect(doc_id, page_index=1)
+    probe = None
+    if no_error("cdr_inspect(page1)", p1):
+        for s in p1.get("shapes", []):
+            b = s.get("bbox")
+            if b and b.get("width") and b.get("height"):
+                probe = (b["x"] + b["width"] / 2, b["y"] + b["height"] / 2, s["name"])
+                break
+    if probe:
+        px, py, pname = probe
+        sat = server.cdr_pages(doc_id, action="shape_at", page_index=1, x=px, y=py)
+        if no_error("cdr_pages(shape_at)", sat):
+            check("按点查到对象", sat.get("found") is True,
+                  f"({px:.1f},{py:.1f}) -> {sat.get('shape')}")
+        selat = server.cdr_pages(doc_id, action="select_at", page_index=1, x=px, y=py)
+        if no_error("cdr_pages(select_at)", selat):
+            check("按点选择对象", (selat.get("selected") or 0) >= 1, str(selat.get("selected")))
+    else:
+        check("找到可用于点查询的对象", False, "页面无可定位对象")
+    tf = server.cdr_pages(doc_id, action="text_find", page_index=1, text="GAMMA")
+    if no_error("cdr_pages(text_find)", tf):
+        check("页面文本查找返回布尔", "found" in tf, str(tf.get("found")))
+
+    print("\n[15f] 颜色运算")
+    ci = server.cdr_color(action="info", color="#3366CC")
+    if no_error("cdr_color(info)", ci):
+        check("解析颜色得到 RGB/CMYK", bool(ci.get("rgb")) and bool(ci.get("cmyk")),
+              f"rgb={ci.get('rgb')} cmyk={ci.get('cmyk')}")
+    cv = server.cdr_color(action="convert", color={"r": 200, "g": 100, "b": 50},
+                          color2="cmyk")
+    if no_error("cdr_color(convert)", cv):
+        check("转换到 CMYK", bool(cv.get("value")), str(cv.get("value")))
+    bl = server.cdr_color(action="blend", color="#FF0000", color2="#0000FF", ratio=0.5)
+    if no_error("cdr_color(blend)", bl):
+        check("两色混合正确（红+蓝各半）", bl.get("hex") == "#800080", str(bl.get("hex")))
+
+    print("\n[15g] 文档级操作")
+    di = server.cdr_doc(doc_id, action="info")
+    if no_error("cdr_doc(info)", di):
+        check("读到文档概况", di.get("pages") is not None, f"pages={di.get('pages')}")
+    cs2 = server.cdr_doc(doc_id, action="clear_selection")
+    if no_error("cdr_doc(clear_selection)", cs2):
+        check("清空选择集", cs2.get("selected") == 0, str(cs2.get("selected")))
+    pa = server.cdr_doc(doc_id, action="palette", expected_revision=state["revision"],
+                        snapshot_token=state["snapshot_token"])
+    if no_error("cdr_doc(palette)", pa):
+        check("颜色登记进调色板", pa.get("done") is True)
+        state = pa["state"]
+    if curve_s:
+        ah = server.cdr_doc(doc_id, action="arrowhead", target={"name": curve_s["name"]},
+                            expected_revision=state["revision"],
+                            snapshot_token=state["snapshot_token"])
+        if no_error("cdr_doc(arrowhead)", ah):
+            check("用曲线生成箭头", ah.get("created") is True, str(ah.get("created")))
+            state = ah["state"]
+    cp = server.cdr_save(doc_id, path=os.path.join(out, "copy.cdr"), overwrite=True,
+                         as_copy=True)
+    if no_error("cdr_save(as_copy)", cp):
+        check("另存副本成功", (cp.get("bytes") or 0) > 1000, f"{cp.get('bytes')}B")
+        state = cp["state"]                       # SaveAsCopy 也推进 revision
+
+    print("\n[15h] 位图色彩效果")
+    fresh3 = server.cdr_inspect(doc_id)
+    if no_error("cdr_inspect(副本后)", fresh3):
+        old = state
+        new = fresh3["state"]
+        if old["snapshot_token"] != new["snapshot_token"]:
+            print(f"    [diag] token 变化: rev {old['revision']}->{new['revision']}, "
+                  f"pages {old['pages']}->{new['pages']}, shapes {old['shapes']}->{new['shapes']}")
+        state = new
+    bmp2 = server.cdr_find(doc_id, type_id=5)
+    if bmp2.get("count"):
+        bname2 = bmp2["shapes"][0]["name"]
+        for eff in ({"type": "bci", "brightness": 5, "contrast": 5, "intensity": 5},
+                    {"type": "invert"},
+                    {"type": "posterize", "level": 4}):
+            ef = server.cdr_modify(doc_id, target={"name": bname2}, changes={"effect": eff},
+                                   expected_revision=state["revision"],
+                                   snapshot_token=state["snapshot_token"])
+            if no_error(f"cdr_modify(effect:{eff['type']})", ef):
+                check(f"滤镜 {eff['type']} 生效",
+                      any(a.startswith("effect:") for a in ef.get("applied", [])),
+                      str(ef.get("applied")))
+                state = ef["state"]
 
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")

@@ -6,10 +6,10 @@
 所有坐标统一 **毫米 / 页面左下角原点 / Y 轴向上**，每次变更都收成**一个原子 undo 步**。
 
 > **已在真机验证**：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）+ Python 3.11.9 64 位
-> - 单元测试 **43 项通过**
-> - 端到端联调（真实 CorelDRAW）**46/46 通过**
-> - 能力边界来自对 `vgcoreauto.tlb` 的反解（692 个类型 / 6789 个方法声明）+ 逐项实跑
-> - **完整覆盖清单见 [docs/COVERAGE.md](docs/COVERAGE.md)**（哪些能用、哪些不能用、为什么）
+> - 单元测试 **55 项通过**
+> - 端到端联调（真实 CorelDRAW）**75/75 通过**
+> - 能力边界来自对 `vgcoreauto.tlb` 的反解（196 个自动化类 / 1619 个方法）+ 逐项实跑
+> - 方法级覆盖 **27.6%**（主干 20 接口 33.4%），完整清单见 [docs/COVERAGE.md](docs/COVERAGE.md)
 
 ---
 
@@ -45,7 +45,7 @@ python -m cdrx8_mcp              # 启动 MCP 服务器（stdio）
 
 ---
 
-## 工具一览（22 个）
+## 工具一览（24 个）
 
 ### 会话与文档
 
@@ -66,14 +66,16 @@ python -m cdrx8_mcp              # 启动 MCP 服务器（stdio）
 |---|---|
 | `cdr_create` | 批量创建：矩形（含圆角）/ 椭圆（含圆弧、扇形）/ 多边形 / 星形 / 螺旋 / 网格 / 直线 / 贝塞尔 / 文字 / 段落文字 / 参考线 |
 | `cdr_modify` | 移动、缩放、旋转、翻转、斜切、矩阵变换、克隆、锁定；填充（纯色/渐变/纹理/无色）；描边（含**虚线**与**箭头**）；**透明度**；投影、轮廓图、封套；层级、复制、删除 |
-| `cdr_text` | 排版级：内容 / 字体 / 字号 / 粗斜体 / 下划线 / 对齐 / **大小写** / **项目符号** / **首字下沉** / **行距字距** / 前后插入 / **沿路径** / 文本框自适应 / **转曲** |
+| `cdr_text` | 排版级：内容 / 字体 / 字号 / 粗斜体 / 下划线 / 对齐 / **大小写** / **项目符号** / **首字下沉** / **行距字距** / 前后插入 / **沿路径** / 文本框自适应 / **转曲** / **艺术字↔段落字互转** / **段落内容读写与替换** / **文本区间选择·基线对齐·属性复制** |
 | `cdr_replace_text` | 全文档文字替换（底层用 X8 原生 `Page.TextReplace`） |
 | `cdr_select` | 按名字 / 类型 / 矩形框选，加入选择集 |
-| `cdr_shape_ops` | **布尔与整形**：weld / trim / intersect / combine / group / ungroup / break_apart / to_curves / to_symbol / powerclip / fillet / chamfer / scallop |
+| `cdr_shape_ops` | **布尔与整形**：weld / trim / intersect / combine / group / ungroup / break_apart / to_curves / **outline_to_curves（描边转曲）** / to_symbol / powerclip / fillet / chamfer / scallop |
 | `cdr_align` | 对齐与分布（左中右 / 上下中 / 等间距，对齐对象或页面） |
 | `cdr_find` | 按名字或类型查找（跨图层） |
-| `cdr_path` | 曲线级：读长度/面积/子路径、**偏移轮廓**（刀模线）、追加子路径 |
+| `cdr_path` | 曲线/子路径级：长度面积 / 偏移轮廓（刀模线）/ **追加圆·椭圆·矩形·三点弧·贝塞尔** / **节点精简** / **自焊接** / **路径等分** / **加节点·断开·移动子路径** / **点在形状内·曲线求交·取点取切向** |
 | `cdr_bitmap` | 位图：信息 / 转色彩模式（rgb·cmyk·gray·bw）/ 重采样 / 裁剪 |
+| `cdr_color` | **颜色运算（纯 Python）**：解析成 HEX/RGB/CMYK/Gray/HLS/Lab、转换、两色混合 |
+| `cdr_doc` | **文档级**：概况 / 清空选择集 / 清撤销栈 / **登记调色板** / **用曲线生成自定义箭头** |
 
 ### 图层 / 页面 / 文件
 
@@ -176,7 +178,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ---
 
-## X8 特有问题（20 条，全部实测）
+## X8 特有问题（24 条，全部实测）
 
 这些是 **X8 与 2024+ 的差异**，也是本项目存在的主要理由。
 
@@ -202,6 +204,10 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 | 18 | **`Bitmap.Trace` 会把 CorelDRAW 卡死** | 不要调用（弹模态框、进程无响应、COM 无法中断） | 调用方一起挂起 |
 | 19 | **节点集合没有访问入口** | 类型库全库无 `.Nodes`，节点级编辑不可用 | — |
 | 20 | `Document` 上没有 `Copy/Paste/SnapTo*`；`Page` 没有 `Background` | 这些能力不存在 | AttributeError |
+| 21 | **`SaveAsCopy` 会把当前文档名改掉** | 调用后必须用返回的 `name` 更新会话 | 之后按旧名查文档全部失败 |
+| 22 | **`IVGColor` 不暴露任何分量属性** | `Red`/`Cyan`/`Gray` 全 AttributeError；`ConvertToCMYK` 只改 Type | 色彩运算改到纯 Python（`colors.py`） |
+| 23 | **`SubPath.GetPointAt` 返回 `IVGPoint`** | 坐标取 `.x` / `.y`（小写） | 取 `PositionX`/元组会失败 |
+| 24 | **文本 `GetContents/SetContents/Replace` 只支持段落文本** | 艺术字上调用会报「该操作需要段落文本对象」 | 先 `to_paragraph` |
 
 改代码前请先读 [`src/cdrx8_mcp/constants.py`](src/cdrx8_mcp/constants.py) 里的注释。
 
@@ -237,18 +243,20 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 ## 测试
 
 ```powershell
-python -m pytest -q                # 43 项纯逻辑测试，任何平台可跑
-python scripts/live_smoke.py       # 46 项端到端，需要 CorelDRAW X8
+python -m pytest -q                # 55 项纯逻辑测试，任何平台可跑
+python scripts/live_smoke.py       # 75 项端到端，需要 CorelDRAW X8
 python scripts/live_smoke.py --keep   # 保留文档方便肉眼看效果
 ```
 
 联调产物默认写到 `tmp/live_smoke/`（已在 `.gitignore` 内，可随时整个删掉）。
 
-联调覆盖：页面预设 → 多图元创建 → 文字排版 → 投影/描边 → 虚线+箭头 → 文字沿路径 →
+联调覆盖：页面预设 → 8 类图元 → 文字排版 → 投影/描边 → 虚线+箭头 → 文字沿路径 →
 透明/翻转/斜切/灰度 → 段落文字大小写/行距/项目符号 → 路径偏移 → 锁定 →
+**渐变微调 → 描边转曲 → 曲线拼接/等分/节点精简/几何判定 → 文字内容与类型互转 →
+页面按点查询 → 颜色运算 → 文档调色板/箭头/清撤销栈 → 位图滤镜** →
 weld/fillet → 框选/组合/解组 → 对齐 → 图层 → 查找 → 分页/预设/参考线/包围盒 →
-四格式导出（含 DPI 倍增校验）→ 导入 → 位图转模式/重采样 → 文字替换 → 存盘 → 撤销/重做 →
-过期 token 拒绝 → 关闭。
+四格式导出（含 DPI 倍增校验）→ 导入 → 位图转模式/重采样 → 文字替换 → 存盘/另存副本 →
+撤销/重做 → 过期 token 拒绝 → 关闭。
 
 完整能力矩阵见 [docs/COVERAGE.md](docs/COVERAGE.md)。
 
