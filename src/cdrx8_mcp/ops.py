@@ -281,7 +281,8 @@ def view_ops(doc: Any, action: str, *, x: float | None = None, y: float | None =
 DOC_ACTIONS = ("info", "clear_selection", "clear_undo", "palette", "arrowhead",
                "units", "sample_color", "show_all", "layout", "repeat",
                "fonts", "palettes", "palette_color",
-               "palette_open_fixed", "palette_colors", "spot_color")
+               "palette_open_fixed", "palette_colors", "spot_color",
+               "pattern_canvas")
 
 
 def doc_ops(doc: Any, action: str, *, target: dict | None = None,
@@ -293,7 +294,9 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
             layout: int | None = None, query: str | None = None,
             limit: int = 100, palette_index: int | None = None,
             color_index: int = 1, palette_id: int | None = None,
-            spot_name: str | None = None, tint: float = 100.0) -> dict:
+            spot_name: str | None = None, tint: float = 100.0,
+            pattern_fills: list | None = None, pattern_pixels: list | None = None,
+            pattern_lines: list | None = None, clear_canvas: bool = True) -> dict:
     """文档级操作。
 
     action:
@@ -490,6 +493,50 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
                 "palette_index": pi, "spot_name": name, "tint": float(tint),
                 "color": _s(lambda: str(color.ToString())),
                 "name": _s(lambda: str(color.GetName())) or None}
+    if act == "pattern_canvas":
+        app = _app_of(doc)
+        canvas = app.CreatePatternCanvas()
+        if clear_canvas:
+            canvas.Clear()
+        drawn = 0
+        for area in (pattern_fills or []):
+            if isinstance(area, dict):
+                x1, y1 = int(area.get("x1", area.get("x", 0))), int(area.get("y1", area.get("y", 0)))
+                x2, y2 = int(area.get("x2", x1 + area.get("width", 1))), \
+                    int(area.get("y2", y1 + area.get("height", 1)))
+                state = bool(area.get("state", True))
+            elif isinstance(area, (list, tuple)):
+                vals = list(area) + [True]
+                x1, y1, x2, y2 = (int(v) for v in vals[:4])
+                state = bool(vals[4])
+            else:
+                continue
+            canvas.FillArea(x1, y1, x2, y2, state)
+            drawn += 1
+        for line in (pattern_lines or []):
+            if not isinstance(line, (list, tuple)) or len(line) < 4:
+                continue
+            vals = list(line)
+            flags = int(vals[0]) if len(vals) >= 5 else 0
+            if len(vals) >= 5:
+                lx1, ly1, lx2, ly2 = (int(v) for v in vals[1:5])
+            else:
+                lx1, ly1, lx2, ly2 = (int(v) for v in vals[:4])
+            canvas.Line(flags, lx1, ly1, lx2, ly2, True)
+            drawn += 1
+        for px in (pattern_pixels or []):
+            if not isinstance(px, (list, tuple)) or len(px) < 2:
+                continue
+            state = bool(px[2]) if len(px) > 2 else True
+            canvas.SetPixel(int(px[0]), int(px[1]), state)
+            drawn += 1
+        index = int(app.PatternCanvases.Add(canvas))
+        return {"action": act, "canvas_index": index,
+                "width": _n(lambda: int(canvas.Width)),
+                "height": _n(lambda: int(canvas.Height)),
+                "drawn": drawn,
+                "canvases": _n(lambda: int(app.PatternCanvases.Count)),
+                "note": "用 cdr_modify(fill={\"type\":\"pattern\",\"canvas_index\":N,...}) 应用"}
     # arrowhead
     with mm_units(doc):
         page = _page(doc, page_index)
@@ -2267,6 +2314,16 @@ def apply_fill(doc: Any, shape: Any, spec: Any) -> str:
         )
         return "fountain"
 
+    if isinstance(spec, dict) and str(spec.get("type", "")).lower() == "pattern":
+        # 图案填充：优先用内存 PatternCanvas（不需要 .pat 文件）
+        idx = int(spec.get("canvas_index", 1))
+        front = _color(doc, spec.get("front", "#000000"))
+        end = _color(doc, spec.get("end", "#FFFFFF"))
+        shape.Fill.ApplyPatternFill(
+            int(spec.get("pattern_type", 0)), str(spec.get("file", "") or ""), idx,
+            front, end, bool(spec.get("transform_with_shape", False)))
+        return "pattern"
+
     if isinstance(spec, dict) and spec.get("type") == "texture":
         shape.Fill.ApplyTextureFill(str(spec.get("name", "")), str(spec.get("library", "")))
         return "texture"
@@ -2404,6 +2461,13 @@ def _apply_transparency(doc: Any, shape: Any, spec: Any) -> str:
         shape.Transparency.ApplyUniformTransparency(int(spec))
         return "uniform"
     if isinstance(spec, dict):
+        if spec.get("type") == "pattern":
+            shape.Transparency.ApplyPatternTransparency(
+                int(spec.get("pattern_type", 0)), str(spec.get("file", "") or ""),
+                int(spec.get("canvas_index", 1)),
+                int(spec.get("front", 0)), int(spec.get("back", 100)),
+                bool(spec.get("transform_with_shape", False)))
+            return "pattern"
         if spec.get("type") in {"fountain", "gradient"}:
             shape.Transparency.ApplyFountainTransparency(
                 int(spec.get("start", 0)), int(spec.get("end", 100)),
@@ -2553,6 +2617,7 @@ def _apply_changes(doc: Any, shape: Any, changes: dict) -> dict:
     applied: list[str] = []
     warnings: list[str] = []
     forced_name: str | None = None
+    layer_out: str | None = None
 
     if "dx" in changes or "dy" in changes:
         shape.Move(float(changes.get("dx", 0)), float(changes.get("dy", 0)))
@@ -2855,6 +2920,39 @@ def _apply_changes(doc: Any, shape: Any, changes: dict) -> dict:
         except Exception as exc:  # noqa: BLE001
             warnings.append(f"设置旋转中心失败：{exc}")
 
+    if changes.get("copy_clipboard"):
+        try:
+            shape.Copy()
+            applied.append("copy_clipboard")
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"复制到剪贴板失败：{exc}")
+
+    if changes.get("cut_clipboard"):
+        try:
+            shape.Cut()
+            applied.append("cut_clipboard")
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"剪切到剪贴板失败：{exc}")
+
+    if changes.get("move_to_layer") is not None or changes.get("copy_to_layer") is not None:
+        try:
+            page = doc.ActivePage
+            target_name = (changes.get("move_to_layer")
+                           if changes.get("move_to_layer") is not None
+                           else changes.get("copy_to_layer"))
+            layer = _find_layer(page, name=str(target_name), index=None)
+            if changes.get("move_to_layer") is not None:
+                shape.MoveToLayer(layer)
+                applied.append("move_to_layer")
+            else:
+                new_shape = shape.CopyToLayer(layer)
+                if new_shape is not None:
+                    forced_name = _ensure_name(new_shape)
+                applied.append("copy_to_layer")
+            layer_out = _s(lambda: str(layer.Name))
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"移动到/复制到图层失败：{exc}")
+
     new_name = None
     if changes.get("duplicate"):
         dup = shape.Duplicate(float(changes.get("dup_dx", 5)), float(changes.get("dup_dy", -5)))
@@ -2865,12 +2963,15 @@ def _apply_changes(doc: Any, shape: Any, changes: dict) -> dict:
         shape.Delete()
         applied.append("delete")
 
-    return {
+    result = {
         "applied": applied,
         "name": forced_name or new_name or _s(lambda: str(shape.Name)),
-        "bbox": None if changes.get("delete") else _bbox(shape),
+        "bbox": None if changes.get("delete") or changes.get("cut_clipboard") else _bbox(shape),
         "warnings": warnings,
     }
+    if layer_out is not None:
+        result["layer"] = layer_out
+    return result
 
 
 def _set_text_align(shape: Any, value: Any) -> None:

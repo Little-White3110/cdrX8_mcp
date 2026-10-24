@@ -294,14 +294,17 @@ def cdr_modify(document_id: str, target: dict, changes: dict,
     changes 可用键：
       dx,dy（相对移动）｜x,y（绝对左下角）｜width,height[,keep_aspect]｜rotate
       affine [d11,d12,d21,d22,cx,cy]｜align_to {mode:"page_center"|"point"|"grid", x,y,type}
-      fill（纯色/渐变/纹理/"none"）｜fill_from（复制另一对象的填充：{"name":"..."}）
+      fill（纯色/渐变/纹理/图案/"none"）｜fill_from（复制另一对象的填充：{"name":"..."}）
+      图案填充：fill={"type":"pattern","canvas_index":1,"front":"#000","end":"#fff"}
+      （canvas_index 来自 cdr_doc(action="pattern_canvas")）
       专色填充：fill={"type":"spot","palette_index":1,"color_index":10,"tint":100}
       （先 cdr_doc(action="palette_open_fixed", palette_id=3) 打开 PANTONE 调色板）
       outline（宽度或 {width,color,caps,join,behind_fill,dash,start_arrow,end_arrow}）
       outline 的 color 也可用专色：{"type":"spot","palette_index":1,"color_index":1}
       outline_from（复制另一对象的描边：{"name":"..."}）
       drop_shadow {opacity,offset_x,offset_y,color}｜contour {offset,steps}｜envelope 1..39
-      transparency（0~100 均匀透明度 / {type:"fountain",start,end,angle} / "none"）
+      transparency（0~100 均匀透明度 / {type:"fountain",start,end,angle} /
+                    {type:"pattern",canvas_index:1,front:0,back:100} / "none"）
       freeze_transparency（true=冻结透明度并补一个新名字，false=解冻；
                           实测冻结会把对象变成组合体并清空名字，已自动补名）
       gradient {angle, edge_pad, translate:[dx,dy], transformations:[d11,d12,d21,d22], opaque}
@@ -309,6 +312,8 @@ def cdr_modify(document_id: str, target: dict, changes: dict,
       flip（0 水平 / 1 垂直）｜skew {x,y}｜clone {dx,dy}｜locked true/false
       order（"front_of"|"back_of" 需 ref / "forward_one" / "back_one" / "reverse"）
       clear_transformations（清除对象变换）｜rotation_center {x,y}
+      copy_clipboard（复制到系统剪贴板，可跨文档）/ cut_clipboard（剪切）
+      move_to_layer（图层名）/ copy_to_layer（图层名）
       text｜font｜size｜bold｜italic｜underline｜alignment
       fit_to_path（{"name":"曲线对象"}）｜fit_frame（文本适应文本框）
       name｜to_front｜to_back｜duplicate[,dup_dx,dup_dy]｜delete
@@ -906,6 +911,8 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
             palette_index: int | None = None, color_index: int = 1,
             palette_id: int | None = None, spot_name: str | None = None,
             tint: float = 100.0,
+            pattern_fills: list | None = None, pattern_pixels: list | None = None,
+            pattern_lines: list | None = None, clear_canvas: bool = True,
             expected_revision: int | None = None, snapshot_token: str | None = None,
             page_index: int | None = None) -> dict:
     """文档级操作。
@@ -928,6 +935,9 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
       palette_open_fixed  打开内置固定调色板：palette_id（本机 3=PANTONE 匹配系统）
       palette_colors   列调色板颜色名（query 过滤、limit 截断）
       spot_color       创建专色：palette_index + color_index（或 spot_name）+ tint
+      pattern_canvas   新建 32x32 图案画布并登记：pattern_fills=[[x1,y1,x2,y2],…] /
+                       pattern_pixels=[[x,y],…] / pattern_lines=[[x1,y1,x2,y2],…]；
+                       返回 canvas_index，供 cdr_modify 图案填充/图案透明使用
     """
     def _run():
         doc, sess = _with_doc(document_id)
@@ -936,12 +946,14 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
                       x_samples=x_samples, y_samples=y_samples, layout=layout,
                       query=query, limit=limit, palette_index=palette_index,
                       color_index=color_index, palette_id=palette_id,
-                      spot_name=spot_name, tint=tint)
+                      spot_name=spot_name, tint=tint,
+                      pattern_fills=pattern_fills, pattern_pixels=pattern_pixels,
+                      pattern_lines=pattern_lines, clear_canvas=clear_canvas)
         if action == "info":
             return _com(lambda _b: ops.doc_ops(doc, "info", **kwargs), label="cdr_doc")
         if action in {"clear_selection", "units", "sample_color", "fonts",
                       "palettes", "palette_color", "palette_open_fixed",
-                      "palette_colors", "spot_color"}:
+                      "palette_colors", "spot_color", "pattern_canvas"}:
             return _com(lambda _b: ops.doc_ops(doc, action, **kwargs), label="cdr_doc")
         warnings = _check_view(sess, expected_revision, snapshot_token, doc)
         result = _com(lambda _b: ops.doc_ops(doc, action, **kwargs), label="cdr_doc")

@@ -1293,6 +1293,124 @@ def main() -> int:
             check("最近吸附点可查询", snap.get("found") is True
                   and bool(snap.get("position")), str(snap.get("position")))
 
+    # ---------------- 15n. 第八波：图案画布填充 / 跨文档剪贴板 / 对象到图层 ----------------
+    print("\n[15n] 第八波：图案画布 + 跨文档剪贴板 + 对象到图层")
+    fresh8 = server.cdr_inspect(doc_id)
+    if "state" in fresh8:
+        state = fresh8["state"]
+    w8 = server.cdr_create(doc_id, items=[
+        {"type": "rectangle", "x": 20, "y": 60, "width": 40, "height": 30,
+         "fill": "#CC0000", "outline": {"width": 1, "color": "#000000"}},
+        {"type": "rectangle", "x": 70, "y": 60, "width": 40, "height": 30,
+         "fill": "#00CC00"},
+        {"type": "rectangle", "x": 120, "y": 60, "width": 30, "height": 30,
+         "fill": "#0000CC"},
+    ], expected_revision=state["revision"], snapshot_token=state["snapshot_token"])
+    if no_error("创建第八波测试对象", w8):
+        state = w8["state"]
+        p1, p2, p3 = (w8["created"][i]["name"] for i in range(3))
+
+        # --- 图案画布 / 图案填充 / 图案透明 ---
+        pcv = server.cdr_doc(doc_id, "pattern_canvas",
+                             pattern_fills=[[0, 0, 15, 15], [20, 20, 31, 31]],
+                             pattern_pixels=[[5, 25]])
+        canvas_index = None
+        if no_error("cdr_doc(pattern_canvas)", pcv):
+            canvas_index = pcv.get("canvas_index")
+            check("图案画布创建并登记", bool(canvas_index)
+                  and pcv.get("width") == 32 and (pcv.get("drawn") or 0) == 3,
+                  f"index={canvas_index} drawn={pcv.get('drawn')}")
+        if canvas_index:
+            pf = server.cdr_modify(doc_id, {"name": p1}, {
+                "fill": {"type": "pattern", "canvas_index": canvas_index,
+                         "front": "#000000", "end": "#FFFFFF"}},
+                expected_revision=state["revision"],
+                snapshot_token=state["snapshot_token"])
+            if no_error("cdr_modify(fill pattern)", pf):
+                check("图案填充已应用", "fill:pattern" in (pf.get("applied") or []),
+                      str(pf.get("applied")))
+                state = pf["state"]
+            pt = server.cdr_modify(doc_id, {"name": p2}, {
+                "transparency": {"type": "pattern", "canvas_index": canvas_index,
+                                 "front": 0, "back": 100}},
+                expected_revision=state["revision"],
+                snapshot_token=state["snapshot_token"])
+            if no_error("cdr_modify(transparency pattern)", pt):
+                check("图案透明已应用", "transparency:pattern" in (pt.get("applied") or []),
+                      str(pt.get("applied")))
+                state = pt["state"]
+
+        # --- 剪贴板：同文档复制粘贴 ---
+        cp = server.cdr_modify(doc_id, {"name": p1}, {"copy_clipboard": True},
+                               expected_revision=state["revision"],
+                               snapshot_token=state["snapshot_token"])
+        if no_error("cdr_modify(copy_clipboard)", cp):
+            check("对象已复制到剪贴板", "copy_clipboard" in (cp.get("applied") or []),
+                  str(cp.get("applied")))
+            state = cp["state"]
+            paste1 = server.cdr_layers(doc_id, action="paste",
+                                       expected_revision=state["revision"],
+                                       snapshot_token=state["snapshot_token"])
+            if no_error("cdr_layers(paste)", paste1):
+                check("剪贴板粘贴出对象", paste1.get("pasted") is True,
+                      f"name={paste1.get('name')} type={paste1.get('type')}")
+                state = paste1["state"]
+
+        # --- 剪贴板：跨文档 ---
+        doc2 = server.cdr_open(preset="A5")
+        if no_error("cdr_open(跨文档目标)", doc2):
+            doc2_id = doc2["document_id"]
+            cross = server.cdr_layers(doc2_id, action="paste")
+            if no_error("cdr_layers(paste 跨文档)", cross):
+                check("跨文档粘贴成功", cross.get("pasted") is True,
+                      f"name={cross.get('name')} type={cross.get('type')}")
+            else:
+                check("跨文档粘贴成功", False, str(cross.get("message")))
+            no_error("关闭跨文档目标", server.cdr_close(doc2_id))
+
+        # --- 剪切（用一个一次性对象验证） ---
+        cut = server.cdr_modify(doc_id, {"name": p3}, {"cut_clipboard": True},
+                                expected_revision=state["revision"],
+                                snapshot_token=state["snapshot_token"])
+        if no_error("cdr_modify(cut_clipboard)", cut):
+            check("剪切到剪贴板成功", "cut_clipboard" in (cut.get("applied") or []),
+                  str(cut.get("applied")))
+            state = cut["state"]
+            paste2 = server.cdr_layers(doc_id, action="paste",
+                                       expected_revision=state["revision"],
+                                       snapshot_token=state["snapshot_token"])
+            if no_error("cdr_layers(paste 剪切后)", paste2):
+                check("剪切内容可再粘贴", paste2.get("pasted") is True,
+                      str(paste2.get("name")))
+                state = paste2["state"]
+
+        # --- 对象移动到 / 复制到图层 ---
+        lnew = server.cdr_layers(doc_id, action="create", name="W8Layer",
+                                 expected_revision=state["revision"],
+                                 snapshot_token=state["snapshot_token"])
+        if no_error("cdr_layers(create W8Layer)", lnew):
+            state = lnew["state"]
+            mv = server.cdr_modify(doc_id, {"name": p2}, {"move_to_layer": "W8Layer"},
+                                   expected_revision=state["revision"],
+                                   snapshot_token=state["snapshot_token"])
+            if no_error("cdr_modify(move_to_layer)", mv):
+                check("对象移动到图层", mv.get("layer") == "W8Layer",
+                      f"layer={mv.get('layer')}")
+                state = mv["state"]
+            cpy = server.cdr_modify(doc_id, {"name": p1}, {"copy_to_layer": "W8Layer"},
+                                    expected_revision=state["revision"],
+                                    snapshot_token=state["snapshot_token"])
+            if no_error("cdr_modify(copy_to_layer)", cpy):
+                check("对象复制到图层", cpy.get("layer") == "W8Layer",
+                      f"layer={cpy.get('layer')} name={cpy.get('name')}")
+                state = cpy["state"]
+            layers8 = server.cdr_layers(doc_id, action="list")
+            if no_error("cdr_layers(list after moves)", layers8):
+                target = next((x for x in layers8.get("layers", [])
+                               if x.get("name") == "W8Layer"), {})
+                check("目标图层对象数 >= 2", (target.get("shapes") or 0) >= 2,
+                      f"shapes={target.get('shapes')}")
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,
