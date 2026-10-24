@@ -278,6 +278,8 @@ def cdr_create(document_id: str, items: list[dict],
       * text:      x,y,text[,font,size,bold,italic,underline,align]
       * paragraph_text: x,y,x2,y2,text[,font,size,align]
       * guide:     x1,y1,x2,y2（参考线，不是形状）
+      * ole_file:  path（绝对路径）[,link,display_as_icon,caption] —— 嵌入 OLE 对象
+                   （实测 .txt 可嵌入，返回 type_id=12 的 OLE 形状）
 
     每个图元还可带样式：fill（"#RRGGBB" / {c,m,y,k} / {r,g,b} /
     {type:"fountain",start,end,gradient_type,angle}）、
@@ -1018,6 +1020,9 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
             rendering_intent: int | None = None,
             pref_group: str = "cdrX8 MCP", pref_key: str | None = None,
             pref_value: Any = None, pref_default: Any = None,
+            view_name: str | None = None, view_index: int = 1,
+            zoom: float = 100.0, origin_x: float = 0.0,
+            origin_y: float = 0.0,
             expected_revision: int | None = None, snapshot_token: str | None = None,
             page_index: int | None = None) -> dict:
     """文档级操作。
@@ -1069,6 +1074,10 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
       pref_register    注册用户级应用偏好（GroupName/KeyName/默认值），持久化在 CorelDRAW 工作区
       pref_get         读取用户偏好（未注册时可传 pref_default 自动注册）
       pref_set         写入用户偏好（未注册时自动注册再写）
+      views            列出命名视图（名称/缩放/页面）
+      create_view      创建命名视图：view_name + origin_x/y + zoom + page_index
+      activate_view    激活指定视图（view_index 从 1 开始）
+      delete_view      删除指定视图（view_index 从 1 开始）
     """
     def _run():
         doc, sess = _with_doc(document_id)
@@ -1092,7 +1101,9 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
                       profile_name=profile_name,
                       rendering_intent=rendering_intent,
                       pref_group=pref_group, pref_key=pref_key,
-                      pref_value=pref_value, pref_default=pref_default)
+                      pref_value=pref_value, pref_default=pref_default,
+                      view_name=view_name, view_index=view_index, zoom=zoom,
+                      origin_x=origin_x, origin_y=origin_y)
         if action == "info":
             return _com(lambda _b: ops.doc_ops(doc, "info", **kwargs), label="cdr_doc")
         if action in {"clear_selection", "units", "sample_color", "fonts",
@@ -1101,7 +1112,8 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
                       "textures", "metadata", "palette_create", "data_fields",
                       "object_data", "color_context", "outline_styles",
                       "settings", "app_info", "color_profiles",
-                      "pref_register", "pref_get", "pref_set"}:
+                      "pref_register", "pref_get", "pref_set",
+                      "views", "create_view", "activate_view", "delete_view"}:
             return _com(lambda _b: ops.doc_ops(doc, action, **kwargs), label="cdr_doc")
         warnings = _check_view(sess, expected_revision, snapshot_token, doc)
         result = _com(lambda _b: ops.doc_ops(doc, action, **kwargs), label="cdr_doc")

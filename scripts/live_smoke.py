@@ -2133,6 +2133,48 @@ def main() -> int:
         check("应用信息含当前工具", ai19.get("active_tool") is not None,
               f"tool={ai19.get('active_tool')}")
 
+    # ---------------- 15z. 第二十波：OLE 嵌入 / 命名视图 ----------------
+    print("\n[15z] 第二十波：OLE 嵌入 + 命名视图")
+    fresh20 = server.cdr_inspect(doc_id)
+    if "state" in fresh20:
+        state = fresh20["state"]
+    ole_path = os.path.join(out, "w20_ole.txt")
+    with open(ole_path, "w", encoding="utf-8") as fh:
+        fh.write("hello ole")
+    w20 = server.cdr_create(doc_id, items=[
+        {"type": "ole_file", "path": ole_path, "caption": "w20 object"},
+    ], expected_revision=state["revision"], snapshot_token=state["snapshot_token"])
+    if no_error("cdr_create(ole_file)", w20):
+        item20 = (w20.get("created") or [{}])[0]
+        check("OLE 文件可嵌入", (item20.get("type_id") == 12
+              or item20.get("type") == "type_12") and bool(item20.get("name")),
+              str(item20))
+        state = w20["state"]
+        server.cdr_modify(doc_id, {"name": item20["name"]}, {"delete": True},
+                          expected_revision=state["revision"],
+                          snapshot_token=state["snapshot_token"])
+    v0 = server.cdr_doc(doc_id, "views")
+    if no_error("cdr_doc(views)", v0):
+        base20 = v0.get("count") or 0
+        cv20 = server.cdr_doc(doc_id, "create_view", view_name="W20View",
+                              zoom=150, origin_x=10, origin_y=20, page_index=1)
+        if no_error("cdr_doc(create_view)", cv20):
+            check("命名视图已创建", (cv20.get("count") or 0) == base20 + 1
+                  and ((cv20.get("views") or [{}])[0].get("name") == "W20View"),
+                  f"count={cv20.get('count')}")
+            vl20 = server.cdr_doc(doc_id, "views")
+            if no_error("cdr_doc(views after create)", vl20):
+                check("命名视图可列出", (vl20.get("count") or 0) == base20 + 1,
+                      f"count={vl20.get('count')}")
+            av20 = server.cdr_doc(doc_id, "activate_view", view_index=1)
+            if no_error("cdr_doc(activate_view)", av20):
+                check("命名视图可激活", av20.get("activated") == 1,
+                      f"name={av20.get('name')}")
+            dv20 = server.cdr_doc(doc_id, "delete_view", view_index=1)
+            if no_error("cdr_doc(delete_view)", dv20):
+                check("命名视图可删除", (dv20.get("count") or 0) == base20,
+                      f"count={dv20.get('count')}")
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

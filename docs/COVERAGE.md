@@ -2,7 +2,7 @@
 
 > 目的：证明"还有多少没探"。每一行要么有对应的工具，要么有实测失败证据。
 > 环境：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）/ Python 3.11.9 64 位
-> 最近更新：2026-10-25 第十九波（用户级应用偏好 KV / 当前工具信息）
+> 最近更新：2026-10-25 第二十波（OLE 文件嵌入 / 命名视图）
 
 ## 怎么得出这份清单
 
@@ -18,9 +18,9 @@
 | 接口 | 方法数 | 覆盖情况 |
 |---|---:|---|
 | `IVGApplication` | 82 | 已用：CreateDocument / **CreateDocumentFromTemplate** / OpenDocument / 全套 Create*Color / CreateShapeRange / CreateStructExportOptions / CreateStructImportOptions / OutlineStyles（含 **AddStyle/Save**）/ ArrowHeads / Version / Path / Documents / **ColorManager / ActiveTool / ActiveToolStateGuid / RegisterUserApplicationPreference / GetApplicationPreferenceValue / SetApplicationPreferenceValue** / **FontList / Palettes（含 OpenFixed / Create / Item） / CreateDuotone / CreateSpotColorByName / CreatePatternCanvas / PatternCanvases / GetSupportedOpenTypeFeatures / CheckPlatformVersion / IsUILanguageAvailable**；OpenDocumentAsCopy 参数 TypeError |
-| `IVGDocument` | 78 | 已用：Unit / Pages / AddPages / DeletePages / ActivePage / ActiveLayer / Selection / Save·SaveAs / ExportEx / ExportBitmap(不适用) / PublishToPDF / Undo / Redo / Begin·EndCommandGroup / FileName / Dirty / Name / StyleSheet / **Metadata / DataFields / ColorContext / ConvertToColorContext / Revert** / **设置：EditAcrossLayers / ApplyToDuplicate / CurvePrecision / Resolution / ReferencePoint / ShapeEnumDirection / TextFormatter / WorldScale / FacingPages / FirstPageOnRightSide / Layout / Unit / DrawingOriginX·Y / PreserveSelection** / **Keywords·Notes（可写，读需走 Metadata）** / **ToUnits / FromUnits / SampleColorAtPoint / SampleColorInArea / ShowAllHiddenObjects / SetLayout / Repeat / CreateImage / CreateColorStyles / InsertPages / HatchLibraries / SaveStyleSheet / LoadStyleSheet / CreateFill / CreateOutline（字符串格式无效）** |
+| `IVGDocument` | 78 | 已用：Unit / Pages / AddPages / DeletePages / ActivePage / ActiveLayer / Selection / Save·SaveAs / ExportEx / ExportBitmap(不适用) / PublishToPDF / Undo / Redo / Begin·EndCommandGroup / FileName / Dirty / Name / StyleSheet / **Metadata / DataFields / ColorContext / ConvertToColorContext / Revert / Views / CreateView** / **设置：EditAcrossLayers / ApplyToDuplicate / CurvePrecision / Resolution / ReferencePoint / ShapeEnumDirection / TextFormatter / WorldScale / FacingPages / FirstPageOnRightSide / Layout / Unit / DrawingOriginX·Y / PreserveSelection** / **Keywords·Notes（可写，读需走 Metadata）** / **ToUnits / FromUnits / SampleColorAtPoint / SampleColorInArea / ShowAllHiddenObjects / SetLayout / Repeat / CreateImage / CreateColorStyles / InsertPages / HatchLibraries / SaveStyleSheet / LoadStyleSheet / CreateFill / CreateOutline（字符串格式无效）** |
 | `IVGPage` | 22 | **全覆盖**：SetSize / SelectSize / GetSize / CreateLayer / Activate / Delete / MoveTo / FindShape(s) / TextFind / TextReplace / GetGuides / UnlockAllShapes / GetObjectsBoundingBox(改用自算) / SelectShapesFromRectangle / Shapes / Layers / Orientation / **FindClosestSnapPoint** |
-| `IVGLayer` | 50 | 已用：Create*（矩形/椭圆/多边形/螺旋/网格/线/贝塞尔/艺术字/段落字/参考线/**角度参考线**/**位图 CreateBitmap·CreateBitmap2**）/ Import / ImportEx / CreateCurve / Activate / Delete / MoveAbove / **MoveBelow / GetAbove / GetBelow / Paste** / Visible / Editable / Printable / Master / FindShape |
+| `IVGLayer` | 50 | 已用：Create*（矩形/椭圆/多边形/螺旋/网格/线/贝塞尔/艺术字/段落字/参考线/**角度参考线**/**位图 CreateBitmap·CreateBitmap2**/**OLE 文件 CreateOLEObjectFromFile**）/ Import / ImportEx / CreateCurve / Activate / Delete / MoveAbove / **MoveBelow / GetAbove / GetBelow / Paste** / Visible / Editable / Printable / Master / FindShape |
 | `IVGShape` | 124 | 已用：几何 / Fill / Outline / Transparency / Locked / Name / Type / GetBoundingBox / Duplicate / Clone / Delete / **层级 / StepAndRepeat / Distribute / CreateBoundary / CreatePerspective / Separate / CreateEnvelopeFromCurve / CreateEnvelopeFromShape / CompareTo / CreateSelection / RemoveFromSelection / IsOnShape / Copy / Cut / CopyToLayer / MoveToLayer / Project / Unproject / CreateDocumentFrom / CreateExtrude / CreateLens / CreateBlend** / ConvertToCurves / ConvertToSymbol / Weld·Trim·Intersect / AddToPowerClip / CreateDropShadow·Contour·Envelope / AlignToPage·AlignToShape / Fillet·Chamfer·Scallop / Group / Ungroup / BreakApart / Combine |
 | `IVGShapeRange` | 131 | 已用：Group / Combine / AlignAndDistribute / ApplyFountainFill / SetOutlineProperties(不适用，改属性直写) / ConvertToCurves / Add / Count / **CreateParallelCurves / ConvertToBitmap / ConvertOutlineToObject / CreateBoundary / SetFillMode / SetPixelAlignedRendering / ApplyFill / ApplyOutline / CreateDocumentFrom** |
 | `IVGFill` | 13 | 已用：ApplyUniformFill / ApplyFountainFill / ApplyTextureFill / **ApplyPatternFill（内存 PatternCanvas 可用；文件型 Pattern 仍需图像文件）** / ApplyPostscriptFill / ApplyNoFill / **GetCopy / CompareWith**；Hatch 需本机 Hatch 库（本机为空） |
@@ -38,6 +38,7 @@
 | `IVGTransparency` | 9 | 已用：ApplyUniformTransparency / ApplyFountainTransparency / **ApplyPatternTransparency（PatternCanvas 可用）** / ApplyNoTransparency / **Freeze / Unfreeze / Frozen** |
 | `IVGStyle` / `IVGStyleSheet` | 16 / 16 | **已覆盖（第六/七/九波）**：`CreateStyleFromShape`、`CreateStyle(category, based_on, name)`、`Styles.Find/Item/Count`、`Style.Name/CategoryName/DisplayName/BasedOn`、`Rename / Delete / GetAllPropertyNames / GetPropertyAsString / SetPropertyAsString / SetProperty / DerivedStyles / ToString`、`Shape.ApplyStyle("样式名")`；**`Document.SaveStyleSheet/LoadStyleSheet` 可导出/恢复 .cdst**；**`Document.CreateColorStyles(harmony>0)` 会生成颜色样式（AllColorStyles）**；`fill`/`outline` 分组名不可直接读写 |
 | `IVGWindow` | 9 | 已用：Refresh / Activate / DocumentToScreen / ScreenToDocument / DocumentDistanceToScreenDistance / **ScreenDistanceToDocumentDistance**；缩放/新建窗口未封装 |
+| `IVGView` / `IVGViews` | 8 / 5 | **新打通（第二十波）**：`Document.CreateView(Name, OriginX, OriginY, Zoom, Page)` 创建命名视图；`Views.Count/Item(i)` 列出；`View.Activate/Delete`、Name/OriginX·Y/Zoom/Page/UsePage/UseZoom 可读写 |
 | `IVGColors`（颜色样式集合） | 8 | **新打通（第九波）**：`StyleSheet.AllColorStyles` 的 `Count / Item(i) / GetName / ToString`；配合 `Document.CreateColorStyles(harmonies=1..3)` 生成颜色协调 |
 | `IVGMetadata` | 21 | **新打通（第十波）**：`Document.Metadata` 的 Title / Author / LastAuthor / Subject / Keywords / Notes / Copyright / Revision / DocLanguage / DocID；前六项可写；Localizable* 是 `IVGLocalizableString` 对象，未纳入读取 |
 | `IVGEffects` / `IVGEffect` | 12 / 12 | **新打通（第十五波）**：`Shape.Effects.Count/Item(i)`、`ExtrudeEffect/LensEffect/DropShadowEffect/BlendEffects` 等；`Effect.Type/Extrude/Lens/Separate/Clear` 可用 |
@@ -63,7 +64,7 @@
 | 能力域 | 工具 | 状态 |
 |---|---|---|
 | 会话/文档/状态 | `cdr_status` `cdr_connect` `cdr_documents` `cdr_open`（含**从模板创建**） `cdr_inspect` `cdr_save` `cdr_close` | ✅ |
-| 绘图 | `cdr_create`（矩形含圆角 / 椭圆含圆弧扇形 / 多边形 / 星形 / 螺旋 / 网格 / 直线 / 贝塞尔 / 文字 / 段落文字 / 参考线 / 任意折线 / **内存位图（纯色 + 像素色块）**） | ✅ |
+| 绘图 | `cdr_create`（矩形含圆角 / 椭圆含圆弧扇形 / 多边形 / 星形 / 螺旋 / 网格 / 直线 / 贝塞尔 / 文字 / 段落文字 / 参考线 / 任意折线 / **内存位图（纯色 + 像素色块）** / **OLE 文件嵌入**） | ✅ |
 | 样式 | `cdr_modify`（纯色/渐变/纹理/图案（画布）/专色/无色、描边含虚线箭头/自定义虚线线型、投影、轮廓图、封套、透明/图案透明、冻结/解冻透明度、**图案填充微调**） | ✅ |
 | 变换 | `cdr_modify`（移动/尺寸/旋转/翻转/斜切/矩阵/克隆/层级/**层级相对调整**/**清除变换**/**旋转中心**/复制/删除/锁定） | ✅ |
 | **对象样式** | `cdr_style`（列出/从对象创建/派生/套用/改名/删除/读定义/改属性/**样式表 .cdst 导入导出**/**颜色样式与颜色协调**） | ✅ 第六/七/九波 |
@@ -78,7 +79,7 @@
 | 位图 | `cdr_bitmap`（信息/转色彩模式/重采样/裁剪/取消裁剪/取像素色·图像缓冲信息·调色板模式 0~9·双色调/内容替换 SetImageData/**位图特效命令串 ApplyBitmapEffect**） | ✅（Trace 除外） |
 | 路径 | `cdr_path`（长度面积/偏移轮廓/追加子路径/折线点/反转方向·焊子路径·去重叠·参数取点·切/法向量·速度·交点·找节点/线段） | ✅ |
 | 导入导出 | `cdr_import` `cdr_export`（png/jpg/svg/pdf，可指定 DPI，可只导选区） | ✅ |
-| 文档 | `cdr_doc`（概况/清选区/清撤销栈/调色板/箭头/箭头登记/单位换算·取色·显示隐藏·版式·重复操作/字体列表·调色板列表·调色板取色/固定调色板打开·颜色枚举·专色创建/图案画布创建（含区域变换）/纹理库列表/文档元数据读写/自定义调色板创建/数据字段·对象数据·色彩管理·线型样式/文档设置读写/应用信息·文档回滚/色彩配置文件·文档颜色转换/**用户偏好 KV**） | ✅ |
+| 文档 | `cdr_doc`（概况/清选区/清撤销栈/调色板/箭头/箭头登记/单位换算·取色·显示隐藏·版式·重复操作/字体列表·调色板列表·调色板取色/固定调色板打开·颜色枚举·专色创建/图案画布创建（含区域变换）/纹理库列表/文档元数据读写/自定义调色板创建/数据字段·对象数据·色彩管理·线型样式/文档设置读写/应用信息·文档回滚/色彩配置文件·文档颜色转换/用户偏好 KV/**命名视图**） | ✅ |
 | **对象数据** | `cdr_modify(changes={"data":{...}})` + `cdr_doc(action="object_data"/"data_fields"/"add_data_field")` | ✅ 第十一波 |
 | 视图 | `cdr_view`（刷新/激活/文档↔屏幕坐标/屏幕↔文档距离） | ✅ 第五波 |
 | 历史 | `cdr_undo`（撤销/重做） | ✅ |
@@ -111,6 +112,9 @@
 | 文档颜色转换 | `Document.ConvertToColorContext(profile.CreateColorContext())` | RGB→CMYK→RGB 实测成功（填充色由 RGB 变 CMYK 再回 RGB）；**灰度→RGB 会报「服务器出现意外情况」** | 已封装 `cdr_doc(action="convert_color")`；转换前建议先以 RGB→CMYK→RGB 顺序，避免灰→RGB |
 | 色彩配置文件 | `Application.ColorManager.ColorProfiles` | 本机 64 个；`GetProfilesByColorModel(0/1/2)` 分别可取 RGB/CMYK/Gray；`DefaultColorContext` 含 3 个 | `CreateColorContext()` 直接调用不可用，须用 `profile.CreateColorContext()` |
 | 应用偏好 | `RegisterUserApplicationPreference` / `Get·SetApplicationPreferenceValue` | 用户偏好可注册、读写（存 CorelDRAW 工作区）；读取真实应用偏好组（如 `VGDoc Pref Settings`）报「发生意外错误」 | 只支持用户自定义偏好（Group/Key） |
+| OLE 文件嵌入 | `Layer.CreateOLEObjectFromFile(FileName, Link, DisplayAsIcon, Caption, Icon)` | 传绝对路径的 .txt 可嵌入，返回 `type_id=12` 的 OLE 形状（默认约页面居中，28×18mm） | 不弹出对话框；可用 cdr_modify 移动/删除 |
+| 命名视图 | `Document.CreateView(Name, OriginX, OriginY, Zoom, Page)` | **Page 参数必须是 IVGPage 对象**；传 int 报 `TypeError: Python instance can not be converted to a COM object`；传 `page` 后成功创建 | 已封装 views/create_view/activate_view/delete_view |
+| ContentIdentifiers | `Document.ContentIdentifiers` | 返回 Python **tuple**（空文档为 `()`），不是 COM 集合；本机无内容标识可测 | 批量内容替换未接入 |
 | 文档回滚 | `Document.Revert()` | 可用（修改后 15→16→15 对象）；**破坏性**，丢弃未保存修改 | 已封装为 `cdr_doc(action="revert")`，调用前确认已保存 |
 | 立体化/透镜创建 | `Shape.CreateExtrude(...)` / `Shape.CreateLens(...)` | 只传前几个 int 参数报 `TypeError: Python instance can not be converted to a COM object`；**传全参数（含颜色对象）即可** | 已封装并补齐默认颜色参数 |
 | 点对象创建 | `Application.MathUtils.CreatePoint` | `MathUtils` CLSID `{E98800C5-…}` 报「没有注册类」，Application 上也没有 MathUtils 属性 | 尺寸标注/连接线仍不可用 |
@@ -220,7 +224,7 @@
 
 ```powershell
 python -m pytest -q              # 55 项纯逻辑
-python scripts/live_smoke.py     # 234 项端到端（真实 CorelDRAW）
+python scripts/live_smoke.py     # 239 项端到端（真实 CorelDRAW）
 ```
 
 联调断言覆盖了上表所有 ✅ 项。反解脚本属于过程产物，已按要求放在 `tmp/` 并在完成时清理；
@@ -228,14 +232,14 @@ python scripts/live_smoke.py     # 234 项端到端（真实 CorelDRAW）
 
 ---
 
-## 六、量化覆盖率（2026-10-25 第十九波实测）
+## 六、量化覆盖率（2026-10-25 第二十波实测）
 
 方法：反解类型库拿到 196 个自动化类 / **1619** 个方法（已剔除 `QueryInterface` 等 COM 基础设施）；
 用 AST 扫描 `src/cdrx8_mcp/*.py`，收集所有 `.方法名(` 调用与 `setattr/getattr` 的属性名，
 与主干接口的方法名求交集。**注意：属性名（如 `curve.Nodes`）也会被计入**，所以本波数字含真实属性访问。
 
-**全局：696 / 1619 = 43.0%**（21.2% → … → 42.8% → 本轮 43.0%）
-**主干 20 接口：416 / 743 = 56.0%**
+**全局：698 / 1619 = 43.1%**（21.2% → … → 43.0% → 本轮 43.1%）
+**主干 20 接口：418 / 743 = 56.3%**
 
 复现命令：`python scripts/coverage_audit.py`（会临时展开类型库到 `tmp/gen_py`，跑完自动清理）
 
@@ -244,10 +248,10 @@ python scripts/live_smoke.py     # 234 项端到端（真实 CorelDRAW）
 | `IVGShape` | 123 | 80 | **65%** |
 | `IVGShapeRange` | 125 | 77 | 62% |
 | `IVGSubPath` | 38 | 29 | **76%** |
-| `IVGDocument` | 74 | 38 | 51% |
+| `IVGDocument` | 74 | 39 | **53%** |
 | `IVGPage` | 21 | 19 | **90%** |
 | `IVGCurve` | 36 | 22 | 61% |
-| `IVGLayer` | 49 | 22 | 45% |
+| `IVGLayer` | 49 | 23 | **47%** |
 | `IVGTextRange` | 31 | 22 | **71%** |
 | `IVGApplication` | 78 | 25 | **32%** |
 | `IVGText` | 29 | 16 | **55%** |
@@ -261,10 +265,10 @@ python scripts/live_smoke.py     # 234 项端到端（真实 CorelDRAW）
 | `IVGTransparency` | 8 | 6 | **75%** |
 | `IVGStyle` | 15 | 8 | **53%** |
 | `IVGColorContext` | 6 | 1 | 17% |
-| **合计** | **743** | **416** | **56.0%** |
+| **合计** | **743** | **418** | **56.3%** |
 
 > **怎么读这两个数**：
-> 1. 全局 43.0% 覆盖 1619 个方法（含变体与重复）；主干 20 接口 56.0%。
+> 1. 全局 43.1% 覆盖 1619 个方法（含变体与重复）；主干 20 接口 56.3%。
 > 2. 它是**方法/属性名匹配**的近似值，同名方法会跨接口误计。
 > 3. `IVGColor` 的 21% 是**故意的**：实测不暴露分量属性，色彩运算在纯 Python 完成。
 > 4. 未调用方法多为变体（Wide/Ex/2/3 后缀）与事件订阅、CorelScriptTools/MathUtils。
@@ -500,6 +504,16 @@ python scripts/live_smoke.py     # 234 项端到端（真实 CorelDRAW）
 | 真实应用偏好 | `GetApplicationPreferenceValue("VGDoc Pref Settings", "KeepDesktopObjectsOnLayer")` | ❌ 报「发生意外错误」；只能读写用户注册的偏好 |
 | 持久化范围 | CorelDRAW 工作区 | 同会话内已验证；跨重启持久化未单独验证 |
 
+## 七之十八、第二十波已接入（2026-10-25，OLE 文件嵌入、命名视图）
+
+| 能力 | 落地位置 | 实测 |
+|---|---|---|
+| **OLE 文件嵌入** | `cdr_create` 类型 `ole_file`：`{"type":"ole_file","path":"绝对路径","caption":"..."}` | ✅ 嵌入 .txt 返回 `type_id=12` 形状（姓名已自动命名，bbox 约 28×18mm 居中） |
+| **命名视图** | `cdr_doc(action="views"/"create_view"/"activate_view"/"delete_view")` | ✅ 创建 W20View（zoom=150, page=1）→ 列表 count=1 → 激活 → 删除 → count=0 |
+| 关键坑 | `Document.CreateView` 的 Page 参数 | 必须传 **IVGPage 对象**；传 int 报 TypeError |
+| ContentIdentifiers | `Document.ContentIdentifiers` | 返回 Python tuple（空文档 `()`）；本机无内容标识可测 |
+| 视图持久化 | 视图保存在文档中 | 未单独验证跨保存/重开；本波验证了创建、列出、激活、删除 |
+
 ## 七之二、仍未接入（第三轮候选）
 
 | 能力 | 接口 | 为什么还没做 |
@@ -521,15 +535,15 @@ python scripts/live_smoke.py     # 234 项端到端（真实 CorelDRAW）
 
 ## 八、一句话总结
 
-* **能力域覆盖**：42 个能力域 / 27 个工具，日常出图闭环完整；节点编辑、对象样式、专色、
+* **能力域覆盖**：44 个能力域 / 27 个工具，日常出图闭环完整；节点编辑、对象样式、专色、
   图案/纹理填充、跨文档复制、模板/样式表/颜色样式、文档元数据、对象数据字段、自定义虚线、
   文档设置、文本区间编辑、自定义箭头、图案微调、文本格式查询、位图内容替换、文档回滚、
-  立体化/透镜/效果管理、位图特效命令串、混合、文档颜色转换、用户偏好 KV 都已补上。
-* **方法级覆盖**：全局 43.0%（696/1619），主干 20 接口 56.0%（416/743）。
+  立体化/透镜/效果管理、位图特效命令串、混合、文档颜色转换、用户偏好 KV、OLE 嵌入、
+  命名视图都已补上。
+* **方法级覆盖**：全局 43.1%（698/1619），主干 20 接口 56.3%（418/743）。
 * **明确不可用**：位图描摹、文本导入、点集数组建曲线、尺寸标注/连接线（MathUtils 点对象
   不可创建）、符号库、文件型图案/影线填充（本机无库）、曲线贴笔触、OpenDocumentAsCopy、
   HTML 兼容文本、断字写入、填充字符串、文本尺寸查询、灰度→RGB 转换、真实应用偏好读取。
-* **第十九波新增**：`RegisterUserApplicationPreference` + `Get/SetApplicationPreferenceValue`
-  提供用户偏好 KV；`ActiveTool/ActiveToolStateGuid` 可读。
+* **第二十波新增**：OLE 文件可嵌入；命名视图可创建/激活/删除（Page 参数须传 IVGPage 对象）。
 
 

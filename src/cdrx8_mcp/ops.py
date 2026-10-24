@@ -286,7 +286,8 @@ DOC_ACTIONS = ("info", "clear_selection", "clear_undo", "palette", "arrowhead",
                "palette_create", "data_fields", "add_data_field", "object_data",
                "color_context", "outline_styles", "settings", "set_settings",
                "revert", "app_info", "color_profiles", "convert_color",
-               "pref_register", "pref_get", "pref_set")
+               "pref_register", "pref_get", "pref_set",
+               "views", "create_view", "activate_view", "delete_view")
 
 
 def doc_ops(doc: Any, action: str, *, target: dict | None = None,
@@ -310,7 +311,10 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
             model: int | str | None = None, profile_name: str | None = None,
             rendering_intent: int | None = None,
             pref_group: str = "cdrX8 MCP", pref_key: str | None = None,
-            pref_value: Any = None, pref_default: Any = None) -> dict:
+            pref_value: Any = None, pref_default: Any = None,
+            view_name: str | None = None, view_index: int = 1,
+            zoom: float = 100.0, origin_x: float = 0.0,
+            origin_y: float = 0.0) -> dict:
     """文档级操作。
 
     action:
@@ -909,6 +913,49 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
             app.SetApplicationPreferenceValue(group, key, pref_value)
         return {"action": act, "group": group, "key": key,
                 "value": _s(lambda: app.GetApplicationPreferenceValue(group, key))}
+    if act in {"views", "create_view", "activate_view", "delete_view"}:
+        views = _s(lambda: doc.Views)
+        if views is None:
+            raise CdrBadArgument("该文档没有 Views")
+        def _view_dict(view, index):
+            return {"index": index,
+                    "name": _s(lambda: str(view.Name)),
+                    "origin_x": _s(lambda: float(view.OriginX)),
+                    "origin_y": _s(lambda: float(view.OriginY)),
+                    "zoom": _s(lambda: float(view.Zoom)),
+                    "use_zoom": bool(_s(lambda: bool(view.UseZoom), False)),
+                    "use_page": bool(_s(lambda: bool(view.UsePage), False)),
+                    "page": _n(lambda: int(view.Page.Index))}
+        if act == "views":
+            count = _n(lambda: int(views.Count), 0)
+            return {"action": act, "count": count,
+                    "views": [_view_dict(views.Item(i), i)
+                              for i in range(1, min(count, 200) + 1)]}
+        if act == "create_view":
+            if not view_name:
+                raise CdrBadArgument("create_view 需要 view_name")
+            page = _page(doc, page_index)
+            view = doc.CreateView(str(view_name), float(origin_x),
+                                  float(origin_y), float(zoom), page)
+            if view is None:
+                raise CdrBadArgument("CreateView 返回空")
+            count = _n(lambda: int(views.Count), 0)
+            return {"action": act, "created": str(view_name),
+                    "count": count,
+                    "views": [_view_dict(views.Item(i), i)
+                              for i in range(1, min(count, 200) + 1)]}
+        idx = max(1, int(view_index))
+        count = _n(lambda: int(views.Count), 0)
+        if idx > count:
+            raise CdrBadArgument(f"视图索引越界：{idx}（共 {count} 个）")
+        view = views.Item(idx)
+        if act == "activate_view":
+            view.Activate()
+            return {"action": act, "activated": idx,
+                    "name": _s(lambda: str(view.Name))}
+        view.Delete()
+        return {"action": act, "deleted": idx,
+                "count": _n(lambda: int(views.Count), 0)}
     # arrowhead
     with mm_units(doc):
         page = _page(doc, page_index)
@@ -2485,7 +2532,7 @@ def selection_range(doc: Any) -> Any:
 # --------------------------------------------------------------------------- #
 CREATABLE = (
     "rectangle", "ellipse", "polygon", "spiral", "grid", "line", "bezier",
-    "polyline", "bitmap", "text", "paragraph_text", "guide",
+    "polyline", "bitmap", "text", "paragraph_text", "guide", "ole_file",
 )
 
 
@@ -2622,6 +2669,15 @@ def _create_one(doc: Any, layer: Any, item: dict) -> Any:
         layer.CreateGuide(float(g("x1", 0)), float(g("y1", 0)),
                           float(g("x2", 100)), float(g("y2", 0)))
         return None
+    elif kind in {"ole_file", "ole"}:
+        path = str(g("path", ""))
+        if not path:
+            raise CdrBadArgument("ole_file 需要 path（绝对路径）")
+        if not os.path.exists(path):
+            raise CdrBadArgument(f"ole_file 路径不存在：{path}")
+        shape = layer.CreateOLEObjectFromFile(
+            path, bool(g("link", False)), bool(g("display_as_icon", False)),
+            str(g("caption", "")), None)
     else:
         raise CdrBadArgument(f"不支持的类型 {kind}；可用：{', '.join(CREATABLE)}")
 
