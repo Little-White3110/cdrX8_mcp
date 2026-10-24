@@ -1115,6 +1115,184 @@ def main() -> int:
                   f"{len(pg_before)} -> {pgi.get('pages')}")
             state = pgi["state"]
 
+    # ---------------- 15m. 第七波：专色/固定调色板 / 样式属性与派生 / 范围批量 / 包络 / 比较 ----------------
+    print("\n[15m] 第七波：专色 + 样式属性/派生 + 范围批量 + 包络 + 吸附")
+    fresh7 = server.cdr_inspect(doc_id)
+    if "state" in fresh7:
+        state = fresh7["state"]
+    w7 = server.cdr_create(doc_id, items=[
+        {"type": "rectangle", "x": 20, "y": 40, "width": 40, "height": 30,
+         "fill": "#CC0000", "outline": {"width": 2, "color": "#000000"}},
+        {"type": "rectangle", "x": 70, "y": 40, "width": 40, "height": 30,
+         "fill": "#00CC00"},
+        {"type": "bezier", "x1": 20, "y1": 90, "c1x": 40, "c1y": 110,
+         "c2x": 60, "c2y": 70, "x2": 80, "y2": 90},
+        {"type": "bitmap", "x": 130, "y": 40, "width": 30, "height": 30,
+         "color": "#FF0000", "pixels_w": 16, "pixels_h": 16},
+    ], expected_revision=state["revision"], snapshot_token=state["snapshot_token"])
+    if no_error("创建第七波测试对象", w7):
+        state = w7["state"]
+        r7a, r7b, c7, b7 = (w7["created"][i]["name"] for i in range(4))
+
+        # --- 固定调色板 / 专色 ---
+        opf = server.cdr_doc(doc_id, "palette_open_fixed", palette_id=3)
+        palette_index = None
+        if no_error("cdr_doc(palette_open_fixed=3)", opf):
+            palette_index = opf.get("palette_index")
+            check("固定调色板可打开（PANTONE 等）", (opf.get("color_count") or 0) > 0
+                  and bool(opf.get("identifier")),
+                  f"name={opf.get('name')} colors={opf.get('color_count')} index={palette_index}")
+        if palette_index:
+            pcs = server.cdr_doc(doc_id, "palette_colors", palette_index=palette_index,
+                                 query="PANTONE", limit=5)
+            if no_error("cdr_doc(palette_colors)", pcs):
+                check("调色板颜色名可枚举", (pcs.get("matched") or 0) >= 1,
+                      f"matched={pcs.get('matched')}")
+            spc = server.cdr_doc(doc_id, "spot_color", palette_index=palette_index,
+                                 color_index=1, tint=100)
+            spot_ok = False
+            if no_error("cdr_doc(spot_color)", spc):
+                spot_ok = bool(spc.get("color")) and str(spc.get("color")).startswith("PANTONE")
+                check("专色对象创建成功", spot_ok, str(spc.get("color"))[:80])
+            if spot_ok:
+                fsp = server.cdr_modify(doc_id, {"name": r7a}, {
+                    "fill": {"type": "spot", "palette_index": palette_index,
+                             "color_index": 1, "tint": 80}},
+                    expected_revision=state["revision"],
+                    snapshot_token=state["snapshot_token"])
+                if no_error("cdr_modify(fill spot)", fsp):
+                    check("专色填充已应用", any(a == "fill:spot" for a in fsp.get("applied", [])),
+                          str(fsp.get("applied")))
+                    state = fsp["state"]
+                osp = server.cdr_modify(doc_id, {"name": r7b}, {
+                    "outline": {"width": 1, "color": {"type": "spot",
+                                                      "palette_index": palette_index,
+                                                      "color_index": 1}}},
+                    expected_revision=state["revision"],
+                    snapshot_token=state["snapshot_token"])
+                if no_error("cdr_modify(outline spot)", osp):
+                    check("专色描边已应用", "outline" in (osp.get("applied") or []),
+                          str(osp.get("applied")))
+                    state = osp["state"]
+            # 自定义调色板 + 位图 9 号模式
+            bpal = server.cdr_bitmap(doc_id, {"name": b7}, action="paletted",
+                                     palette_type=9, palette_index=palette_index,
+                                     expected_revision=state["revision"],
+                                     snapshot_token=state["snapshot_token"])
+            if no_error("cdr_bitmap(paletted=9 自定义)", bpal):
+                check("自定义调色板转换成功（Mode=3）", bpal.get("mode") == 3,
+                      f"mode={bpal.get('mode')}")
+                state = bpal["state"]
+
+        # --- 样式属性 / 派生 ---
+        sb = server.cdr_style(doc_id, action="create", target={"name": r7a},
+                              category="fill", style_name="W7Base",
+                              expected_revision=state["revision"],
+                              snapshot_token=state["snapshot_token"])
+        if no_error("cdr_style(create base)", sb):
+            state = sb["state"]
+            sg = server.cdr_style(doc_id, action="get", style_name="W7Base")
+            if no_error("cdr_style(get 属性)", sg):
+                check("样式可读属性可枚举",
+                      len(sg.get("readable_properties") or {}) >= 10,
+                      f"readable={len(sg.get('readable_properties') or {})}")
+            sp = server.cdr_style(doc_id, action="set_property", style_name="W7Base",
+                                  property="angle", value="15",
+                                  expected_revision=state["revision"],
+                                  snapshot_token=state["snapshot_token"])
+            if no_error("cdr_style(set_property)", sp):
+                check("样式标量属性可写", str(sp.get("readback")).strip('"') == "15",
+                      str(sp.get("readback")))
+                state = sp["state"]
+            sc = server.cdr_style(doc_id, action="create", category="fill",
+                                  based_on="W7Base", style_name="W7Child",
+                                  expected_revision=state["revision"],
+                                  snapshot_token=state["snapshot_token"])
+            if no_error("cdr_style(create based_on)", sc):
+                check("样式可基于已有样式派生", sc.get("based_on") == "W7Base",
+                      str(sc.get("based_on")))
+                state = sc["state"]
+            sd = server.cdr_style(doc_id, action="derived", style_name="W7Base")
+            if no_error("cdr_style(derived)", sd):
+                check("派生样式可列出",
+                      any(x.get("style_name") == "W7Child" for x in sd.get("derived") or []),
+                      str([x.get("style_name") for x in sd.get("derived") or []]))
+            sap = server.cdr_style(doc_id, action="apply", target={"name": r7b},
+                                   style_name="W7Base",
+                                   expected_revision=state["revision"],
+                                   snapshot_token=state["snapshot_token"])
+            if no_error("cdr_style(apply base)", sap):
+                check("样式套用成功", sap.get("applied") == "W7Base",
+                      str(sap.get("applied")))
+                state = sap["state"]
+
+        # --- 范围批量 / 包络 / 比较 ---
+        cmp1 = server.cdr_shape_ops(doc_id, "compare", target={"name": r7a},
+                                    other={"name": r7b}, compare_type=1,
+                                    expected_revision=state["revision"],
+                                    snapshot_token=state["snapshot_token"])
+        if no_error("cdr_shape_ops(compare type=1)", cmp1):
+            check("对象比较（类型）返回布尔", cmp1.get("same") is True,
+                  str(cmp1.get("same")))
+            state = cmp1["state"]
+        env = server.cdr_shape_ops(doc_id, "envelope_from_shape",
+                                   target={"name": r7b}, other={"name": c7},
+                                   envelope_mode=2,
+                                   expected_revision=state["revision"],
+                                   snapshot_token=state["snapshot_token"])
+        if no_error("cdr_shape_ops(envelope_from_shape)", env):
+            check("用另一曲线做封套可用", env.get("done") is True,
+                  f"effect={env.get('effect_object')}")
+            state = env["state"]
+        boc = server.cdr_shape_ops(doc_id, "batch_outline_to_curves",
+                                   target={"name": r7a},
+                                   expected_revision=state["revision"],
+                                   snapshot_token=state["snapshot_token"])
+        if no_error("cdr_shape_ops(batch_outline_to_curves)", boc):
+            check("选择集描边转曲可用", boc.get("done") is True)
+            state = boc["state"]
+        fm = server.cdr_shape_ops(doc_id, "fill_mode", target={"name": r7b},
+                                  fill_mode=1,
+                                  expected_revision=state["revision"],
+                                  snapshot_token=state["snapshot_token"])
+        if no_error("cdr_shape_ops(fill_mode)", fm):
+            check("填充规则设置可用", fm.get("fill_mode") == 1)
+            state = fm["state"]
+        pa = server.cdr_shape_ops(doc_id, "pixel_aligned", target={"name": r7b},
+                                  pixel_aligned=True,
+                                  expected_revision=state["revision"],
+                                  snapshot_token=state["snapshot_token"])
+        if no_error("cdr_shape_ops(pixel_aligned)", pa):
+            check("像素对齐渲染设置可用", pa.get("pixel_aligned") is True)
+            state = pa["state"]
+        rb = server.cdr_shape_ops(doc_id, "range_boundary", target={"name": r7b},
+                                  x=80, y=50,
+                                  expected_revision=state["revision"],
+                                  snapshot_token=state["snapshot_token"])
+        if no_error("cdr_shape_ops(range_boundary)", rb):
+            check("范围边界曲线已创建并命名",
+                  rb.get("created") is True and bool(rb.get("name")),
+                  f"name={rb.get('name')}")
+            state = rb["state"]
+
+        # --- 选择集移除 / 清空 ---
+        sa7 = server.cdr_select(doc_id, name=r7b)
+        if no_error("cdr_select(add)", sa7):
+            check("选择集加入成功", (sa7.get("selected") or 0) >= 1, str(sa7.get("selected")))
+        sr7 = server.cdr_select(doc_id, name=r7b, remove=True)
+        if no_error("cdr_select(remove)", sr7):
+            check("选择集移除成功", (sr7.get("removed") or 0) >= 1, str(sr7.get("removed")))
+        scl = server.cdr_select(doc_id, clear=True)
+        if no_error("cdr_select(clear)", scl):
+            check("选择集清空成功", scl.get("selected") == 0, str(scl.get("selected")))
+
+        # --- 吸附点 ---
+        snap = server.cdr_pages(doc_id, action="snap_point", x=21, y=41,
+                                snap_types=2, hot_area=5)
+        if no_error("cdr_pages(snap_point)", snap):
+            check("最近吸附点可查询", snap.get("found") is True
+                  and bool(snap.get("position")), str(snap.get("position")))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

@@ -280,7 +280,8 @@ def view_ops(doc: Any, action: str, *, x: float | None = None, y: float | None =
 
 DOC_ACTIONS = ("info", "clear_selection", "clear_undo", "palette", "arrowhead",
                "units", "sample_color", "show_all", "layout", "repeat",
-               "fonts", "palettes", "palette_color")
+               "fonts", "palettes", "palette_color",
+               "palette_open_fixed", "palette_colors", "spot_color")
 
 
 def doc_ops(doc: Any, action: str, *, target: dict | None = None,
@@ -291,7 +292,8 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
             x_samples: int = 4, y_samples: int = 4,
             layout: int | None = None, query: str | None = None,
             limit: int = 100, palette_index: int | None = None,
-            color_index: int = 1) -> dict:
+            color_index: int = 1, palette_id: int | None = None,
+            spot_name: str | None = None, tint: float = 100.0) -> dict:
     """文档级操作。
 
     action:
@@ -425,6 +427,67 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
         color = palette.Color(ci)
         return {"action": act, "palette": _s(lambda: str(palette.Name)),
                 "palette_index": pi, "color_index": ci,
+                "color": _s(lambda: str(color.ToString())),
+                "name": _s(lambda: str(color.GetName())) or None}
+    if act == "palette_open_fixed":
+        if palette_id is None:
+            raise CdrBadArgument("palette_open_fixed 需要 palette_id（本机实测 3=PANTONE 匹配系统）")
+        app = _app_of(doc)
+        pal = app.Palettes.OpenFixed(int(palette_id))
+        if pal is None:
+            raise CdrBadArgument(f"OpenFixed({palette_id}) 返回空（该固定调色板可能未安装）")
+        count = _n(lambda: int(app.Palettes.Count), 0)
+        index = None
+        ident = _s(lambda: str(pal.Identifier), "")
+        for i in range(1, count + 1):
+            if str(_s(lambda i=i: str(app.Palettes.Item(i).Identifier), "")) == ident:
+                index = i
+                break
+        return {"action": act, "palette_id": int(palette_id),
+                "name": _s(lambda: str(pal.Name)),
+                "identifier": ident or None,
+                "color_count": _n(lambda: int(pal.ColorCount)),
+                "palette_index": index, "opened": count,
+                "note": "固定调色板编号因安装内容不同可能变化；打开后用 palettes/palette_colors 确认"}
+    if act == "palette_colors":
+        pal = _find_palette(doc, palette_index if palette_index is not None else 1)
+        total = _n(lambda: int(pal.ColorCount), 0)
+        needle = str(query or "").strip().lower()
+        cap = max(1, min(int(limit), 2000))
+        colors: list[dict] = []
+        for i in range(1, total + 1):
+            try:
+                color = pal.Color(i)
+                name = str(color.GetName())
+            except Exception:
+                continue
+            if needle and needle not in name.lower():
+                continue
+            colors.append({"index": i, "name": name,
+                           "color": _s(lambda c=color: str(c.ToString()))})
+            if len(colors) >= cap:
+                break
+        return {"action": act, "palette": _s(lambda: str(pal.Name)),
+                "palette_index": palette_index, "total": total,
+                "matched": len(colors), "colors": colors,
+                "truncated": len(colors) >= cap}
+    if act == "spot_color":
+        app = _app_of(doc)
+        pi = int(palette_index if palette_index is not None else 1)
+        pal = _find_palette(doc, pi)
+        name = str(spot_name) if spot_name else None
+        if not name:
+            ci = int(color_index)
+            color_count = _n(lambda: int(pal.ColorCount), 0)
+            if not 1 <= ci <= color_count:
+                raise CdrBadArgument(f"color_index 越界：{ci}（该调色板共 {color_count} 色）")
+            name = _s(lambda: str(pal.Color(ci).GetName()))
+        color = app.CreateSpotColorByName(
+            str(_s(lambda: str(pal.Identifier), "")), str(name), float(tint))
+        if color is None:
+            raise CdrBadArgument(f"专色创建失败：{name!r}（名称需与调色板里的完全一致）")
+        return {"action": act, "palette": _s(lambda: str(pal.Name)),
+                "palette_index": pi, "spot_name": name, "tint": float(tint),
                 "color": _s(lambda: str(color.ToString())),
                 "name": _s(lambda: str(color.GetName())) or None}
     # arrowhead
@@ -640,6 +703,33 @@ def add_guide_angle(doc: Any, page_index: int | None = None, x: float = 0.0,
                 "x": x, "y": y, "angle": angle, "guides": guides}
 
 
+def page_snap_point(doc: Any, page_index: int | None = None, x: float = 0.0,
+                    y: float = 0.0, snap_types: int = 2,
+                    hot_area: float = 5.0) -> dict:
+    """按坐标找最近的吸附点（实测 TypeSet 位掩码：1用户 2对象 4包围盒 8边 16自由 32自动）。
+
+    注意：实测 TypeSet=1 / 16 / 32 会报「服务器出现意外情况」，
+    2 / 4 / 8 以及它们的组合（3/6/15/63）可用。
+    """
+    with mm_units(doc):
+        page = _page(doc, page_index)
+        snap = _s(lambda: page.FindClosestSnapPoint(
+            int(snap_types), float(x), float(y), float(hot_area)))
+        if snap is None:
+            return {"action": "snap_point", "found": False,
+                    "snap_types": int(snap_types)}
+        return {"action": "snap_point", "found": True,
+                "snap_types": int(snap_types),
+                "position": [_round(_s(lambda: float(snap.PositionX))),
+                             _round(_s(lambda: float(snap.PositionY)))],
+                "type": _n(lambda: int(snap.Type)),
+                "direction": _round(_s(lambda: float(snap.Direction))),
+                "uses_direction": bool(_s(lambda: bool(snap.UsesDirection), False)),
+                "selectable": bool(_s(lambda: bool(snap.IsSelectable), False)),
+                "movable": bool(_s(lambda: bool(snap.IsMovable), False)),
+                "deletable": bool(_s(lambda: bool(snap.IsDeletable), False))}
+
+
 def objects_bounds(doc: Any, page_index: int | None = None,
                    selected_only: bool = False) -> dict:
     """本页所有对象（或当前选中对象）的总包围盒。
@@ -702,7 +792,7 @@ def bitmap_action(doc: Any, page_index: int | None, target: dict, action: str, *
                   x_px: int | None = None, y_px: int | None = None,
                   duotone_type: int | None = None, ink_colors: list | None = None,
                   preset: str | None = None, palette_type: int = 3,
-                  num_colors: int = 256,
+                  num_colors: int = 256, palette_index: int | None = None,
                   label: str = "cdr_bitmap") -> dict:
     """位图处理。
 
@@ -798,11 +888,22 @@ def bitmap_action(doc: Any, page_index: int | None, target: dict, action: str, *
                 bmp.ConvertToDuotone(duo)
             elif act == "paletted":
                 pt = int(palette_type)
-                if not 0 <= pt <= 8:
+                palette = None
+                if pt == 9:
+                    if palette_index is None:
+                        raise CdrBadArgument(
+                            "palette_type=9（自定义）需要 palette_index"
+                            "（先用 cdr_doc(action='palettes') 或 palette_open_fixed 打开）")
+                    palette = _find_palette(doc, int(palette_index))
+                elif not 0 <= pt <= 8:
                     raise CdrBadArgument(
-                        "palette_type 可用 0~8（0=uniform 1=stdVGA 2=adaptive 3=optimized "
-                        "4=blackbody 5=grayscale 6=system 7=IE 8=Netscape；9 自定义需调色板对象）")
-                bmp.ConvertToPaletted(pt, 0, 100, 0, int(num_colors))
+                        "palette_type 可用 0~9（0=uniform 1=stdVGA 2=adaptive 3=optimized "
+                        "4=blackbody 5=grayscale 6=system 7=IE 8=Netscape 9=自定义+palette_index）")
+                if palette is not None:
+                    bmp.ConvertToPaletted(pt, 0, 100, 0, int(num_colors), False,
+                                          16777215, 500, 300, 300, 100, palette)
+                else:
+                    bmp.ConvertToPaletted(pt, 0, 100, 0, int(num_colors))
     return {"action": act, **info()}
 
 
@@ -1435,8 +1536,9 @@ def node_ops(doc: Any, page_index: int | None, target: dict, action: str, *,
 # 创建后可以用 `Shape.ApplyStyle("样式名")` 套用（传 Style 对象会报「未找到样式」），
 # 也可以 Rename / Delete / ToString 读定义。
 # --------------------------------------------------------------------------- #
-STYLE_ACTIONS = ("list", "get", "create", "apply", "rename", "delete")
-STYLE_MUTATIONS = {"create", "apply", "rename", "delete"}
+STYLE_ACTIONS = ("list", "get", "create", "apply", "rename", "delete",
+                 "set_property", "derived")
+STYLE_MUTATIONS = {"create", "apply", "rename", "delete", "set_property"}
 STYLE_CATEGORIES = ("fill", "outline", "character", "paragraph")
 
 
@@ -1459,21 +1561,47 @@ def _style_dict(style: Any) -> dict:
     }
 
 
+def _style_readable_props(style: Any, limit: int = 120) -> dict:
+    """把样式的可读属性逐项转成字符串（实测 69 个属性，绝大多数可读）。
+
+    注意：`fill` / `outline` 这类"分组名"不能直接读，真正可读的是
+    primaryColor / secondaryColor / angle / type 等叶子属性。
+    """
+    names = _s(lambda: list(style.GetAllPropertyNames()), []) or []
+    out: dict = {}
+    for prop in names[:limit]:
+        try:
+            out[str(prop)] = style.GetPropertyAsString(str(prop))
+        except Exception:
+            continue
+    return out
+
+
+def _style_derived(style: Any) -> list[dict]:
+    count = _n(lambda: int(style.DerivedStyles.Count), 0)
+    return [_style_dict(style.DerivedStyles.Item(i))
+            for i in range(1, min(count, 200) + 1)]
+
+
 def style_ops(doc: Any, page_index: int | None, action: str, *,
               target: dict | None = None, category: str = "fill",
               name: str | None = None, new_name: str | None = None,
+              based_on: str | None = None, property: str | None = None,
+              value: Any = None,
               label: str = "cdr_style") -> dict:
-    """对象样式（Object Styles）的列出 / 创建 / 套用 / 改名 / 删除。
+    """对象样式（Object Styles）的列出 / 创建 / 套用 / 改名 / 删除 / 改属性。
 
     action:
       list                     列出文档里的样式（名称 + 类别）
-      get（name）              读样式定义（属性名 + ToString JSON）
-      create（target,category,name）  从形状创建样式；
-                               category 实测可用：fill / outline（图形）、
-                               character / paragraph（文字）
+      get（name）              读样式定义（可读属性、继承链、ToString JSON）
+      create（target,category,name[,based_on]）
+                               从形状创建样式，或基于已有样式派生（based_on）；
+                               category 实测可用：fill / outline / character / paragraph
       apply（target,name）     把样式套到对象上
       rename（name,new_name）  样式改名
       delete（name）           删除样式
+      set_property（name,property,value）  改样式属性（标量走字符串；*color 结尾走颜色对象）
+      derived（name）          列派生样式
     """
     act = (action or "list").lower()
     if act not in STYLE_ACTIONS:
@@ -1492,16 +1620,30 @@ def style_ops(doc: Any, page_index: int | None, action: str, *,
             return {"action": act, **_style_dict(style),
                     "properties": [str(p) for p in props[:120]],
                     "property_count": len(props),
+                    "readable_properties": _style_readable_props(style),
+                    "derived": _style_derived(style),
                     "definition": (_s(lambda: str(style.ToString()), "") or "")[:1200]}
         if act == "create":
-            page = _page(doc, page_index)
-            shape = find_shape(doc, page, target or {})
             cat = str(category or "fill").lower()
             if cat not in STYLE_CATEGORIES:
                 raise CdrBadArgument(
                     f"category 可用：{', '.join(STYLE_CATEGORIES)}"
                     "（fill/outline 用于图形，character/paragraph 用于文字）")
             style_name = str(name or f"cdr_style_{_short_id()}")
+            target_name = None
+            if based_on:
+                parent = _find_style(doc, based_on)
+                parent_name = _s(lambda: str(parent.Name))
+                with atomic(doc, label):
+                    created_style = sheet.CreateStyle(cat, parent_name, style_name, False)
+                if created_style is None:
+                    raise CdrBadArgument("CreateStyle 返回空对象（检查 category/based_on）")
+                return {"action": act, **_style_dict(created_style),
+                        "category": cat, "based_on": parent_name,
+                        "created": [style_name]}
+            page = _page(doc, page_index)
+            shape = find_shape(doc, page, target or {})
+            target_name = _s(lambda: str(shape.Name))
             with atomic(doc, label):
                 created = sheet.CreateStyleFromShape(shape, cat, style_name, False)
             names: list[str] = []
@@ -1512,7 +1654,7 @@ def style_ops(doc: Any, page_index: int | None, action: str, *,
                 pass
             return {"action": act, "created": names or [style_name],
                     "style_name": names[0] if names else style_name,
-                    "category": cat, "target": _s(lambda: str(shape.Name))}
+                    "category": cat, "target": target_name}
         if act == "apply":
             page = _page(doc, page_index)
             shape = find_shape(doc, page, target or {})
@@ -1530,6 +1672,28 @@ def style_ops(doc: Any, page_index: int | None, action: str, *,
             with atomic(doc, label):
                 renamed = bool(_s(lambda: style.Rename(str(new_name)), False))
             return {"action": act, "renamed": renamed, "old": old, "new": new_name}
+        if act == "set_property":
+            style = _find_style(doc, name)
+            if not property:
+                raise CdrBadArgument("set_property 需要 property")
+            prop = str(property)
+            readback = None
+            with atomic(doc, label):
+                if prop.lower().endswith("color"):
+                    # 实测：颜色属性用 SetProperty(名字, IVGColor) 最稳；
+                    # SetPropertyAsString 需要给带引号的颜色串。
+                    style.SetProperty(prop, _color(doc, value))
+                else:
+                    ok = bool(_s(lambda: style.SetPropertyAsString(prop, str(value)), False))
+                    if not ok:
+                        raise CdrBadArgument(f"SetPropertyAsString({prop!r}) 未成功")
+            readback = _s(lambda: style.GetPropertyAsString(prop))
+            return {"action": act, **_style_dict(style), "property": prop,
+                    "value": value, "readback": readback}
+        if act == "derived":
+            style = _find_style(doc, name)
+            return {"action": act, **_style_dict(style),
+                    "derived": _style_derived(style)}
         style = _find_style(doc, name)
         old = _s(lambda: str(style.Name))
         with atomic(doc, label):
@@ -1726,16 +1890,29 @@ def find_shapes(doc: Any, name: str | None = None, type_id: int | None = None,
 
 def select_shapes(doc: Any, page_index: int | None = None, name: str | None = None,
                   type_id: int | None = None, rect: dict | None = None,
-                  all_shapes: bool = False) -> dict:
-    """把对象加入选择集（供对齐/布尔/组合使用）。"""
+                  all_shapes: bool = False, remove: bool = False,
+                  clear: bool = False) -> dict:
+    """把对象加入选择集（供对齐/布尔/组合使用）。
+
+    remove=true 改为从选择集里移除；clear=true 直接清空选择集。
+    """
     with mm_units(doc):
         page = _page(doc, page_index)
-        try:
-            doc.Selection().RemoveAll()
-        except Exception:
-            pass
+        if clear:
+            try:
+                doc.Selection().RemoveAll()
+            except Exception:
+                pass
+            return {"selected": 0, "cleared": True}
+        if not remove:
+            try:
+                doc.Selection().RemoveAll()
+            except Exception:
+                pass
         picked = 0
         if rect:
+            if remove:
+                raise CdrBadArgument("remove 不支持 rect 框选；请按 name/type_id 移除")
             page.SelectShapesFromRectangle(
                 float(rect["x1"]), float(rect["y1"]),
                 float(rect["x2"]), float(rect["y2"]), bool(rect.get("touch", True)),
@@ -1747,9 +1924,15 @@ def select_shapes(doc: Any, page_index: int | None = None, name: str | None = No
                     continue
                 if type_id and int(_s(lambda: int(shape.Type), -1)) != int(type_id):
                     continue
-                shape.AddToSelection()
+                if remove:
+                    shape.RemoveFromSelection()
+                else:
+                    shape.AddToSelection()
                 picked += 1
-        return {"selected": picked}
+        result = {"selected": _n(lambda: int(doc.Selection().Shapes.Count), 0)}
+        if remove:
+            result["removed"] = picked
+        return result
 
 
 def find_shape(doc: Any, page: Any, target: dict) -> Any:
@@ -1956,6 +2139,15 @@ def _short_id() -> str:
     return hashlib.sha1(f"{_CREATED['n']}-{time.time()}".encode()).hexdigest()[:8]
 
 
+def _ensure_name(shape: Any) -> str:
+    """对象名字为空时补一个可寻址的名字（CreateBoundary / Freeze 会产出无名对象）。"""
+    name = _s(lambda: str(shape.Name), "") or ""
+    if not name:
+        name = f"{NAME_PREFIX}{_short_id()}"
+        shape.Name = name
+    return name
+
+
 def _apply_style(doc: Any, shape: Any, spec: dict) -> None:
     """填充 / 描边 / 效果 / 文字样式。单项失败不阻断创建。"""
     fill = spec.get("fill")
@@ -1994,11 +2186,70 @@ def _apply_style(doc: Any, shape: Any, spec: dict) -> None:
                     pass
 
 
+def _palette_at(doc: Any, index: int) -> Any:
+    app = _app_of(doc)
+    count = _n(lambda: int(app.Palettes.Count), 0)
+    if not 1 <= int(index) <= count:
+        raise CdrBadArgument(f"palette_index 越界：{index}（当前已打开 {count} 个调色板）")
+    return app.Palettes.Item(int(index))
+
+
+def _find_palette(doc: Any, token: Any) -> Any:
+    """按序号 / 名称 / GUID 找已打开的调色板。"""
+    app = _app_of(doc)
+    if isinstance(token, int) or (isinstance(token, str) and token.isdigit()):
+        return _palette_at(doc, int(token))
+    if not token:
+        raise CdrBadArgument("需要 palette_index 或 palette（调色板名/GUID）")
+    want = str(token)
+    count = _n(lambda: int(app.Palettes.Count), 0)
+    for i in range(1, count + 1):
+        pal = app.Palettes.Item(i)
+        if str(_s(lambda p=pal: str(p.Name), "")) == want or \
+                str(_s(lambda p=pal: str(p.Identifier), "")) == want:
+            return pal
+    raise CdrBadArgument(
+        f"未找到调色板 {want!r}；可先 cdr_doc(action='palette_open_fixed', palette_id=...) 打开，"
+        "或 cdr_doc(action='palettes') 查看已打开的调色板")
+
+
+def _spot_color(doc: Any, spec: dict) -> Any:
+    """按调色板 + 序号/名称创建专色（实测 PANTONE 调色板可用）。
+
+    spec 支持：{"palette_index": 1, "color_index": 10}；
+               {"palette_index": 1, "name": "PANTONE Process Yellow CV"}；
+               {"palette": "PANTONE MATCHING SYSTEM - Corel 8", "name": ...}
+    """
+    if not isinstance(spec, dict):
+        raise CdrBadArgument("spot 需要对象：{palette_index|palette, color_index|name, tint}")
+    app = _app_of(doc)
+    pal = _find_palette(doc, spec.get("palette_index", spec.get("palette")))
+    spot_name = spec.get("name")
+    if not spot_name:
+        ci = int(spec.get("color_index", 1))
+        color_count = _n(lambda: int(pal.ColorCount), 0)
+        if not 1 <= ci <= color_count:
+            raise CdrBadArgument(f"color_index 越界：{ci}（该调色板共 {color_count} 色）")
+        spot_name = _s(lambda: str(pal.Color(ci).GetName()))
+    if not spot_name:
+        raise CdrBadArgument("无法确定专色名（给 name 或有效的 color_index）")
+    tint = float(spec.get("tint", 100))
+    color = app.CreateSpotColorByName(
+        str(_s(lambda: str(pal.Identifier), "")), str(spot_name), tint)
+    if color is None:
+        raise CdrBadArgument(f"创建专色失败：{spot_name!r}")
+    return color
+
+
 def apply_fill(doc: Any, shape: Any, spec: Any) -> str:
-    """填充：纯色 / 渐变 / 纹理 / 无色。返回实际应用的种类。"""
+    """填充：纯色 / 渐变 / 纹理 / 专色 / 无色。返回实际应用的种类。"""
     if spec in (None, False, "none", {"type": "none"}):
         shape.Fill.ApplyNoFill()
         return "none"
+
+    if isinstance(spec, dict) and str(spec.get("type", "")).lower() == "spot":
+        shape.Fill.ApplyUniformFill(_spot_color(doc, spec))
+        return "spot"
 
     if isinstance(spec, dict) and spec.get("type") in {"fountain", "gradient"}:
         start = _color(doc, spec.get("start", "#FFFFFF"))
@@ -2048,12 +2299,14 @@ def apply_outline(doc: Any, shape: Any, spec: Any) -> None:
     if spec.get("none"):
         shape.Outline.SetNoOutline()
         return
+    if str(spec.get("type", "")).lower() == "spot":
+        _outline_color(doc, shape, spec)
 
     app = None
     if "width" in spec:
         shape.Outline.Width = float(spec["width"])
     if "color" in spec:
-        _outline_color(shape, spec["color"])
+        _outline_color(doc, shape, spec["color"])
     for key, attr in (("caps", "LineCaps"), ("join", "LineJoin"),
                       ("behind_fill", "BehindFill"), ("scale_with_shape", "ScaleWithShape")):
         if key in spec and spec[key] is not None:
@@ -2073,7 +2326,15 @@ def apply_outline(doc: Any, shape: Any, spec: Any) -> None:
         shape.Outline.EndArrow = app.ArrowHeads.Item(int(spec["end_arrow"]))
 
 
-def _outline_color(shape: Any, color: Any) -> None:
+def _outline_color(doc: Any, shape: Any, color: Any) -> None:
+    if isinstance(color, dict) and str(color.get("type", "")).lower() == "spot":
+        spot = _spot_color(doc, color)
+        try:
+            shape.Outline.Color.CopyAppearance(spot)
+            return
+        except Exception:
+            shape.Outline.Color.StringAssign(str(spot.ToString()))
+            return
     if isinstance(color, str):
         r, g, b = _hex_to_rgb(color)
         try:
@@ -2094,13 +2355,17 @@ def _outline_color(shape: Any, color: Any) -> None:
 
 
 def _color(doc: Any, spec: Any) -> Any:
-    """支持 #RRGGBB / {c,m,y,k} / {r,g,b} / {gray} / {lab} / {hls} / "registration"。
+    """支持 #RRGGBB / {c,m,y,k} / {r,g,b} / {gray} / {lab} / {hls} / "registration" /
+    {"type":"spot", "palette_index":…, "color_index"/"name":…, "tint":100}。
 
     X8 实测可用：CreateRGBColor / CreateCMYKColor / CreateGrayColor / CreateLabColor /
-    CreateHLSColor / CreateRegistrationColor。**专色（CreateSpotColor）需要本机调色板 ID，
-    没有可靠入口，故不支持。**
+    CreateHLSColor / CreateRegistrationColor；专色需要先用
+    `cdr_doc(action="palette_open_fixed")` 打开 PANTONE 等调色板，再走
+    `CreateSpotColorByName`（见 `_spot_color`）。
     """
     app = _app_of(doc)
+    if isinstance(spec, dict) and str(spec.get("type", "")).lower() == "spot":
+        return _spot_color(doc, spec)
     if isinstance(spec, str):
         s = spec.strip().lower()
         if s in {"registration", "套版色", "#registration"}:
@@ -2630,6 +2895,9 @@ SHAPE_OPS = (
     "step_repeat", "distribute", "boundary", "perspective", "separate",
     # 第六波：范围级（选择集）
     "parallel_curves", "rasterize",
+    # 第七波：包络 / 比较 / 范围批量
+    "envelope_from_shape", "compare",
+    "batch_outline_to_curves", "fill_mode", "pixel_aligned", "range_boundary",
 )
 
 
@@ -2646,6 +2914,8 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
              vx: float | None = None, vy: float | None = None,
              curve_count: int = 2, curve_distance: float = 5.0,
              resolution: int = 72, grayscale: bool = False, transparent: bool = True,
+             envelope_mode: int = 2, compare_type: int = 1, condition: int = 0,
+             pixel_aligned: bool = True, fill_mode: int = 0,
              label: str = "cdr_shape_ops") -> dict:
     op = (op or "").lower().replace("-", "_")
     if op not in SHAPE_OPS:
@@ -2761,7 +3031,7 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
                 created = shape.CreateBoundary(float(x), float(y),
                                                bool(place_on_top), bool(delete_source))
             return {"op": op, "created": created is not None,
-                    "name": (_s(lambda: str(created.Name)) or None) if created is not None else None,
+                    "name": _ensure_name(created) if created is not None else None,
                     "bbox": _bbox(created) if created is not None else None,
                     "shapes_on_page": _n(lambda: int(page.Shapes.Count), 0)}
         if op == "perspective":
@@ -2780,7 +3050,29 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
             return {"op": op, "done": True,
                     "shapes_on_page": _n(lambda: int(page.Shapes.Count), 0)}
 
-        if op in {"parallel_curves", "rasterize"}:
+        if op == "envelope_from_shape":
+            other_shape = find_shape(doc, page, other or {})
+            with atomic(doc, label):
+                if int(_s(lambda: int(other_shape.Type), -1)) == 3:
+                    effect = shape.CreateEnvelopeFromCurve(
+                        other_shape.Curve, int(envelope_mode), False, 1)
+                else:
+                    effect = shape.CreateEnvelopeFromShape(
+                        other_shape, int(envelope_mode), False, 1)
+            return {"op": op, "done": True,
+                    "effect_object": type(effect).__name__ if effect is not None else None,
+                    "source": _s(lambda: str(other_shape.Name)),
+                    "mode": int(envelope_mode), "bbox": _bbox(shape)}
+        if op == "compare":
+            other_shape = find_shape(doc, page, other or {})
+            same = bool(_s(lambda: shape.CompareTo(other_shape, int(compare_type),
+                                                   int(condition)), False))
+            return {"op": op, "same": same, "compare_type": int(compare_type),
+                    "condition": int(condition),
+                    "other": _s(lambda: str(other_shape.Name))}
+
+        if op in {"parallel_curves", "rasterize", "batch_outline_to_curves",
+                  "fill_mode", "pixel_aligned", "range_boundary"}:
             # 范围级操作：显式给了 target 就只处理它（先清空选择集，避免混入
             # cdr_create 留下的"最后创建对象"选中态）；没给就用当前选择集。
             if target:
@@ -2792,6 +3084,28 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
                 sr = selection_range(doc)
             if sr is None or _n(lambda: int(sr.Count), 0) < 1:
                 raise CdrBadArgument(f"{op} 需要至少 1 个对象（先 cdr_select 或给 target）")
+            if op == "batch_outline_to_curves":
+                with atomic(doc, label):
+                    made = sr.ConvertOutlineToObject()
+                return {"op": op, "done": made is not None,
+                        "shapes_on_page": _n(lambda: int(page.Shapes.Count), 0)}
+            if op == "fill_mode":
+                with atomic(doc, label):
+                    sr.SetFillMode(int(fill_mode))
+                return {"op": op, "fill_mode": int(fill_mode)}
+            if op == "pixel_aligned":
+                with atomic(doc, label):
+                    sr.SetPixelAlignedRendering(bool(pixel_aligned))
+                return {"op": op, "pixel_aligned": bool(pixel_aligned)}
+            if op == "range_boundary":
+                if x is None or y is None:
+                    raise CdrBadArgument("range_boundary 需要 x 与 y（边界参考点）")
+                with atomic(doc, label):
+                    made = sr.CreateBoundary(float(x), float(y), True, False)
+                return {"op": op, "created": made is not None,
+                        "name": _ensure_name(made) if made is not None else None,
+                        "bbox": _bbox(made) if made is not None else None,
+                        "shapes_on_page": _n(lambda: int(page.Shapes.Count), 0)}
             if op == "parallel_curves":
                 try:
                     with atomic(doc, label):

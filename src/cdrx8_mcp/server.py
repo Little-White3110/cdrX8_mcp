@@ -295,7 +295,10 @@ def cdr_modify(document_id: str, target: dict, changes: dict,
       dx,dy（相对移动）｜x,y（绝对左下角）｜width,height[,keep_aspect]｜rotate
       affine [d11,d12,d21,d22,cx,cy]｜align_to {mode:"page_center"|"point"|"grid", x,y,type}
       fill（纯色/渐变/纹理/"none"）｜fill_from（复制另一对象的填充：{"name":"..."}）
+      专色填充：fill={"type":"spot","palette_index":1,"color_index":10,"tint":100}
+      （先 cdr_doc(action="palette_open_fixed", palette_id=3) 打开 PANTONE 调色板）
       outline（宽度或 {width,color,caps,join,behind_fill,dash,start_arrow,end_arrow}）
+      outline 的 color 也可用专色：{"type":"spot","palette_index":1,"color_index":1}
       outline_from（复制另一对象的描边：{"name":"..."}）
       drop_shadow {opacity,offset_x,offset_y,color}｜contour {offset,steps}｜envelope 1..39
       transparency（0~100 均匀透明度 / {type:"fountain",start,end,angle} / "none"）
@@ -432,18 +435,21 @@ def cdr_replace_text(document_id: str, find: str, replace: str,
 @mcp.tool()
 def cdr_select(document_id: str, page_index: int | None = None, name: str | None = None,
                type_id: int | None = None, rect: dict | None = None,
-               all_shapes: bool = False) -> dict:
+               all_shapes: bool = False, remove: bool = False,
+               clear: bool = False) -> dict:
     """把对象加入当前选择集，供 cdr_shape_ops(group/combine/ungroup) 使用。
 
     type_id: 1=矩形 2=椭圆 3=曲线 4=多边形 6=文字 7=网格
     rect: {"x1":0,"y1":0,"x2":100,"y2":50,"touch":true} 按矩形框选
+    remove=true 从选择集移除；clear=true 直接清空选择集
     """
     def _run():
         doc, sess = _with_doc(document_id)
 
         def _do(_b):
             picked = ops.select_shapes(doc, page_index, name=name, type_id=type_id,
-                                       rect=rect, all_shapes=all_shapes)
+                                       rect=rect, all_shapes=all_shapes,
+                                       remove=remove, clear=clear)
             return picked
 
         result = _com(_do, label="cdr_select")
@@ -470,6 +476,9 @@ def cdr_shape_ops(document_id: str, op: str, target: dict | None = None,
                   curve_count: int = 2, curve_distance: float = 5.0,
                   resolution: int = 72, grayscale: bool = False,
                   transparent: bool = True,
+                  envelope_mode: int = 2, compare_type: int = 1,
+                  condition: int = 0, pixel_aligned: bool = True,
+                  fill_mode: int = 0,
                   expected_revision: int | None = None,
                   snapshot_token: str | None = None,
                   page_index: int | None = None) -> dict:
@@ -492,6 +501,12 @@ def cdr_shape_ops(document_id: str, op: str, target: dict | None = None,
       separate                                   拆开 target 上的效果/组合
       parallel_curves（curve_count,curve_distance）范围级：并行曲线（只支持曲线对象，先转曲）
       rasterize（resolution,grayscale,transparent）范围级：把选择集栅格化成位图
+      batch_outline_to_curves  范围级：选择集描边转曲
+      fill_mode（fill_mode 0~2）  范围级：填充规则
+      pixel_aligned（True/False） 范围级：像素对齐渲染（输出小尺寸位图更清晰）
+      range_boundary（x,y）      范围级：选择集边界曲线
+      envelope_from_shape（other,envelope_mode）用另一对象/曲线做封套
+      compare（other,compare_type,condition）对象比较（返回 same 布尔）
     """
     def _run():
         doc, sess = _with_doc(document_id)
@@ -509,6 +524,8 @@ def cdr_shape_ops(document_id: str, op: str, target: dict | None = None,
             x=x, y=y, hx=hx, hy=hy, vx=vx, vy=vy,
             curve_count=curve_count, curve_distance=curve_distance,
             resolution=resolution, grayscale=grayscale, transparent=transparent,
+            envelope_mode=envelope_mode, compare_type=compare_type,
+            condition=condition, pixel_aligned=pixel_aligned, fill_mode=fill_mode,
         ), label="cdr_shape_ops")
         return _commit(doc, sess, result, warnings)
 
@@ -654,19 +671,26 @@ def cdr_node(document_id: str, target: dict, action: str = "list",
 def cdr_style(document_id: str, action: str = "list",
               target: dict | None = None, category: str = "fill",
               style_name: str | None = None, new_name: str | None = None,
+              based_on: str | None = None, property: str | None = None,
+              value: Any = None,
               expected_revision: int | None = None, snapshot_token: str | None = None,
               page_index: int | None = None) -> dict:
-    """对象样式（Object Styles）：列出 / 从对象创建 / 套用 / 改名 / 删除。
+    """对象样式（Object Styles）：列出 / 从对象创建 / 派生 / 套用 / 改属性 / 删除。
 
     action:
       list                       列出文档样式（名称、类别）
-      get（style_name）          读样式定义（属性名 + ToString JSON）
+      get（style_name）          读样式定义（可读属性、派生样式、ToString JSON）
       create（target, category, style_name）
                                  从对象创建样式；category 实测可用：
                                  fill / outline（图形），character / paragraph（文字）
+      create（category, based_on, style_name）
+                                 基于已有样式派生（派生样式在 base 的 DerivedStyles 里）
       apply（target, style_name）把样式套到对象
       rename（style_name, new_name）
       delete（style_name）
+      set_property（style_name, property, value）
+                                 改样式属性；标量走字符串，*color 结尾的用颜色对象
+      derived（style_name）      列出派生样式
 
     历史结论「样式类别常量 0~8 全失败」是误判：Category 是**字符串**不是数字。
     套用必须用 `Shape.ApplyStyle("样式名")`（传 Style 对象会报「未找到样式」）。
@@ -675,7 +699,8 @@ def cdr_style(document_id: str, action: str = "list",
         act = (action or "list").lower()
         doc, sess = _with_doc(document_id)
         kwargs = dict(target=target, category=category, name=style_name,
-                      new_name=new_name)
+                      new_name=new_name, based_on=based_on, property=property,
+                      value=value)
         if act not in ops.STYLE_MUTATIONS:
             return _com(lambda _b: ops.style_ops(doc, page_index, act, **kwargs),
                         label="cdr_style")
@@ -695,7 +720,7 @@ def cdr_pages(document_id: str, action: str = "list",
               x: float | None = None, y: float | None = None,
               text: str | None = None, move_to_index: int | None = None,
               hot_area: float = 2.0, angle: float = 45.0,
-              insert_before: bool = True,
+              insert_before: bool = True, snap_types: int = 2,
               expected_revision: int | None = None,
               snapshot_token: str | None = None) -> dict:
     """页面管理。
@@ -718,6 +743,7 @@ def cdr_pages(document_id: str, action: str = "list",
       text_find（text）             在页面上查找文本
       move_to（move_to_index）      把当前页移到指定位置
       guide_angle（x,y,angle）      按基点+角度加参考线（X8 CreateGuideAngle）
+      snap_point（x,y,snap_types） 找最近吸附点（位掩码 2对象 4包围盒 8边；3/6/15/63 可用）
     """
     def _run():
         doc, sess = _with_doc(document_id)
@@ -737,6 +763,13 @@ def cdr_pages(document_id: str, action: str = "list",
             return _com(lambda _b: ops.page_query(
                 doc, act, page_index=page_index, x=x, y=y, text=text,
                 to_index=move_to_index, hot_area=hot_area), label="cdr_pages:query")
+        if act == "snap_point":
+            if x is None or y is None:
+                return {"error": "bad_argument",
+                        "message": "action=snap_point 需要 x 与 y"}
+            return _com(lambda _b: ops.page_snap_point(
+                doc, page_index, x, y, snap_types, hot_area),
+                label="cdr_pages:snap_point")
 
         warnings = _check_view(sess, expected_revision, snapshot_token, doc)
         if act == "guide_angle":
@@ -776,7 +809,7 @@ def cdr_pages(document_id: str, action: str = "list",
         else:
             return {"error": "bad_argument",
                     "message": f"未知 action：{act}；可用 list/add/insert/activate/delete/size/"
-                               f"preset/guides/guide_angle/unlock/bounds"}
+                               f"preset/guides/guide_angle/snap_point/unlock/bounds"}
 
         return _commit(doc, sess, result, warnings)
 
@@ -871,6 +904,8 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
             x_samples: int = 4, y_samples: int = 4, layout: int | None = None,
             query: str | None = None, limit: int = 100,
             palette_index: int | None = None, color_index: int = 1,
+            palette_id: int | None = None, spot_name: str | None = None,
+            tint: float = 100.0,
             expected_revision: int | None = None, snapshot_token: str | None = None,
             page_index: int | None = None) -> dict:
     """文档级操作。
@@ -890,6 +925,9 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
       fonts            列出已安装字体（query 过滤、limit 截断，实测 2000+ 字体）
       palettes         列出调色板（名称/GUID/色数/是否默认）
       palette_color    读调色板颜色：palette_index + color_index（1 基）
+      palette_open_fixed  打开内置固定调色板：palette_id（本机 3=PANTONE 匹配系统）
+      palette_colors   列调色板颜色名（query 过滤、limit 截断）
+      spot_color       创建专色：palette_index + color_index（或 spot_name）+ tint
     """
     def _run():
         doc, sess = _with_doc(document_id)
@@ -897,11 +935,13 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
                       from_unit=from_unit, to_unit=to_unit, x=x, y=y, x2=x2, y2=y2,
                       x_samples=x_samples, y_samples=y_samples, layout=layout,
                       query=query, limit=limit, palette_index=palette_index,
-                      color_index=color_index)
+                      color_index=color_index, palette_id=palette_id,
+                      spot_name=spot_name, tint=tint)
         if action == "info":
             return _com(lambda _b: ops.doc_ops(doc, "info", **kwargs), label="cdr_doc")
         if action in {"clear_selection", "units", "sample_color", "fonts",
-                      "palettes", "palette_color"}:
+                      "palettes", "palette_color", "palette_open_fixed",
+                      "palette_colors", "spot_color"}:
             return _com(lambda _b: ops.doc_ops(doc, action, **kwargs), label="cdr_doc")
         warnings = _check_view(sess, expected_revision, snapshot_token, doc)
         result = _com(lambda _b: ops.doc_ops(doc, action, **kwargs), label="cdr_doc")
@@ -1042,7 +1082,7 @@ def cdr_bitmap(document_id: str, target: dict, action: str = "info",
                x_px: int | None = None, y_px: int | None = None,
                duotone_type: int | None = None, ink_colors: list | None = None,
                preset: str | None = None, palette_type: int = 3,
-               num_colors: int = 256,
+               num_colors: int = 256, palette_index: int | None = None,
                expected_revision: int | None = None,
                snapshot_token: str | None = None,
                page_index: int | None = None) -> dict:
@@ -1054,9 +1094,9 @@ def cdr_bitmap(document_id: str, target: dict, action: str = "info",
       pixel         取像素颜色：x_px,y_px（像素坐标，从 0 开始），返回颜色串与色名
       convert       改颜色模式，mode = rgb / cmyk / gray / bw
       bw            阈值二值化（threshold 0~255），适合做丝印/单色稿
-      paletted      转调色板模式，palette_type = 0~8
+      paletted      转调色板模式，palette_type = 0~9
                     （0=uniform 1=stdVGA 2=adaptive 3=optimized 4=blackbody
-                      5=grayscale 6=system 7=IE 8=Netscape）
+                      5=grayscale 6=system 7=IE 8=Netscape；9=自定义，需 palette_index）
       duotone       转双色调：duotone_type 0~3（单/双/三/四色调），ink_colors 给各墨色；
                     也可 preset 指定 .cpd 预设文件路径
       resample      重采样，width/height 目标像素、dpi 目标分辨率
@@ -1082,7 +1122,8 @@ def cdr_bitmap(document_id: str, target: dict, action: str = "info",
             dpi=dpi, anti_alias=anti_alias, threshold=threshold,
             inflate_x=inflate_x, inflate_y=inflate_y,
             duotone_type=duotone_type, ink_colors=ink_colors, preset=preset_path,
-            palette_type=palette_type, num_colors=num_colors), label="cdr_bitmap")
+            palette_type=palette_type, num_colors=num_colors,
+            palette_index=palette_index), label="cdr_bitmap")
         return _commit(doc, sess, result, warnings)
 
     return _guard(_run)

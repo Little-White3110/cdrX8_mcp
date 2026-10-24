@@ -2,7 +2,7 @@
 
 > 目的：证明"还有多少没探"。每一行要么有对应的工具，要么有实测失败证据。
 > 环境：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）/ Python 3.11.9 64 位
-> 最近更新：2026-10-25 第六波（对象样式 / 内存位图 / 字体 / 调色板 / 页面插入 / 范围栅格）
+> 最近更新：2026-10-25 第七波（固定调色板/专色 / 样式属性与派生 / 范围批量 / 包络 / 吸附点）
 
 ## 怎么得出这份清单
 
@@ -17,30 +17,31 @@
 
 | 接口 | 方法数 | 覆盖情况 |
 |---|---:|---|
-| `IVGApplication` | 82 | 已用：CreateDocument / OpenDocument / 全套 Create*Color / CreateShapeRange / CreateStructExportOptions / CreateStructImportOptions / OutlineStyles / ArrowHeads / Version / Path / Documents / **FontList / Palettes / CreateDuotone** |
+| `IVGApplication` | 82 | 已用：CreateDocument / OpenDocument / 全套 Create*Color / CreateShapeRange / CreateStructExportOptions / CreateStructImportOptions / OutlineStyles / ArrowHeads / Version / Path / Documents / **FontList / Palettes（含 OpenFixed / Create / Item） / CreateDuotone / CreateSpotColorByName** |
 | `IVGDocument` | 78 | 已用：Unit / Pages / AddPages / DeletePages / ActivePage / ActiveLayer / Selection / Save·SaveAs / ExportEx / ExportBitmap(不适用) / PublishToPDF / Undo / Redo / Begin·EndCommandGroup / FileName / Dirty / Name / StyleSheet / **ToUnits / FromUnits / SampleColorAtPoint / SampleColorInArea / ShowAllHiddenObjects / SetLayout / Repeat / CreateImage / CreateColorStyles / InsertPages / HatchLibraries** |
-| `IVGPage` | 22 | **全覆盖**：SetSize / SelectSize / GetSize / CreateLayer / Activate / Delete / MoveTo / FindShape(s) / TextFind / TextReplace / GetGuides / UnlockAllShapes / GetObjectsBoundingBox(改用自算) / SelectShapesFromRectangle / Shapes / Layers / Orientation |
+| `IVGPage` | 22 | **全覆盖**：SetSize / SelectSize / GetSize / CreateLayer / Activate / Delete / MoveTo / FindShape(s) / TextFind / TextReplace / GetGuides / UnlockAllShapes / GetObjectsBoundingBox(改用自算) / SelectShapesFromRectangle / Shapes / Layers / Orientation / **FindClosestSnapPoint** |
 | `IVGLayer` | 50 | 已用：Create*（矩形/椭圆/多边形/螺旋/网格/线/贝塞尔/艺术字/段落字/参考线/**角度参考线**/**位图 CreateBitmap·CreateBitmap2**）/ Import / ImportEx / CreateCurve / Activate / Delete / MoveAbove / **MoveBelow / GetAbove / GetBelow / Paste** / Visible / Editable / Printable / Master / FindShape |
-| `IVGShape` | 124 | 已用：几何（Move/SetPosition/SetBoundingBox/Rotate/Flip/Skew/TransformMatrix/**ClearTransformations**/**SetRotationCenter**）/ Fill / Outline / Transparency / Locked / Name / Type / GetBoundingBox / Duplicate / Clone / Delete / **层级（OrderToFront·Back / OrderFrontOf / OrderBackOf / OrderForwardOne / OrderBackOne / OrderReverse）** / **StepAndRepeat / Distribute / CreateBoundary / CreatePerspective / Separate** / ConvertToCurves / ConvertToSymbol / Weld·Trim·Intersect / AddToPowerClip / CreateDropShadow·Contour·Envelope / AlignToPage·AlignToShape / Fillet·Chamfer·Scallop / Group / Ungroup / BreakApart / Combine / **GetOverprintFillState / GetOverprintOutlineState（已实测，未封装）** |
-| `IVGShapeRange` | 131 | 已用：Group / Combine / AlignAndDistribute / ApplyFountainFill / SetOutlineProperties(不适用，改属性直写) / ConvertToCurves / Add / Count / **CreateParallelCurves / ConvertToBitmap** |
-| `IVGFill` | 13 | 已用：ApplyUniformFill / ApplyFountainFill / ApplyTextureFill / ApplyNoFill；Pattern·PostScript 需外部文件，Hatch 需本机 Hatch 库（本机为空） |
+| `IVGShape` | 124 | 已用：几何（Move/SetPosition/SetBoundingBox/Rotate/Flip/Skew/TransformMatrix/**ClearTransformations**/**SetRotationCenter**）/ Fill / Outline / Transparency / Locked / Name / Type / GetBoundingBox / Duplicate / Clone / Delete / **层级（OrderToFront·Back / OrderFrontOf / OrderBackOf / OrderForwardOne / OrderBackOne / OrderReverse）** / **StepAndRepeat / Distribute / CreateBoundary / CreatePerspective / Separate / CreateEnvelopeFromCurve / CreateEnvelopeFromShape / CompareTo / CreateSelection / RemoveFromSelection / IsOnShape** / ConvertToCurves / ConvertToSymbol / Weld·Trim·Intersect / AddToPowerClip / CreateDropShadow·Contour·Envelope / AlignToPage·AlignToShape / Fillet·Chamfer·Scallop / Group / Ungroup / BreakApart / Combine / **GetOverprintFillState / GetOverprintOutlineState（已实测，未封装）**；CreateBlend 参数传不进去 |
+| `IVGShapeRange` | 131 | 已用：Group / Combine / AlignAndDistribute / ApplyFountainFill / SetOutlineProperties(不适用，改属性直写) / ConvertToCurves / Add / Count / **CreateParallelCurves / ConvertToBitmap / ConvertOutlineToObject / CreateBoundary / SetFillMode / SetPixelAlignedRendering** |
+| `IVGFill` | 13 | 已用：ApplyUniformFill / ApplyFountainFill / ApplyTextureFill / ApplyPostscriptFill / ApplyNoFill；Pattern 需外部文件，Hatch 需本机 Hatch 库（本机为空） |
 | `IVGOutline` | 9 | 已用：Width / Color / Style(赋对象) / StartArrow·EndArrow(赋对象) / LineCaps / LineJoin / BehindFill / ScaleWithShape / SetNoOutline |
 | `IVGCurve` | 37 | 已用：Length / Area / SubPaths / Contour / CreateSubPath / GetCopy / **Nodes / Segments / Selection / FindNodeAtPoint / FindSegmentAtPoint / ReverseDirection / JoinTouchingSubpaths / RemoveOverlaps / GetPolyline / IsOnCurve / IsClockwise / Closed / GetCurveInfo**；数组入参（AppendSubpathFromPoints / CreateSubPathFromArray）不可用；CreateCurveMappedToStroke 类型不匹配 |
 | `IVGSubPath` | 39 | 已用：CreateSubPath / AppendLineSegment / AppendCurveSegment2 / Closed / **Nodes / Segments / StartNode / EndNode / GetPointAt / GetPointPositionAt / GetTangentVectorAt / GetPerpendicularVectorAt / GetCurveSpeedAt / GetIntersections / ReverseDirection / Next / Previous / Extract / GetCopy**；求交/等分/切向已打通，点集数组仍取不回 |
 | `IVGNode` | 19 | **已覆盖（第五波纠正）**：`curve.Nodes` / `curve.SubPaths.Item(i).Nodes` 是**属性**；`GetPosition/SetPosition/Move/Type/Index/SubPathIndex/IsEnding/Selected/Delete/CreateSelection` 均可用；范围操作走 `curve.Nodes.Range(a,b)` → `IVGNodeRange`（Fillet/Chamfer/Scallop/Smoothen/SetType/Move/Rotate/Skew/Stretch/BreakApart/GetBoundingBox）；`app.CreateNodeRange()` 返回空集合 |
 | `IVGText` | 30 | 已用：Story / GetSpaceProperties / SetSpaceProperties / GetAlignProperties / SetAlignProperties / FitToPath / FitTextToFrame / **GetContents / Range / ExportToFile** |
 | `IVGTextRange` | 35 | 已用：Text / Font / Size / Bold / Italic / Underline / ChangeCase / ApplyBulletEffect / ApplyDropCapEffect / ApplyNoEffect / InsertBefore / InsertAfter / **SetOpenTypeFeature / GetOpenTypeFeature** |
-| `IVGColor` | 44 | 通过 Create*Color 间接使用（RGB/CMYK/Gray/Lab/HLS/Registration）；取色时用 `ToString / GetName` 输出 |
-| `IVGBitmap` | 16 | 已用：ConvertTo / ConvertToBW / **ConvertToPaletted / ConvertToDuotone** / Resample / Crop / ResetCropEnvelope / Inflate / Mode / ResolutionX / Size / **Image / Duotone**；**Trace 禁用**（见下） |
+| `IVGColor` | 44 | 通过 Create*Color 间接使用（RGB/CMYK/Gray/Lab/HLS/Registration）；**ToString / GetName / CopyAppearance / StringAssign / IsSame / BlendWith / GetColorDistanceFrom** 均已实测 |
+| `IVGBitmap` | 16 | 已用：ConvertTo / ConvertToBW / **ConvertToPaletted（0~9） / ConvertToDuotone** / Resample / Crop / ResetCropEnvelope / Inflate / Mode / ResolutionX / Size / **Image / Duotone**；**Trace 禁用**（见下） |
 | `IVGFountainFill` | 7 | 通过 ApplyFountainFill 设置，未做二次编辑 |
 | `IVGTransparency` | 9 | 已用：ApplyUniformTransparency / ApplyFountainTransparency / ApplyNoTransparency / **Freeze / Unfreeze / Frozen** |
-| `IVGStyle` / `IVGStyleSheet` | 16 / 16 | **已覆盖（第六波纠正）**：`CreateStyleFromShape(shape, "fill"/"outline"/"character"/"paragraph", name)` 可用（Category 是**字符串**不是数字常量）；`Styles.Find / Item / Count`、`Style.Name/CategoryName/DisplayName/BasedOn`、`Rename / Delete / GetAllPropertyNames / ToString`、`Shape.ApplyStyle("样式名")` 全部实测通过 |
+| `IVGStyle` / `IVGStyleSheet` | 16 / 16 | **已覆盖（第六/七波）**：`CreateStyleFromShape(shape, "fill"/"outline"/"character"/"paragraph", name)`、`CreateStyle(category, based_on, name)`、`Styles.Find/Item/Count`、`Style.Name/CategoryName/DisplayName/BasedOn`、`Rename / Delete / GetAllPropertyNames / GetPropertyAsString / SetPropertyAsString / SetProperty / DerivedStyles / ToString`、`Shape.ApplyStyle("样式名")` 全部实测通过；`fill`/`outline` 是分组名不可直接读写，叶子属性（primaryColor 等）可 |
 | `IVGWindow` | 9 | 已用：Refresh / Activate / DocumentToScreen / ScreenToDocument / DocumentDistanceToScreenDistance / **ScreenDistanceToDocumentDistance**；缩放/新建窗口未封装 |
 | `IVGColorContext` | 7 | 未封装（色彩管理配置，属交付环节而非创作环节） |
 | `IVGImage` | 5 | **新打通**：`Document.CreateImage` 返回像素缓冲区；`Width / Height / Type / ReadOnly / Pixel / FillArea / Blit` 可用（`cdr_create(type="bitmap")`、`cdr_bitmap(action="pixel")`） |
 | `IVGDuotone` / `IVGDuotoneInk` | 8 / 8 | **新打通**：`app.CreateDuotone()` → `Type 0~3`、`Inks(i).Color`、`Load(.cpd)`；配合 `Bitmap.ConvertToDuotone` 转双色调 |
-| `IVGPalettes` / `IVGPalette` | 8 / 15 | **新打通**：`app.Palettes.Item(i)`（Name / Identifier / PaletteID / ColorCount / Default / Color(i)）；`CreatePaletteColor(Identifier GUID, index)` 可用 |
+| `IVGPalettes` / `IVGPalette` | 8 / 15 | **新打通**：`Palettes.OpenFixed(id)` 可打开 PANTONE 匹配系统（946 色）等内置调色板；`Create/AddColor/SaveAs/Color/ColorCount/Identifier/FindColor` 可用；`CreatePaletteColor(Identifier GUID, index)`、`CreateSpotColorByName(Identifier, 名称, tint)` 可用 |
 | `IVGFontList` | 3 | **新打通**：`app.FontList.Count / Item(i)` 返回字体名字符串（本机 2068 个） |
+| `IVGSnapPoint` | 9 | **新打通**：`Page.FindClosestSnapPoint(TypeSet,x,y,hot)` 返回吸附点；`PositionX/PositionY/Type/Direction/UsesDirection/IsSelectable/IsMovable/IsDeletable` 可读（TypeSet 1/16/32 会报错，2/4/8 及组合可用） |
 
 ---
 
@@ -50,20 +51,20 @@
 |---|---|---|
 | 会话/文档/状态 | `cdr_status` `cdr_connect` `cdr_documents` `cdr_open` `cdr_inspect` `cdr_save` `cdr_close` | ✅ 46 项联调覆盖 |
 | 绘图 | `cdr_create`（矩形含圆角 / 椭圆含圆弧扇形 / 多边形 / 星形 / 螺旋 / 网格 / 直线 / 贝塞尔 / 文字 / 段落文字 / 参考线 / 任意折线 / **内存位图（纯色 + 像素色块）**） | ✅ |
-| 样式 | `cdr_modify`（纯色/渐变/纹理/无色、描边含虚线箭头、投影、轮廓图、封套、透明、**冻结/解冻透明度**） | ✅ |
+| 样式 | `cdr_modify`（纯色/渐变/纹理/**专色**/无色、描边含虚线箭头、投影、轮廓图、封套、透明、**冻结/解冻透明度**） | ✅ |
 | 变换 | `cdr_modify`（移动/尺寸/旋转/翻转/斜切/矩阵/克隆/层级/**层级相对调整**/**清除变换**/**旋转中心**/复制/删除/锁定） | ✅ |
-| **对象样式** | `cdr_style`（列出/从对象创建/套用/改名/删除/读定义） | ✅ 第六波 |
+| **对象样式** | `cdr_style`（列出/从对象创建/派生/套用/改名/删除/读定义/**改属性**） | ✅ 第六/七波 |
 | **节点/线段** | `cdr_node`（列节点/列线段/移动/选中/删除/圆角/倒角/scallop/平滑/拉伸/旋转/斜切/断开/加节点/断线/控制点/按坐标查找） | ✅ 第五波 |
 | 文字排版 | `cdr_text`（字体字号粗斜体下划线 / 对齐 / 大小写 / 项目符号 / 首字下沉 / 行距字距 / 前后插入 / 沿路径 / 自适应 / 转曲 / **读取全文·区间·导出纯文本** / **OpenType 特性**） | ✅ |
-| 布尔与整形 | `cdr_shape_ops`（weld/trim/intersect/combine/group/ungroup/break_apart/to_curves/to_symbol/powerclip/fillet/chamfer/scallop/step_repeat/distribute/boundary/perspective/separate/**parallel_curves/rasterize**） | ✅ |
+| 布尔与整形 | `cdr_shape_ops`（weld/trim/intersect/combine/group/ungroup/break_apart/to_curves/to_symbol/powerclip/fillet/chamfer/scallop/step_repeat/distribute/boundary/perspective/separate/parallel_curves/rasterize/**batch_outline_to_curves/fill_mode/pixel_aligned/range_boundary/envelope_from_shape/compare**） | ✅ |
 | 对齐 | `cdr_align`（左中右/上下中/等间距，对齐对象或页面）+ `cdr_modify(align_to_shape/align_to_page)` | ✅ |
-| 选择与查找 | `cdr_select` `cdr_find` | ✅ |
+| 选择与查找 | `cdr_select`（加入/**移除/清空**）`cdr_find` | ✅ |
 | 图层 | `cdr_layers`（增删改/显隐/锁定/打印/移动/**上下相邻查询·下移·粘贴剪贴板**） | ✅ |
-| 页面 | `cdr_pages`（列表/增删/**插入空白页**/切页/自定义尺寸/纸张预设/参考线/角度参考线/解锁/包围盒） | ✅ |
-| 位图 | `cdr_bitmap`（信息/转色彩模式/重采样/裁剪/取消裁剪/**取像素色·图像缓冲信息·调色板模式·双色调**） | ✅（Trace 除外） |
+| 页面 | `cdr_pages`（列表/增删/插入空白页/切页/自定义尺寸/纸张预设/参考线/角度参考线/**吸附点**/解锁/包围盒） | ✅ |
+| 位图 | `cdr_bitmap`（信息/转色彩模式/重采样/裁剪/取消裁剪/取像素色·图像缓冲信息·调色板模式 0~9·双色调） | ✅（Trace 除外） |
 | 路径 | `cdr_path`（长度面积/偏移轮廓/追加子路径/折线点/反转方向·焊子路径·去重叠·参数取点·切/法向量·速度·交点·找节点/线段） | ✅ |
 | 导入导出 | `cdr_import` `cdr_export`（png/jpg/svg/pdf，可指定 DPI，可只导选区） | ✅ |
-| 文档 | `cdr_doc`（概况/清选区/清撤销栈/调色板/箭头/单位换算·取色·显示隐藏·版式·重复操作/**字体列表·调色板列表·调色板取色**） | ✅ 第六波 |
+| 文档 | `cdr_doc`（概况/清选区/清撤销栈/调色板/箭头/单位换算·取色·显示隐藏·版式·重复操作/字体列表·调色板列表·调色板取色/**固定调色板打开·颜色枚举·专色创建**） | ✅ 第六/七波 |
 | 视图 | `cdr_view`（刷新/激活/文档↔屏幕坐标/屏幕↔文档距离） | ✅ 第五波 |
 | 历史 | `cdr_undo`（撤销/重做） | ✅ |
 | 全局替换 | `cdr_replace_text`（原生 Page.TextReplace） | ✅ |
@@ -81,7 +82,7 @@
 | **文字区间查询** | `TextRange.FindRanges(Query)` | `Identifier 'Wave' is not a method of 'global'`（Query 是查询表达式，不是普通字符串） | 只提供 `Text.Range(start,end)` 直接取区间 |
 | 立体化 / 透镜 / 尺寸标注 / 连接线 / 符号插入 | `CreateExtrude` `CreateLens` `CreateLinearDimension` `CreateConnector` `CreateSymbol` | `TypeError: Python instance can not be converted to a COM object`（5 组参数组合均失败） | 需要 pywin32 无法构造的结构体/枚举参数 |
 | 描边整体设置 | `Outline.SetProperties(Ex)` | 同样 TypeError | 已改用逐属性赋值绕过 |
-| 专色 | `CreateSpotColorByName` / `CreateSpotColor` | 默认调色板里没有专色名，报「未找到指定的对象」；`CreatePaletteColor` 用**调色板 GUID 字符串**已可用 | 本机没有装 PANTONE 等专色库，专色创建暂不可用 |
+| 样式分组属性 | `Style.GetProperty("fill"/"outline")` | 报「为参数 Name 指定的值无效」 | 分组名不可读写，只能读写叶子属性（primaryColor / type / angle…） |
 | 图案填充 | `Fill.ApplyPatternFill` | `无法装载到图案文件` | 需要 .pat 文件 |
 | 影线填充 | `Fill.ApplyHatchFill` / `Document.HatchLibraries` | `HatchLibraries.Count = 0`、`ActiveLibrary = None`（本机未装 Hatch 库） | 需要先安装 Corel 的 Hatch 填充库 |
 | 曲线贴到笔触 | `Curve.CreateCurveMappedToStroke` | `com_error(-2147352571, 类型不匹配)`（Stroke 参数不是普通 Curve） | 需要 Artistic Media 的笔触对象，暂不封装 |
@@ -101,6 +102,13 @@
 > * 位图调色板/双色调 **可用**（`ConvertToPaletted(0~8)`、`app.CreateDuotone()` + `ConvertToDuotone`）。
 > * 内存位图 **可用**（`Document.CreateImage` → `IVGImage` → `Layer.CreateBitmap`），
 >   像素级 `FillArea/Blit/Pixel` 均可调用。
+> * 专色 **可用**（第七波）：先用 `Palettes.OpenFixed(3)` 打开 PANTONE 匹配系统，
+>   再用 `CreateSpotColorByName(调色板 GUID, 调色板里的精确颜色名, tint)`；
+>   `cdr_doc(action="spot_color")` / `cdr_modify(fill={"type":"spot",...})` 已封装。
+> * 对象样式属性/派生 **可用**：`Style.GetPropertyAsString / SetPropertyAsString / SetProperty`
+>   与 `StyleSheet.CreateStyle(category, based_on, name)`（派生样式出现在 base 的 `DerivedStyles` 里）。
+> * 范围批量 **可用**：`ShapeRange.ConvertOutlineToObject / SetFillMode / SetPixelAlignedRendering / CreateBoundary`。
+> * 吸附点 **可用**：`Page.FindClosestSnapPoint(TypeSet=2/4/8 及组合)`。
 
 ---
 
@@ -112,18 +120,19 @@
 * `IVGColorContext`：色彩配置、配置文件合并（交付环节）
 * `IVGFountainFill.GetTransformations`：读渐变变换矩阵（渐变微调已能改角度/平移/矩阵）
 * `IVGTraceSettings`：PowerTRACE 参数对象（Trace 本身不安全，不封装）
-* `IVGStyle` 的 `SetProperty/GetProperty/SetBasedOn`：能拿到 69 个属性名，但属性值语义/路径语法未解，
-  目前提供 `cdr_style(action="get")` 读属性名与 `ToString` JSON
+* `IVGStyle` 的 `SetBasedOn` / `GetCopy` / `Assign`：派生已用 `CreateStyle(based_on)`，改父级暂未暴露
 * `Shape.CopyPropertiesFrom(Source, Properties)`：实测 1~15 都返回 True，但位掩码语义未逆向出来
 * `Curve.GetCurveInfo`：返回 `com_struct(PositionX, PositionY, ElementType, NodeType, Flags)` 数组，语义未完全确认
 * `Layer.PasteEx` / `PasteSpecial`：`PasteEx` 传 0 会 TypeError；`Paste` 已封装
 * `IVGImage.Blit` / `FlipArea`：像素缓冲区合成可用（已实测 Blit），暂未做成工具参数
 * `Application.OpenDocumentAsCopy` / `CreateDocumentFromTemplate`：需要模板/文件路径，未纳入工具面
 * `Application.CreateHSBColor/CreateYIQColor/CreateCMYColor/CreateBWColor`：实测可用，但颜色运算已走纯 Python
-* 符号库插入：需要符号库名称，`CreateSymbol` 本身也未打通；`Page.FindClosestSnapPoint` 实测报
-  「服务器出现意外情况」，不封装
+* `Palettes.Create / CreateFromDocument / CreateFromSelection`：可新建调色板并 `AddColor/SaveAs`，
+  但会落盘点色板文件，暂未做成工具（`OpenFixed` 已封装）
+* 符号库插入：需要符号库名称，`CreateSymbol` 本身也未打通；`Page.FindClosestSnapPoint` 的
+  TypeSet 1/16/32 会报「服务器出现意外情况」（2/4/8 及组合可用）
 * `Bitmap.ResolveLink/UpdateLink`：需要外部链接位图才有意义，未做联调
-* `Bitmap.ConvertToPaletted(9=自定义)`：需要 Palette 对象，未封装（0~8 已支持）
+* `Bitmap.ConvertToPaletted(9=自定义)`：需要 `palette_index`（已支持，配合 `palette_open_fixed`）
 
 ---
 
@@ -131,7 +140,7 @@
 
 ```powershell
 python -m pytest -q              # 55 项纯逻辑
-python scripts/live_smoke.py     # 137 项端到端（真实 CorelDRAW）
+python scripts/live_smoke.py     # 158 项端到端（真实 CorelDRAW）
 ```
 
 联调断言覆盖了上表所有 ✅ 项。反解脚本属于过程产物，已按要求放在 `tmp/` 并在完成时清理；
@@ -139,49 +148,49 @@ python scripts/live_smoke.py     # 137 项端到端（真实 CorelDRAW）
 
 ---
 
-## 六、量化覆盖率（2026-10-25 第六波实测）
+## 六、量化覆盖率（2026-10-25 第七波实测）
 
 方法：反解类型库拿到 196 个自动化类 / **1619** 个方法（已剔除 `QueryInterface` 等 COM 基础设施）；
 用 AST 扫描 `src/cdrx8_mcp/*.py`，收集所有 `.方法名(` 调用与 `setattr/getattr` 的属性名，
 与主干接口的方法名求交集。**注意：属性名（如 `curve.Nodes`）也会被计入**，所以本波数字含真实属性访问。
 
-**全局：606 / 1619 = 37.4%**（21.2% → 27.6% → 28.9% → 29.6% → 34.9% → 本轮 37.4%）
-**主干 20 接口：356 / 743 = 47.9%**
+**全局：629 / 1619 = 38.9%**（21.2% → 27.6% → 28.9% → 29.6% → 34.9% → 37.4% → 本轮 38.9%）
+**主干 20 接口：373 / 743 = 50.2%**
 
 复现命令：`python scripts/coverage_audit.py`（会临时展开类型库到 `tmp/gen_py`，跑完自动清理）
 
 | 接口 | 方法数 | 已调用 | 覆盖 |
 |---|---:|---:|---:|
-| `IVGShape` | 123 | 66 | 54% |
-| `IVGShapeRange` | 125 | 65 | 52% |
+| `IVGShape` | 123 | 70 | **57%** |
+| `IVGShapeRange` | 125 | 69 | 55% |
 | `IVGSubPath` | 38 | 29 | **76%** |
-| `IVGDocument` | 74 | 32 | 43% |
-| `IVGPage` | 21 | 18 | **86%** |
+| `IVGDocument` | 74 | 33 | 45% |
+| `IVGPage` | 21 | 19 | **90%** |
 | `IVGCurve` | 36 | 22 | 61% |
 | `IVGLayer` | 49 | 22 | 45% |
 | `IVGTextRange` | 31 | 18 | 58% |
-| `IVGApplication` | 78 | 14 | 18% |
+| `IVGApplication` | 78 | 15 | 19% |
 | `IVGText` | 29 | 14 | 48% |
 | `IVGNode` | 18 | 9 | 50% |
 | `IVGBitmap` | 15 | 9 | **60%** |
 | `IVGFill` | 12 | 6 | 50% |
 | `IVGWindow` | 8 | 7 | **88%** |
 | `IVGFountainFill` | 6 | 5 | 83% |
-| `IVGColor` | 43 | 7 | 16%（色彩运算已改纯 Python，见下） |
+| `IVGColor` | 43 | 9 | 21%（色彩运算已改纯 Python，见下；本波补 ToString/CopyAppearance/StringAssign） |
 | `IVGOutline` | 8 | 3 | 38% |
 | `IVGTransparency` | 8 | 5 | 62% |
-| `IVGStyle` | 15 | 4 | 27% |
+| `IVGStyle` | 15 | 8 | **53%** |
 | `IVGColorContext` | 6 | 1 | 17% |
-| **合计** | **743** | **356** | **47.9%** |
+| **合计** | **743** | **373** | **50.2%** |
 
 > **怎么读这两个数**：
-> 1. 全局 37.4% 覆盖 1619 个方法（含变体与重复）；主干 20 接口 47.9%。
+> 1. 全局 38.9% 覆盖 1619 个方法（含变体与重复）；主干 20 接口 50.2%。
 > 2. 它是**方法/属性名匹配**的近似值，同名方法会跨接口误计（例如 `Fillet`/`Chamfer`/`Scallop`
 >    同时存在于 Shape、ShapeRange、Node、NodeRange，数字会一起涨）。
-> 3. `IVGColor` 的 16% 是**故意的**：实测 `IVGColor` 不暴露任何分量属性（`Red`/`Cyan`/`Gray`
+> 3. `IVGColor` 的 21% 是**故意的**：实测 `IVGColor` 不暴露任何分量属性（`Red`/`Cyan`/`Gray`
 >    全部 AttributeError，`ConvertToCMYK` 只改类型不返回值），所以色彩运算迁到纯 Python
->    （`src/cdrx8_mcp/colors.py`），COM 只负责把颜色**应用**到对象；`ToString` / `GetName`
->    用于取色采样输出。
+>    （`src/cdrx8_mcp/colors.py`），COM 只负责把颜色**应用**到对象；`ToString` / `GetName` /
+>    `CopyAppearance` / `StringAssign` 用于取色与专色赋值。
 > 4. 未调用的方法里很大一部分是变体：`CreateArrowHead`×5、`CreateBitmap`×3、
 >    `ConvertTo*`×10、大量 `Wide`/`Ex`/`2`/`3` 后缀；另有事件订阅（需要 COM 连接点）
 >    与 CorelScriptTools/MathUtils（与绘图无关）。
@@ -263,6 +272,25 @@ python scripts/live_smoke.py     # 137 项端到端（真实 CorelDRAW）
 | 调色板列表/取色 | `cdr_doc(action="palettes"/"palette_color")` | ✅ 读到文档调色板（3 色）与默认调色板（100 色）、GUID 与颜色串 |
 | **OpenType 特性** | `cdr_text(opentype={"liga":true,"kern":false})` | ✅ 写入并回读 liga=1 / kern=0 |
 
+## 七之五、第七波已接入（2026-10-25，专色/无关调色板、样式属性与派生、范围批量、包络、吸附）
+
+| 能力 | 落地位置 | 实测 |
+|---|---|---|
+| **固定调色板** | `cdr_doc(action="palette_open_fixed", palette_id)` | ✅ 本机 `OpenFixed(3)` = PANTONE MATCHING SYSTEM（946 色）；同时可打开 TRUMATCH、FOCOLTONE、TOYO、SpectraMaster、标准色等（编号随安装变化） |
+| 调色板颜色枚举 | `cdr_doc(action="palette_colors", palette_index, query, limit)` | ✅ 按名称过滤（如 "Yellow" 命中 2 个），返回颜色索引/名称/颜色串 |
+| **专色创建** | `cdr_doc(action="spot_color", palette_index, color_index/spot_name, tint)` | ✅ `PANTONE Process Yellow CV` → `PANTONE,PAN_SPOT,1,100,<guid>` |
+| **专色填充 / 描边** | `cdr_modify(fill={"type":"spot",...})` / `outline={"color":{"type":"spot",...}}` | ✅ 填充 applied=`fill:spot`；描边 `Outline.Color.CopyAppearance(专色)` 已生效 |
+| 自定义调色板位图 | `cdr_bitmap(action="paletted", palette_type=9, palette_index=…)` | ✅ Mode 4 → 3（自定义调色板） |
+| 样式属性读写 | `cdr_style(action="get")` 的 `readable_properties`；`set_property` | ✅ 69 个可读属性；`angle=15` 写入并回读 `"15"`；颜色属性走 `SetProperty(名字, IVGColor)` |
+| **样式派生** | `cdr_style(action="create", category, based_on, style_name)` + `derived` | ✅ 子样式出现在父样式的 `DerivedStyles` 中，`based_on` 正确 |
+| 范围描边转曲 | `cdr_shape_ops(op="batch_outline_to_curves")` | ✅ 选择集一次转曲（页对象 +1） |
+| 填充规则 / 像素对齐 | `cdr_shape_ops(op="fill_mode"/"pixel_aligned")` | ✅ `SetFillMode(0~2)`、`SetPixelAlignedRendering(True/False)` |
+| 范围边界 | `cdr_shape_ops(op="range_boundary", x, y)` | ✅ 生成边界对象并自动补名 |
+| **包络（另一对象为形）** | `cdr_shape_ops(op="envelope_from_shape", other, envelope_mode)` | ✅ 曲线来源走 `CreateEnvelopeFromCurve`，形状来源走 `CreateEnvelopeFromShape`（返回 `IVGEffect`/None 均视为已调用） |
+| **对象比较** | `cdr_shape_ops(op="compare", other, compare_type, condition)` | ✅ 类型比较 1/2/64/128 可用，返回布尔；位义见 constants（Fill=4、OutlineWidth=8…） |
+| 选择集移除/清空 | `cdr_select(remove=true / clear=true)` | ✅ 移除单个对象、清空选择集 |
+| **吸附点查询** | `cdr_pages(action="snap_point", x, y, snap_types, hot_area)` | ✅ TypeSet=2/4/8/3/6/15/63 返回 `IVGSnapPoint` 位置/类型；1/16/32 报服务器错误 |
+
 ## 七之二、仍未接入（第三轮候选）
 
 | 能力 | 接口 | 为什么还没做 |
@@ -284,11 +312,11 @@ python scripts/live_smoke.py     # 137 项端到端（真实 CorelDRAW）
 
 ## 八、一句话总结
 
-* **能力域覆盖**：21 个能力域 / 27 个工具，日常出图闭环完整，节点级编辑与对象样式都已补上。
-* **方法级覆盖**：全局 37.4%（606/1619），主干 20 接口 47.9%（356/743）。
+* **能力域覆盖**：22 个能力域 / 27 个工具，日常出图闭环完整；节点编辑、对象样式、专色都已补上。
+* **方法级覆盖**：全局 38.9%（629/1619），主干 20 接口 50.2%（373/743）。
 * **明确不可用**：位图描摹、文本导入、点集数组建曲线、混合（CreateBlend）、
-  立体化/透镜/尺寸/连接线、符号库、专色、图案/影线填充（本机无库）、曲线贴笔触。
-* **第六波修正的历史结论**：对象样式可用（Category 是字符串）；内存位图可用
-  （CreateImage→IVGImage→CreateBitmap）；调色板/双色调可用；页面插入的第三参是页码数字。
+  立体化/透镜/尺寸/连接线、符号库、图案/影线填充（本机无库）、曲线贴笔触。
+* **第七波修正的历史结论**：专色可用（OpenFixed 打开 PANTONE + 精确色名）；
+  对象样式属性/派生可用；范围描边转曲/填充规则/像素对齐/边界可用；吸附点可查询。
 
 
