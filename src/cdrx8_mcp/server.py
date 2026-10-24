@@ -378,6 +378,8 @@ def cdr_text(document_id: str, target: dict, text: str | None = None,
              export_start: int = 1, export_count: int = 0,
              export_overwrite: bool = False, opentype: dict | None = None,
              read_font: bool = False, read_hyphenation: bool = False,
+             range_delete: bool = False, range_copy: bool = False,
+             range_paste: bool = False, range_straighten: bool = False,
              expected_revision: int | None = None, snapshot_token: str | None = None,
              page_index: int | None = None) -> dict:
     """文字的排版级操作。
@@ -394,6 +396,8 @@ def cdr_text(document_id: str, target: dict, text: str | None = None,
               export_path（导出纯文本，export_start 从 1 起）
               read_font（读字体属性：名称/字号/样式/下划线…）/
               read_hyphenation（读断字设置；实测 X8 断字设置写回无效，只读）
+    区间操作：range_delete / range_copy / range_paste / range_straighten
+              （作用于 range_start..range_end，0 基；copy/paste 走系统剪贴板）
     OpenType：opentype={"liga":true,"kern":false,...}（实测 SetOpenTypeFeature 可用）
 
     注意：contents / replace_old / find 走的是段落文本接口，对艺术字会返回 warning。
@@ -407,7 +411,8 @@ def cdr_text(document_id: str, target: dict, text: str | None = None,
             contents, find, replace_old, replace_new, copy_attributes_from,
             opentype,
         )) or any((to_curves, fit_frame, no_effect, to_paragraph, to_artistic,
-                   select_all, align_to_baseline))
+                   select_all, align_to_baseline, range_delete, range_copy,
+                   range_paste, range_straighten))
         warnings = _check_view(sess, expected_revision, snapshot_token, doc) \
             if mutating else []
         target_path = resolve_write_path(export_path, overwrite=export_overwrite)[0] \
@@ -429,6 +434,8 @@ def cdr_text(document_id: str, target: dict, text: str | None = None,
             export_start=export_start, export_count=export_count,
             opentype=opentype,
             read_font=read_font, read_hyphenation=read_hyphenation,
+            range_delete=range_delete, range_copy=range_copy,
+            range_paste=range_paste, range_straighten=range_straighten,
         ), label="cdr_text")
         if not mutating:
             return result
@@ -962,7 +969,8 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
             metadata: dict | None = None, palette_name: str | None = None,
             palette_path: str | None = None, palette_colors: list | None = None,
             overwrite: bool = False, field_name: str | None = None,
-            field_format: str = "0",
+            field_format: str = "0", settings: dict | None = None,
+            register: bool = False,
             expected_revision: int | None = None, snapshot_token: str | None = None,
             page_index: int | None = None) -> dict:
     """文档级操作。
@@ -998,6 +1006,11 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
       object_data      读对象的数据字段值（target 指定对象）
       color_context    读文档色彩管理（渲染意图、混合模式、配置文件列表）
       outline_styles   列出线型样式（索引/虚线段数/enhanced）
+      settings         读文档设置（跨图层编辑/曲线精度/分辨率/原点…）
+      set_settings     写文档设置：settings={edit_across_layers,apply_to_duplicate,
+                       curve_precision,resolution,preserve_selection,
+                       shape_enum_direction,world_scale,facing_pages,
+                       first_page_on_right_side}
     """
     def _run():
         doc, sess = _with_doc(document_id)
@@ -1014,14 +1027,16 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
                       metadata=metadata, palette_name=palette_name,
                       palette_path=resolved_palette_path,
                       palette_colors=palette_colors, overwrite=overwrite,
-                      field_name=field_name, field_format=field_format)
+                      field_name=field_name, field_format=field_format,
+                      settings=settings, register=register)
         if action == "info":
             return _com(lambda _b: ops.doc_ops(doc, "info", **kwargs), label="cdr_doc")
         if action in {"clear_selection", "units", "sample_color", "fonts",
                       "palettes", "palette_color", "palette_open_fixed",
                       "palette_colors", "spot_color", "pattern_canvas",
                       "textures", "metadata", "palette_create", "data_fields",
-                      "object_data", "color_context", "outline_styles"}:
+                      "object_data", "color_context", "outline_styles",
+                      "settings"}:
             return _com(lambda _b: ops.doc_ops(doc, action, **kwargs), label="cdr_doc")
         warnings = _check_view(sess, expected_revision, snapshot_token, doc)
         result = _com(lambda _b: ops.doc_ops(doc, action, **kwargs), label="cdr_doc")

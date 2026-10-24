@@ -284,7 +284,7 @@ DOC_ACTIONS = ("info", "clear_selection", "clear_undo", "palette", "arrowhead",
                "palette_open_fixed", "palette_colors", "spot_color",
                "pattern_canvas", "textures", "metadata", "set_metadata",
                "palette_create", "data_fields", "add_data_field", "object_data",
-               "color_context", "outline_styles")
+               "color_context", "outline_styles", "settings", "set_settings")
 
 
 def doc_ops(doc: Any, action: str, *, target: dict | None = None,
@@ -302,7 +302,8 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
             metadata: dict | None = None, palette_name: str | None = None,
             palette_path: str | None = None, palette_colors: list | None = None,
             overwrite: bool = False, field_name: str | None = None,
-            field_format: str = "0") -> dict:
+            field_format: str = "0", settings: dict | None = None,
+            register: bool = False) -> dict:
     """文档级操作。
 
     action:
@@ -681,6 +682,54 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
                           "dash_count": _n(lambda st=st: int(st.DashCount)),
                           "enhanced": bool(_s(lambda st=st: bool(st.Enhanced), False))})
         return {"action": act, "count": count, "styles": items}
+    if act in {"settings", "set_settings"}:
+        spec = {
+            "edit_across_layers": "EditAcrossLayers",
+            "apply_to_duplicate": "ApplyToDuplicate",
+            "curve_precision": "CurvePrecision",
+            "resolution": "Resolution",
+            "preserve_selection": "PreserveSelection",
+            "shape_enum_direction": "ShapeEnumDirection",
+            "reference_point": "ReferencePoint",
+            "text_formatter": "TextFormatter",
+            "world_scale": "WorldScale",
+            "facing_pages": "FacingPages",
+            "first_page_on_right_side": "FirstPageOnRightSide",
+            "layout": "Layout",
+            "unit": "Unit",
+            "drawing_origin_x": "DrawingOriginX",
+            "drawing_origin_y": "DrawingOriginY",
+            "dirty": "Dirty",
+        }
+        writable = {"edit_across_layers", "apply_to_duplicate", "curve_precision",
+                    "resolution", "preserve_selection", "shape_enum_direction",
+                    "world_scale", "text_formatter", "facing_pages",
+                    "first_page_on_right_side"}
+        applied: list[str] = []
+        warnings: list[str] = []
+        if act == "set_settings":
+            if not isinstance(settings, dict) or not settings:
+                raise CdrBadArgument("set_settings 需要 settings 对象")
+            for key, val in settings.items():
+                if key not in spec or key not in writable:
+                    warnings.append(f"{key} 不可写（可用：{', '.join(sorted(writable))}）")
+                    continue
+                try:
+                    setattr(doc, spec[key], val)
+                    applied.append(key)
+                except Exception as exc:  # noqa: BLE001
+                    warnings.append(f"{key} 写入失败：{exc}")
+        values = {}
+        for key, attr in spec.items():
+            try:
+                values[key] = getattr(doc, attr)
+            except Exception:
+                values[key] = None
+        result = {"action": act, "settings": values, "writable": sorted(writable)}
+        if act == "set_settings":
+            result["applied"] = applied
+            result["warnings"] = warnings
+        return result
     # arrowhead
     with mm_units(doc):
         page = _page(doc, page_index)
@@ -689,7 +738,16 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
         if curve is None:
             raise CdrBadArgument("arrowhead 需要一条曲线对象")
         head = doc.CreateArrowHead(curve)
-        return {"action": act, "created": head is not None}
+        app = _app_of(doc)
+        before = _n(lambda: int(app.ArrowHeads.Count), 0)
+        registered = False
+        if register and head is not None:
+            app.ArrowHeads.Add(head)
+            registered = True
+        after = _n(lambda: int(app.ArrowHeads.Count), before)
+        return {"action": act, "created": head is not None,
+                "registered": registered, "arrowheads": after,
+                "index": after if registered else None}
 
 
 # --------------------------------------------------------------------------- #
@@ -3672,6 +3730,8 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
              export_start: int = 1, export_count: int = 0,
              opentype: dict | None = None,
              read_font: bool = False, read_hyphenation: bool = False,
+             range_delete: bool = False, range_copy: bool = False,
+             range_paste: bool = False, range_straighten: bool = False,
              label: str = "cdr_text") -> dict:
     with mm_units(doc):
         page = _page(doc, page_index)
@@ -3685,7 +3745,8 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
             contents, find, replace_old, replace_new, copy_attributes_from,
             opentype,
         )) or any((to_curves, fit_frame, no_effect, to_paragraph, to_artistic,
-                   select_all, align_to_baseline))
+                   select_all, align_to_baseline, range_delete, range_copy,
+                   range_paste, range_straighten))
         if not mutating:
             # 纯读取 / 导出：不建 undo 组，也不改动文档
             result: dict = {"applied": [], "warnings": [],
@@ -3863,6 +3924,31 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
             if to_curves:
                 shape.ConvertToCurves()
                 applied.append("to_curves")
+
+            # ---- 文本区间操作（Delete/Copy/Paste/Straighten，实测可用）----
+            if any((range_delete, range_copy, range_paste, range_straighten)):
+                try:
+                    total = len(_s(lambda: str(story.Text), ""))
+                    a = int(range_start or 0)
+                    b = int(range_end if range_end is not None else total)
+                    if not (0 <= a <= b <= max(total, 0)):
+                        warnings.append(
+                            f"区间越界：[{a},{b}]（当前文本长度 {total}）")
+                    else:
+                        if range_delete:
+                            story.Range(a, b).Delete()
+                            applied.append("range_delete")
+                        if range_copy:
+                            story.Range(a, b).Copy()
+                            applied.append("range_copy")
+                        if range_paste:
+                            story.Range(a, b).Paste()
+                            applied.append("range_paste")
+                        if range_straighten:
+                            story.Range(a, b).Straighten()
+                            applied.append("range_straighten")
+                except Exception as exc:  # noqa: BLE001
+                    warnings.append(f"文本区间操作失败：{exc}")
 
             # ---- OpenType 特性（第六波实测：SetOpenTypeFeature/GetOpenTypeFeature）----
             reading: dict = {}

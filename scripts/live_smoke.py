@@ -1686,6 +1686,90 @@ def main() -> int:
                   and bool(cc.get("profile_names")),
                   f"intent={cc.get('rendering_intent')} profiles={str(cc.get('profile_names'))[:50]}")
 
+    # ---------------- 15r. 第十二波：文档设置 / 文本区间编辑 / 自定义箭头登记 ----------------
+    print("\n[15r] 第十二波：文档设置 + 文本区间编辑 + 箭头登记")
+    fresh12 = server.cdr_inspect(doc_id)
+    if "state" in fresh12:
+        state = fresh12["state"]
+    w12 = server.cdr_create(doc_id, items=[
+        {"type": "paragraph_text", "x": 20, "y": 265, "x2": 150, "y2": 285,
+         "text": "Alpha Beta Gamma", "font": "Arial", "size": 12},
+        {"type": "bezier", "x1": 20, "y1": 285, "c1x": 40, "c1y": 295,
+         "c2x": 60, "c2y": 275, "x2": 80, "y2": 285},
+    ], expected_revision=state["revision"], snapshot_token=state["snapshot_token"])
+    if no_error("创建第十二波测试对象", w12):
+        state = w12["state"]
+        tr12 = w12["created"][0]["name"]
+        bz12 = w12["created"][1]["name"]
+
+        # --- 文档设置读写 ---
+        st0 = server.cdr_doc(doc_id, "settings")
+        if no_error("cdr_doc(settings)", st0):
+            vals = st0.get("settings") or {}
+            check("文档设置可读", isinstance(vals, dict) and "curve_precision" in vals,
+                  f"keys={list(vals.keys())[:6]}")
+            orig_eal = vals.get("edit_across_layers")
+            orig_cp = vals.get("curve_precision")
+            orig_res = vals.get("resolution")
+            sset = server.cdr_doc(doc_id, "set_settings", settings={
+                "edit_across_layers": not bool(orig_eal),
+                "curve_precision": 40,
+                "resolution": 200,
+            }, expected_revision=state["revision"],
+                snapshot_token=state["snapshot_token"])
+            if no_error("cdr_doc(set_settings)", sset):
+                sv = sset.get("settings") or {}
+                check("文档设置可写", sv.get("curve_precision") == 40
+                      and sv.get("resolution") == 200,
+                      f"cp={sv.get('curve_precision')} res={sv.get('resolution')}")
+                state = sset["state"]
+                # 恢复原值
+                restored = server.cdr_doc(doc_id, "set_settings", settings={
+                    "edit_across_layers": bool(orig_eal),
+                    "curve_precision": orig_cp if orig_cp is not None else 50,
+                    "resolution": orig_res if orig_res is not None else 300,
+                }, expected_revision=state["revision"],
+                    snapshot_token=state["snapshot_token"])
+                if "state" in restored:
+                    state = restored["state"]
+
+        # --- 文本区间编辑 ---
+        trd = server.cdr_text(doc_id, {"name": tr12},
+                              range_start=6, range_end=11, range_delete=True,
+                              expected_revision=state["revision"],
+                              snapshot_token=state["snapshot_token"])
+        if no_error("cdr_text(range_delete)", trd):
+            check("文本区间删除生效", "range_delete" in (trd.get("applied") or [])
+                  and trd.get("text") == "Alpha Gamma",
+                  f"text={trd.get('text')!r}")
+            state = trd["state"]
+        trc = server.cdr_text(doc_id, {"name": tr12},
+                              range_start=0, range_end=5, range_copy=True,
+                              expected_revision=state["revision"],
+                              snapshot_token=state["snapshot_token"])
+        if no_error("cdr_text(range_copy)", trc):
+            check("文本区间复制生效", "range_copy" in (trc.get("applied") or []))
+            state = trc["state"]
+        trp = server.cdr_text(doc_id, {"name": tr12},
+                              range_start=0, range_end=0, range_paste=True,
+                              expected_revision=state["revision"],
+                              snapshot_token=state["snapshot_token"])
+        if no_error("cdr_text(range_paste)", trp):
+            check("文本区间粘贴生效", "range_paste" in (trp.get("applied") or [])
+                  and (trp.get("text") or "").startswith("AlphaAlpha"),
+                  f"text={trp.get('text')!r}")
+            state = trp["state"]
+
+        # --- 自定义箭头登记到全局箭头库 ---
+        ah = server.cdr_doc(doc_id, "arrowhead", target={"name": bz12},
+                            register=True, expected_revision=state["revision"],
+                            snapshot_token=state["snapshot_token"])
+        if no_error("cdr_doc(arrowhead register)", ah):
+            check("自定义箭头已登记", ah.get("created") is True
+                  and ah.get("registered") is True and (ah.get("arrowheads") or 0) > 0,
+                  f"index={ah.get('index')} count={ah.get('arrowheads')}")
+            state = ah["state"]
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,
