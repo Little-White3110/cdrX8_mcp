@@ -7,9 +7,9 @@
 
 > **已在真机验证**：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）+ Python 3.11.9 64 位
 > - 单元测试 **55 项通过**
-> - 端到端联调（真实 CorelDRAW）**81/81 通过**
+> - 端到端联调（真实 CorelDRAW）**84/84 通过**
 > - 能力边界来自对 `vgcoreauto.tlb` 的反解（196 个自动化类 / 1619 个方法）+ 逐项实跑
-> - 方法级覆盖 **28.5%**（主干 20 接口 35.1%），可用 `python scripts/coverage_audit.py` 复现
+> - 方法级覆盖 **28.9%**（主干 20 接口 35.8%），可用 `python scripts/coverage_audit.py` 复现
 > - 完整清单见 [docs/COVERAGE.md](docs/COVERAGE.md)
 
 ---
@@ -74,7 +74,7 @@ python -m cdrx8_mcp              # 启动 MCP 服务器（stdio）
 | `cdr_align` | 对齐与分布（左中右 / 上下中 / 等间距，对齐对象或页面） |
 | `cdr_find` | 按名字或类型查找（跨图层） |
 | `cdr_path` | 曲线/子路径级：长度面积 / 偏移轮廓（刀模线）/ **追加圆·椭圆·矩形·三点弧·贝塞尔** / **节点精简** / **自焊接** / **路径等分** / **加节点·断开·移动子路径** / **点在形状内·曲线求交·取点取切向** |
-| `cdr_bitmap` | 位图：信息 / 转色彩模式（rgb·cmyk·gray·bw）/ 重采样 / 裁剪 |
+| `cdr_bitmap` | 位图：信息 / 转色彩模式（rgb·cmyk·gray·bw）/ **阈值二值化** / 重采样 / **扩边** / 裁剪 |
 | `cdr_color` | **颜色运算（纯 Python）**：解析成 HEX/RGB/CMYK/Gray/HLS/Lab、转换、两色混合 |
 | `cdr_doc` | **文档级**：概况 / 清空选择集 / 清撤销栈 / **登记调色板** / **用曲线生成自定义箭头** |
 | `cdr_view` | **视图**：刷新重绘 / 激活窗口 / 文档↔屏幕坐标换算 |
@@ -247,7 +247,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ```powershell
 python -m pytest -q                # 55 项纯逻辑测试，任何平台可跑
-python scripts/live_smoke.py       # 81 项端到端，需要 CorelDRAW X8
+python scripts/live_smoke.py       # 84 项端到端，需要 CorelDRAW X8
 python scripts/live_smoke.py --keep   # 保留文档方便肉眼看效果
 python scripts/coverage_audit.py   # 覆盖率审计（复现 README/COVERAGE 里的数字）
 ```

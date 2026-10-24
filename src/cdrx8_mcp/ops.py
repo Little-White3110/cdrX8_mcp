@@ -526,7 +526,7 @@ def objects_bounds(doc: Any, page_index: int | None = None,
 # 位图
 # --------------------------------------------------------------------------- #
 BITMAP_MODES = {"rgb": 1, "cmyk": 2, "gray": 3, "grayscale": 3, "bw": 4, "blackwhite": 4}
-BITMAP_ACTIONS = ("info", "convert", "resample", "crop", "reset_crop")
+BITMAP_ACTIONS = ("info", "convert", "resample", "crop", "reset_crop", "bw", "inflate")
 
 
 def _bitmap_of(shape: Any) -> Any:
@@ -542,10 +542,13 @@ def _bitmap_of(shape: Any) -> Any:
 def bitmap_action(doc: Any, page_index: int | None, target: dict, action: str, *,
                   mode: str | None = None, width: float | None = None,
                   height: float | None = None, dpi: float | None = None,
-                  anti_alias: bool = True, label: str = "cdr_bitmap") -> dict:
+                  anti_alias: bool = True, threshold: float = 128.0,
+                  inflate_x: float = 2.0, inflate_y: float = 2.0,
+                  label: str = "cdr_bitmap") -> dict:
     """位图处理。
 
-    实测可用：ConvertTo（RGB/CMYK/灰度/黑白）、Resample（尺寸+分辨率）、Crop、ResetCropEnvelope。
+    实测可用：ConvertTo（RGB/CMYK/灰度/黑白）、ConvertToBW（阈值二值化）、
+    Resample（尺寸+分辨率）、Inflate（四周扩边）、Crop、ResetCropEnvelope。
     **PowerTRACE（Bitmap.Trace）不提供**：实测会让 CorelDRAW 卡成「无响应」（模态对话框），
     COM 无法中断，会把调用方一起拖死。
     """
@@ -584,6 +587,11 @@ def bitmap_action(doc: Any, page_index: int | None, target: dict, action: str, *
                 bmp.Crop()
             elif act == "reset_crop":
                 bmp.ResetCropEnvelope()
+            elif act == "bw":
+                # 实测：ConvertToBW(RenderType, Intensity, Threshold, Halftone, Angle, Size)
+                bmp.ConvertToBW(0, 0, float(threshold), False, 0, 0)
+            elif act == "inflate":
+                bmp.Inflate(float(inflate_x), float(inflate_y))
     return {"action": act, **info()}
 
 
@@ -1203,6 +1211,11 @@ def apply_fill(doc: Any, shape: Any, spec: Any) -> str:
     if isinstance(spec, dict) and spec.get("type") == "texture":
         shape.Fill.ApplyTextureFill(str(spec.get("name", "")), str(spec.get("library", "")))
         return "texture"
+
+    if isinstance(spec, dict) and spec.get("type") == "postscript":
+        # 实测可用：按 PostScript 底纹索引填充
+        shape.Fill.ApplyPostscriptFill(int(spec.get("index", 1)))
+        return "postscript"
 
     shape.Fill.ApplyUniformFill(_color(doc, spec))
     return "uniform"

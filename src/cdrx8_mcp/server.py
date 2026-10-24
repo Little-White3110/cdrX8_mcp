@@ -825,7 +825,8 @@ def cdr_undo(document_id: str, steps: int = 1, redo: bool = False) -> dict:
 def cdr_bitmap(document_id: str, target: dict, action: str = "info",
                mode: str | None = None, width: float | None = None,
                height: float | None = None, dpi: float | None = None,
-               anti_alias: bool = True,
+               anti_alias: bool = True, threshold: float = 128.0,
+               inflate_x: float = 2.0, inflate_y: float = 2.0,
                expected_revision: int | None = None,
                snapshot_token: str | None = None,
                page_index: int | None = None) -> dict:
@@ -834,7 +835,9 @@ def cdr_bitmap(document_id: str, target: dict, action: str = "info",
     action:
       info          读取尺寸、像素、分辨率、颜色模式
       convert       改颜色模式，mode = rgb / cmyk / gray / bw
+      bw            阈值二值化（threshold 0~255），适合做丝印/单色稿
       resample      重采样，width/height 目标像素、dpi 目标分辨率
+      inflate       四周扩边，inflate_x / inflate_y 毫米
       crop          执行裁剪
       reset_crop    取消裁剪
 
@@ -851,7 +854,8 @@ def cdr_bitmap(document_id: str, target: dict, action: str = "info",
         warnings = _check_view(sess, expected_revision, snapshot_token, doc)
         result = _com(lambda _b: ops.bitmap_action(
             doc, page_index, target, act, mode=mode, width=width, height=height,
-            dpi=dpi, anti_alias=anti_alias), label="cdr_bitmap")
+            dpi=dpi, anti_alias=anti_alias, threshold=threshold,
+            inflate_x=inflate_x, inflate_y=inflate_y), label="cdr_bitmap")
         return _commit(doc, sess, result, warnings)
 
     return _guard(_run)

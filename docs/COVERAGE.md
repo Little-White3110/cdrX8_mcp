@@ -114,8 +114,8 @@ python scripts/live_smoke.py     # 46 项端到端（真实 CorelDRAW）
 用 AST 扫描 `src/cdrx8_mcp/*.py`，收集所有 `.方法名(` 调用与 `setattr/getattr` 的属性名，
 与主干接口的方法名求交集。
 
-**全局：461 / 1619 = 28.5%**（第一轮 21.2% → 第二轮 27.6% → 本轮 28.5%）
-**主干 20 接口：261 / 743 = 35.1%**
+**全局：468 / 1619 = 28.9%**（第一轮 21.2% → 第二轮 27.6% → 本轮 28.9%）
+**主干 20 接口：266 / 743 = 35.8%**
 
 复现命令：`python scripts/coverage_audit.py`（会临时展开类型库到 `tmp/gen_py`，跑完自动清理）
 
@@ -124,24 +124,24 @@ python scripts/live_smoke.py     # 46 项端到端（真实 CorelDRAW）
 | `IVGPage` | 21 | 18 | **86%** |
 | `IVGFountainFill` | 6 | 5 | 83% |
 | `IVGWindow` | 8 | 6 | **75%** |
+| `IVGFill` | 12 | 6 | **50%** |
+| `IVGBitmap` | 15 | 7 | 47% |
 | `IVGNode` ⚠️ | 18 | 8 | 44%（同名误计，实际无节点入口） |
 | `IVGCurve` | 36 | 15 | 42% |
 | `IVGTextRange` | 31 | 13 | 42% |
-| `IVGFill` | 12 | 5 | 42% |
 | `IVGShape` | 123 | 49 | 40% |
+| `IVGShapeRange` | 125 | 49 | 39% |
 | `IVGSubPath` | 38 | 15 | 39% |
-| `IVGShapeRange` | 125 | 48 | 38% |
 | `IVGText` | 29 | 11 | 38% |
 | `IVGOutline` | 8 | 3 | 38% |
 | `IVGTransparency` | 8 | 3 | 38% |
 | `IVGLayer` | 49 | 16 | 33% |
-| `IVGBitmap` | 15 | 5 | 33% |
 | `IVGDocument` | 74 | 22 | 30% |
 | `IVGApplication` | 78 | 13 | 17% |
 | `IVGColorContext` | 6 | 1 | 17% |
-| `IVGColor` | 43 | 4 | 9%（色彩运算已改纯 Python，见下） |
+| `IVGColor` | 43 | 5 | 12%（色彩运算已改纯 Python，见下） |
 | `IVGStyle` | 15 | 1 | 7% |
-| **合计** | **743** | **261** | **35.1%** |
+| **合计** | **743** | **266** | **35.8%** |
 
 > **怎么读这两个数**：
 > 1. 全局 27.6% 覆盖 1619 个方法（含变体与重复）；主干 20 接口 33.4%。

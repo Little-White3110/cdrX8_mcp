@@ -692,6 +692,31 @@ def main() -> int:
     if no_error("cdr_view(to_screen)", vs):
         check("文档->屏幕坐标可用", vs.get("screen") is not None, str(vs.get("screen")))
 
+    print("\n[15j] 位图二值化 / 扩边 + PostScript 底纹填充")
+    bmp3 = server.cdr_find(doc_id, type_id=5)
+    if bmp3.get("count"):
+        b3 = bmp3["shapes"][0]["name"]
+        bw = server.cdr_bitmap(doc_id, target={"name": b3}, action="bw", threshold=120,
+                               expected_revision=state["revision"],
+                               snapshot_token=state["snapshot_token"])
+        if no_error("cdr_bitmap(bw)", bw):
+            check("二值化成功（Mode->0）", bw.get("mode") == 0, f"mode={bw.get('mode')}")
+            state = bw["state"]
+        inf = server.cdr_bitmap(doc_id, target={"name": b3}, action="inflate",
+                                inflate_x=1, inflate_y=1,
+                                expected_revision=state["revision"],
+                                snapshot_token=state["snapshot_token"])
+        if no_error("cdr_bitmap(inflate)", inf):
+            check("位图扩边成功", inf.get("action") == "inflate", str(inf.get("action")))
+            state = inf["state"]
+    ps = server.cdr_create(doc_id, items=[
+        {"type": "rectangle", "x": 130, "y": 240, "width": 40, "height": 30,
+         "fill": {"type": "postscript", "index": 1}}],
+        expected_revision=state["revision"], snapshot_token=state["snapshot_token"])
+    if no_error("创建 PostScript 填充矩形", ps):
+        check("PostScript 底纹填充可用", ps.get("count") == 1, str(ps.get("count")))
+        state = ps["state"]
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,
