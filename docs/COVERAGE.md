@@ -2,7 +2,7 @@
 
 > 目的：证明"还有多少没探"。每一行要么有对应的工具，要么有实测失败证据。
 > 环境：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）/ Python 3.11.9 64 位
-> 最近更新：2026-10-25 第二十波（OLE 文件嵌入 / 命名视图）
+> 最近更新：2026-10-25 第二十一波（文档网格设置）
 
 ## 怎么得出这份清单
 
@@ -39,6 +39,7 @@
 | `IVGStyle` / `IVGStyleSheet` | 16 / 16 | **已覆盖（第六/七/九波）**：`CreateStyleFromShape`、`CreateStyle(category, based_on, name)`、`Styles.Find/Item/Count`、`Style.Name/CategoryName/DisplayName/BasedOn`、`Rename / Delete / GetAllPropertyNames / GetPropertyAsString / SetPropertyAsString / SetProperty / DerivedStyles / ToString`、`Shape.ApplyStyle("样式名")`；**`Document.SaveStyleSheet/LoadStyleSheet` 可导出/恢复 .cdst**；**`Document.CreateColorStyles(harmony>0)` 会生成颜色样式（AllColorStyles）**；`fill`/`outline` 分组名不可直接读写 |
 | `IVGWindow` | 9 | 已用：Refresh / Activate / DocumentToScreen / ScreenToDocument / DocumentDistanceToScreenDistance / **ScreenDistanceToDocumentDistance**；缩放/新建窗口未封装 |
 | `IVGView` / `IVGViews` | 8 / 5 | **新打通（第二十波）**：`Document.CreateView(Name, OriginX, OriginY, Zoom, Page)` 创建命名视图；`Views.Count/Item(i)` 列出；`View.Activate/Delete`、Name/OriginX·Y/Zoom/Page/UsePage/UseZoom 可读写 |
+| `IVGGrid` | 5 | **新打通（第二十一波）**：`Document.Grid` 的 Type / SpacingX / SpacingY / Visible / Snap 全部可读写（间距按文档单位，mm 上下文下为毫米） |
 | `IVGColors`（颜色样式集合） | 8 | **新打通（第九波）**：`StyleSheet.AllColorStyles` 的 `Count / Item(i) / GetName / ToString`；配合 `Document.CreateColorStyles(harmonies=1..3)` 生成颜色协调 |
 | `IVGMetadata` | 21 | **新打通（第十波）**：`Document.Metadata` 的 Title / Author / LastAuthor / Subject / Keywords / Notes / Copyright / Revision / DocLanguage / DocID；前六项可写；Localizable* 是 `IVGLocalizableString` 对象，未纳入读取 |
 | `IVGEffects` / `IVGEffect` | 12 / 12 | **新打通（第十五波）**：`Shape.Effects.Count/Item(i)`、`ExtrudeEffect/LensEffect/DropShadowEffect/BlendEffects` 等；`Effect.Type/Extrude/Lens/Separate/Clear` 可用 |
@@ -79,7 +80,7 @@
 | 位图 | `cdr_bitmap`（信息/转色彩模式/重采样/裁剪/取消裁剪/取像素色·图像缓冲信息·调色板模式 0~9·双色调/内容替换 SetImageData/**位图特效命令串 ApplyBitmapEffect**） | ✅（Trace 除外） |
 | 路径 | `cdr_path`（长度面积/偏移轮廓/追加子路径/折线点/反转方向·焊子路径·去重叠·参数取点·切/法向量·速度·交点·找节点/线段） | ✅ |
 | 导入导出 | `cdr_import` `cdr_export`（png/jpg/svg/pdf，可指定 DPI，可只导选区） | ✅ |
-| 文档 | `cdr_doc`（概况/清选区/清撤销栈/调色板/箭头/箭头登记/单位换算·取色·显示隐藏·版式·重复操作/字体列表·调色板列表·调色板取色/固定调色板打开·颜色枚举·专色创建/图案画布创建（含区域变换）/纹理库列表/文档元数据读写/自定义调色板创建/数据字段·对象数据·色彩管理·线型样式/文档设置读写/应用信息·文档回滚/色彩配置文件·文档颜色转换/用户偏好 KV/**命名视图**） | ✅ |
+| 文档 | `cdr_doc`（概况/清选区/清撤销栈/调色板/箭头/箭头登记/单位换算·取色·显示隐藏·版式·重复操作/字体列表·调色板列表·调色板取色/固定调色板打开·颜色枚举·专色创建/图案画布创建（含区域变换）/纹理库列表/文档元数据读写/自定义调色板创建/数据字段·对象数据·色彩管理·线型样式/文档设置读写/应用信息·文档回滚/色彩配置文件·文档颜色转换/用户偏好 KV/命名视图/**网格设置**） | ✅ |
 | **对象数据** | `cdr_modify(changes={"data":{...}})` + `cdr_doc(action="object_data"/"data_fields"/"add_data_field")` | ✅ 第十一波 |
 | 视图 | `cdr_view`（刷新/激活/文档↔屏幕坐标/屏幕↔文档距离） | ✅ 第五波 |
 | 历史 | `cdr_undo`（撤销/重做） | ✅ |
@@ -115,6 +116,7 @@
 | OLE 文件嵌入 | `Layer.CreateOLEObjectFromFile(FileName, Link, DisplayAsIcon, Caption, Icon)` | 传绝对路径的 .txt 可嵌入，返回 `type_id=12` 的 OLE 形状（默认约页面居中，28×18mm） | 不弹出对话框；可用 cdr_modify 移动/删除 |
 | 命名视图 | `Document.CreateView(Name, OriginX, OriginY, Zoom, Page)` | **Page 参数必须是 IVGPage 对象**；传 int 报 `TypeError: Python instance can not be converted to a COM object`；传 `page` 后成功创建 | 已封装 views/create_view/activate_view/delete_view |
 | ContentIdentifiers | `Document.ContentIdentifiers` | 返回 Python **tuple**（空文档为 `()`），不是 COM 集合；本机无内容标识可测 | 批量内容替换未接入 |
+| 文档网格 | `Document.Grid` | Type / SpacingX / SpacingY / Visible / Snap 均可读写；mm 上下文下间距为毫米（默认 5×5mm） | 已封装 `cdr_doc(action="grid"/"set_grid")` |
 | 文档回滚 | `Document.Revert()` | 可用（修改后 15→16→15 对象）；**破坏性**，丢弃未保存修改 | 已封装为 `cdr_doc(action="revert")`，调用前确认已保存 |
 | 立体化/透镜创建 | `Shape.CreateExtrude(...)` / `Shape.CreateLens(...)` | 只传前几个 int 参数报 `TypeError: Python instance can not be converted to a COM object`；**传全参数（含颜色对象）即可** | 已封装并补齐默认颜色参数 |
 | 点对象创建 | `Application.MathUtils.CreatePoint` | `MathUtils` CLSID `{E98800C5-…}` 报「没有注册类」，Application 上也没有 MathUtils 属性 | 尺寸标注/连接线仍不可用 |
@@ -224,7 +226,7 @@
 
 ```powershell
 python -m pytest -q              # 55 项纯逻辑
-python scripts/live_smoke.py     # 239 项端到端（真实 CorelDRAW）
+python scripts/live_smoke.py     # 242 项端到端（真实 CorelDRAW）
 ```
 
 联调断言覆盖了上表所有 ✅ 项。反解脚本属于过程产物，已按要求放在 `tmp/` 并在完成时清理；
@@ -232,7 +234,7 @@ python scripts/live_smoke.py     # 239 项端到端（真实 CorelDRAW）
 
 ---
 
-## 六、量化覆盖率（2026-10-25 第二十波实测）
+## 六、量化覆盖率（2026-10-25 第二十一波实测）
 
 方法：反解类型库拿到 196 个自动化类 / **1619** 个方法（已剔除 `QueryInterface` 等 COM 基础设施）；
 用 AST 扫描 `src/cdrx8_mcp/*.py`，收集所有 `.方法名(` 调用与 `setattr/getattr` 的属性名，
@@ -514,6 +516,15 @@ python scripts/live_smoke.py     # 239 项端到端（真实 CorelDRAW）
 | ContentIdentifiers | `Document.ContentIdentifiers` | 返回 Python tuple（空文档 `()`）；本机无内容标识可测 |
 | 视图持久化 | 视图保存在文档中 | 未单独验证跨保存/重开；本波验证了创建、列出、激活、删除 |
 
+## 七之十九、第二十一波已接入（2026-10-25，文档网格设置）
+
+| 能力 | 落地位置 | 实测 |
+|---|---|---|
+| **网格读取** | `cdr_doc(action="grid")` | ✅ 默认 type=1、spacing=5×5mm、visible=false、snap=false |
+| **网格写入** | `cdr_doc(action="set_grid", grid_spacing_x/y, grid_visible, grid_snap, grid_type)` | ✅ 写入 12×18mm、显示/吸附开启后回读一致；可再恢复原值 |
+| 单位 | `Document.Grid.SpacingX/Y` | 在 mm 上下文下为毫米；写 12 读回 12.0 |
+| 仍未可用 | 尺寸标注/连接线 | 用 SubPath 取点后 raw `InvokeTypes` 仍 TypeError/类型不匹配 |
+
 ## 七之二、仍未接入（第三轮候选）
 
 | 能力 | 接口 | 为什么还没做 |
@@ -535,15 +546,15 @@ python scripts/live_smoke.py     # 239 项端到端（真实 CorelDRAW）
 
 ## 八、一句话总结
 
-* **能力域覆盖**：44 个能力域 / 27 个工具，日常出图闭环完整；节点编辑、对象样式、专色、
+* **能力域覆盖**：45 个能力域 / 27 个工具，日常出图闭环完整；节点编辑、对象样式、专色、
   图案/纹理填充、跨文档复制、模板/样式表/颜色样式、文档元数据、对象数据字段、自定义虚线、
   文档设置、文本区间编辑、自定义箭头、图案微调、文本格式查询、位图内容替换、文档回滚、
   立体化/透镜/效果管理、位图特效命令串、混合、文档颜色转换、用户偏好 KV、OLE 嵌入、
-  命名视图都已补上。
+  命名视图、网格设置都已补上。
 * **方法级覆盖**：全局 43.1%（698/1619），主干 20 接口 56.3%（418/743）。
 * **明确不可用**：位图描摹、文本导入、点集数组建曲线、尺寸标注/连接线（MathUtils 点对象
   不可创建）、符号库、文件型图案/影线填充（本机无库）、曲线贴笔触、OpenDocumentAsCopy、
   HTML 兼容文本、断字写入、填充字符串、文本尺寸查询、灰度→RGB 转换、真实应用偏好读取。
-* **第二十波新增**：OLE 文件可嵌入；命名视图可创建/激活/删除（Page 参数须传 IVGPage 对象）。
+* **第二十一波新增**：`Document.Grid` 网格类型/间距/显示/吸附可读写。
 
 

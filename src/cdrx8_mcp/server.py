@@ -1022,7 +1022,10 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
             pref_value: Any = None, pref_default: Any = None,
             view_name: str | None = None, view_index: int = 1,
             zoom: float = 100.0, origin_x: float = 0.0,
-            origin_y: float = 0.0,
+            origin_y: float = 0.0, grid_spacing_x: float | None = None,
+            grid_spacing_y: float | None = None,
+            grid_visible: bool | None = None, grid_snap: bool | None = None,
+            grid_type: int | None = None,
             expected_revision: int | None = None, snapshot_token: str | None = None,
             page_index: int | None = None) -> dict:
     """文档级操作。
@@ -1078,6 +1081,8 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
       create_view      创建命名视图：view_name + origin_x/y + zoom + page_index
       activate_view    激活指定视图（view_index 从 1 开始）
       delete_view      删除指定视图（view_index 从 1 开始）
+      grid             读文档网格（类型/间距/显示/吸附）
+      set_grid         写网格：grid_spacing_x/y + grid_visible + grid_snap + grid_type
     """
     def _run():
         doc, sess = _with_doc(document_id)
@@ -1103,7 +1108,11 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
                       pref_group=pref_group, pref_key=pref_key,
                       pref_value=pref_value, pref_default=pref_default,
                       view_name=view_name, view_index=view_index, zoom=zoom,
-                      origin_x=origin_x, origin_y=origin_y)
+                      origin_x=origin_x, origin_y=origin_y,
+                      grid_spacing_x=grid_spacing_x,
+                      grid_spacing_y=grid_spacing_y,
+                      grid_visible=grid_visible, grid_snap=grid_snap,
+                      grid_type=grid_type)
         if action == "info":
             return _com(lambda _b: ops.doc_ops(doc, "info", **kwargs), label="cdr_doc")
         if action in {"clear_selection", "units", "sample_color", "fonts",
@@ -1113,7 +1122,8 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
                       "object_data", "color_context", "outline_styles",
                       "settings", "app_info", "color_profiles",
                       "pref_register", "pref_get", "pref_set",
-                      "views", "create_view", "activate_view", "delete_view"}:
+                      "views", "create_view", "activate_view", "delete_view",
+                      "grid", "set_grid"}:
             return _com(lambda _b: ops.doc_ops(doc, action, **kwargs), label="cdr_doc")
         warnings = _check_view(sess, expected_revision, snapshot_token, doc)
         result = _com(lambda _b: ops.doc_ops(doc, action, **kwargs), label="cdr_doc")

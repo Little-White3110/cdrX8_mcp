@@ -287,7 +287,8 @@ DOC_ACTIONS = ("info", "clear_selection", "clear_undo", "palette", "arrowhead",
                "color_context", "outline_styles", "settings", "set_settings",
                "revert", "app_info", "color_profiles", "convert_color",
                "pref_register", "pref_get", "pref_set",
-               "views", "create_view", "activate_view", "delete_view")
+               "views", "create_view", "activate_view", "delete_view",
+               "grid", "set_grid")
 
 
 def doc_ops(doc: Any, action: str, *, target: dict | None = None,
@@ -314,7 +315,12 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
             pref_value: Any = None, pref_default: Any = None,
             view_name: str | None = None, view_index: int = 1,
             zoom: float = 100.0, origin_x: float = 0.0,
-            origin_y: float = 0.0) -> dict:
+            origin_y: float = 0.0,
+            grid_spacing_x: float | None = None,
+            grid_spacing_y: float | None = None,
+            grid_visible: bool | None = None,
+            grid_snap: bool | None = None,
+            grid_type: int | None = None) -> dict:
     """文档级操作。
 
     action:
@@ -956,6 +962,28 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
         view.Delete()
         return {"action": act, "deleted": idx,
                 "count": _n(lambda: int(views.Count), 0)}
+    if act in {"grid", "set_grid"}:
+        with mm_units(doc):
+            grid = _s(lambda: doc.Grid)
+            if grid is None:
+                raise CdrBadArgument("该文档没有 Grid")
+            if act == "set_grid":
+                if grid_spacing_x is not None:
+                    grid.SpacingX = float(grid_spacing_x)
+                if grid_spacing_y is not None:
+                    grid.SpacingY = float(grid_spacing_y)
+                if grid_visible is not None:
+                    grid.Visible = bool(grid_visible)
+                if grid_snap is not None:
+                    grid.Snap = bool(grid_snap)
+                if grid_type is not None:
+                    grid.Type = int(grid_type)
+            return {"action": act,
+                    "type": _n(lambda: int(grid.Type)),
+                    "spacing_x": _s(lambda: float(grid.SpacingX)),
+                    "spacing_y": _s(lambda: float(grid.SpacingY)),
+                    "visible": bool(_s(lambda: bool(grid.Visible), False)),
+                    "snap": bool(_s(lambda: bool(grid.Snap), False))}
     # arrowhead
     with mm_units(doc):
         page = _page(doc, page_index)

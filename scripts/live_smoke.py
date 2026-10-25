@@ -2175,6 +2175,32 @@ def main() -> int:
                 check("命名视图可删除", (dv20.get("count") or 0) == base20,
                       f"count={dv20.get('count')}")
 
+    # ---------------- 15aa. 第二十一波：文档网格设置 ----------------
+    print("\n[15aa] 第二十一波：文档网格设置")
+    g0 = server.cdr_doc(doc_id, "grid")
+    if no_error("cdr_doc(grid)", g0):
+        check("网格设置可读", isinstance(g0.get("spacing_x"), (int, float)),
+              f"spacing={g0.get('spacing_x')}×{g0.get('spacing_y')}")
+        orig = {k: g0.get(k) for k in ("spacing_x", "spacing_y", "visible", "snap",
+                                       "type")}
+        gs = server.cdr_doc(doc_id, "set_grid", grid_spacing_x=12,
+                            grid_spacing_y=18, grid_visible=True,
+                            grid_snap=True, grid_type=1)
+        if no_error("cdr_doc(set_grid)", gs):
+            check("网格设置可写", gs.get("spacing_x") == 12
+                  and gs.get("spacing_y") == 18
+                  and gs.get("visible") is True and gs.get("snap") is True,
+                  f"spacing={gs.get('spacing_x')}×{gs.get('spacing_y')} visible={gs.get('visible')}")
+            g2 = server.cdr_doc(doc_id, "grid")
+            check("网格设置写入后回读", g2.get("spacing_x") == 12
+                  and g2.get("visible") is True, str(g2))
+            server.cdr_doc(doc_id, "set_grid",
+                           grid_spacing_x=orig.get("spacing_x") or 5,
+                           grid_spacing_y=orig.get("spacing_y") or 5,
+                           grid_visible=bool(orig.get("visible")),
+                           grid_snap=bool(orig.get("snap")),
+                           grid_type=int(orig.get("type") or 1))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,
