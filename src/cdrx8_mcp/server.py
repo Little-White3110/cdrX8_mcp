@@ -746,7 +746,8 @@ def cdr_node(document_id: str, target: dict, action: str = "list",
              segment_index: int | None = None, control: str | None = None,
              hot_area: float = -1.0,
              expected_revision: int | None = None, snapshot_token: str | None = None,
-             page_index: int | None = None) -> dict:
+             page_index: int | None = None,
+             params: dict | None = None) -> dict:
     """节点 / 线段级编辑（X8 实测可用：curve.Nodes / curve.Segments）。
 
     target 定位曲线对象（不是曲线的先 `cdr_shape_ops(op="to_curves")`）。
@@ -783,11 +784,11 @@ def cdr_node(document_id: str, target: dict, action: str = "list",
                       segment_index=segment_index, control=control,
                       hot_area=hot_area)
         if act not in ops.NODE_MUTATIONS or (act == "control_points" and control is None):
-            return _com(lambda _b: ops.node_ops(doc, page_index, target, act, **kwargs),
+            return _com(lambda _b: ops.node_ops(doc, page_index, target, act, **kwargs, params=params),
                         label="cdr_node")
         warnings = _check_view(sess, expected_revision, snapshot_token, doc)
-        result = _com(lambda _b: ops.node_ops(doc, page_index, target, act, **kwargs),
-                      label="cdr_node")
+        result = _com(lambda _b: ops.node_ops(doc, page_index, target, act, **kwargs,
+                                              params=params), label="cdr_node")
         return _commit(doc, sess, result, warnings)
 
     return _guard(_run)
@@ -973,7 +974,8 @@ def cdr_path(document_id: str, target: dict, action: str = "info",
              tolerance: float = 0.0, allow_reversals: bool = True, hot_area: float = -1.0,
              expected_revision: int | None = None,
              snapshot_token: str | None = None,
-             page_index: int | None = None) -> dict:
+             page_index: int | None = None,
+             params: dict | None = None) -> dict:
     """曲线 / 子路径级操作（对象需是曲线，可先 `cdr_shape_ops(op="to_curves")` 转曲）。
 
     只读：info（长度/面积/子路径）、polyline（折线采样，已修复）、point_inside、intersects、
@@ -1009,11 +1011,11 @@ def cdr_path(document_id: str, target: dict, action: str = "info",
                       precision=precision, tolerance=tolerance,
                       allow_reversals=allow_reversals, hot_area=hot_area)
         if readonly:
-            return _com(lambda _b: ops.path_ops(doc, page_index, target, act, **kwargs),
+            return _com(lambda _b: ops.path_ops(doc, page_index, target, act, **kwargs, params=params),
                         label="cdr_path")
         warnings = _check_view(sess, expected_revision, snapshot_token, doc)
-        result = _com(lambda _b: ops.path_ops(doc, page_index, target, act, **kwargs),
-                      label="cdr_path")
+        result = _com(lambda _b: ops.path_ops(doc, page_index, target, act, **kwargs,
+                                              params=params), label="cdr_path")
         return _commit(doc, sess, result, warnings)
 
     return _guard(_run)

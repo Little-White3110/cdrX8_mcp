@@ -3291,6 +3291,60 @@ def main() -> int:
                       f"type={rast.get('type_id')} bitmap={rast.get('has_bitmap')}")
         no_error("关闭参考点测试文档", server.cdr_close(p40_id))
 
+    # ---------------- 15au. 第四十一波：任意节点/线段集合 + 位图构造器 ----------------
+    print("\n[15au] 第四十一波：CreateNodeRange/CreateSegmentRange 任意集合、CreateBitmap2/BitmapRect")
+    nr_doc = server.cdr_open(preset="A4")
+    if "document_id" in nr_doc:
+        nr_id = nr_doc["document_id"]
+        nrr = server.cdr_create(nr_id, [
+            {"type": "polyline", "points": [[0, 0], [20, 0], [40, 0], [60, 0], [80, 0]],
+             "closed": False},
+            {"type": "bitmap_at", "x": 100, "y": 20, "width": 20, "height": 20,
+             "color": "#3388FF", "pixels_w": 24, "pixels_h": 24},
+            {"type": "bitmap_rect", "x": 130, "y": 20, "width": 25, "height": 25,
+             "color": "#FF8833", "pixels_w": 24, "pixels_h": 24},
+        ])
+        if no_error("cdr_create(任意集合/位图构造器)", nrr):
+            made41 = nrr.get("created") or []
+            check("位图构造器可建（CreateBitmap2/BitmapRect）",
+                  (made41[1] or {}).get("type") == "type_5"
+                  and (made41[2] or {}).get("type") == "type_5"
+                  and abs(((made41[2] or {}).get("bbox") or {}).get("width", 0) - 25) < 0.01,
+                  f"types={[(m.get('type'), (m.get('bbox') or {}).get('width')) for m in made41[1:]]}")
+            nP = {"name": made41[0]["name"]}
+            arb = server.cdr_node(nr_id, nP, action="arbitrary",
+                                  params={"op": "move", "nodes": [1, 3, 5],
+                                          "dx": 0, "dy": 10})
+            if no_error("cdr_node(arbitrary move)", arb):
+                check("任意节点集合可移动（CreateNodeRange）",
+                      arb.get("nodes_selected") == 3
+                      and (arb.get("range_bbox") or [0, 0])[1] == 10.0,
+                      f"selected={arb.get('nodes_selected')} bbox={arb.get('range_bbox')}")
+            arb2 = server.cdr_node(nr_id, nP, action="arbitrary",
+                                   params={"op": "rotate", "nodes": [1, 3, 5],
+                                           "angle": 30, "cx": 40, "cy": 10})
+            if no_error("cdr_node(arbitrary rotate)", arb2):
+                check("任意节点集合可旋转", arb2.get("nodes_selected") == 3,
+                      str(arb2.get("range_bbox")))
+            arbbad = server.cdr_node(nr_id, nP, action="arbitrary", params={"op": "move"})
+            check("arbitrary 缺节点被拒绝", arbbad.get("error") == "bad_argument",
+                  str(arbbad.get("error")))
+            srg = server.cdr_path(nr_id, nP, action="segment_range",
+                                  params={"op": "add_node", "segments": [1, 2]})
+            if no_error("cdr_path(segment_range add_node)", srg):
+                check("任意线段集合可加节点（CreateSegmentRange）",
+                      srg.get("count") == 2
+                      and (srg.get("nodes_after") or 0) > (srg.get("nodes_before") or 0),
+                      f"segments={srg.get('count')} nodes={srg.get('nodes_before')}"
+                      f"->{srg.get('nodes_after')}")
+            srt = server.cdr_path(nr_id, nP, action="segment_range",
+                                  params={"op": "set_type", "segments": [1],
+                                          "segment_type": 0})
+            if no_error("cdr_path(segment_range set_type)", srt):
+                check("线段集合可改类型", (srt.get("first_segment") or 0) >= 1,
+                      f"first={srt.get('first_segment')} last={srt.get('last_segment')}")
+        no_error("关闭任意集合测试文档", server.cdr_close(nr_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

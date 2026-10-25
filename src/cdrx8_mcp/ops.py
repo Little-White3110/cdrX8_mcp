@@ -2456,6 +2456,8 @@ PATH_ACTIONS = (
     "reverse_direction", "join_subpaths", "remove_overlaps",
     # 第三十六波：曲线合并 / 焊接 / 命中判定
     "merge_curve", "weld_curve", "is_on_curve", "curve_copy", "curve_info",
+    # 第四十一波：任意线段集合（Application.CreateSegmentRange + Add）
+    "segment_range",
 )
 
 
@@ -2491,7 +2493,7 @@ def path_ops(doc: Any, page_index: int | None, target: dict, action: str, *,
              other: dict | None = None, amount: float = 30.0, closed: bool = True,
              subpath: int = 1, t: float = 0.5, dx: float = 0.0, dy: float = 0.0,
              tolerance: float = 0.0, allow_reversals: bool = True,
-             hot_area: float = -1.0,
+             hot_area: float = -1.0, params: dict | None = None,
              label: str = "cdr_path") -> dict:
     """曲线 / 子路径级操作。所有坐标毫米。"""
     act = (action or "info").lower()
@@ -2732,6 +2734,42 @@ def path_ops(doc: Any, page_index: int | None, target: dict, action: str, *,
             if act == "reduce_nodes":
                 curve.AutoReduceNodes(float(amount), False)
                 return {"action": act, **info()}
+            if act == "segment_range":
+                # 实测：CreateSegmentRange() + Add(segment) 可凑任意线段集合，
+                # 再 SetType / AddNode / CreateSelection / RemoveAll
+                spec = dict(params or {})
+                segs = [int(i) for i in (spec.get("segments") or [])]
+                if not segs:
+                    raise CdrBadArgument("segment_range 需要 params.segments=[线段序号…]")
+                total = _n(lambda: int(curve.Segments.Count), 0) or 0
+                srange = _s(lambda: _app_of(doc).CreateSegmentRange())
+                if srange is None:
+                    raise CdrComFailure("Application.CreateSegmentRange 返回空")
+                for idx in segs:
+                    if not 1 <= idx <= total:
+                        raise CdrBadArgument(f"线段 {idx} 越界（共 {total} 条）")
+                    srange.Add(curve.Segments.Item(idx))
+                count = _n(lambda: int(srange.Count), 0) or 0
+                op = str(spec.get("op", "select")).lower()
+                nodes_before = _node_count(curve)
+                with atomic(doc, label):
+                    if op == "set_type":
+                        srange.SetType(int(spec.get("segment_type", 0)))
+                    elif op == "add_node":
+                        srange.AddNode()
+                    elif op == "select":
+                        srange.CreateSelection()
+                    elif op == "remove_all":
+                        srange.RemoveAll()
+                    else:
+                        raise CdrBadArgument(
+                            "segment_range 的 op 可用 set_type / add_node / select / remove_all")
+                return {"action": act, "op": op, "count": count,
+                        "segments_total": total,
+                        "nodes_before": nodes_before, "nodes_after": _node_count(curve),
+                        "first_segment": _n(lambda: int(srange.FirstSegment.Index)),
+                        "last_segment": _n(lambda: int(srange.LastSegment.Index)),
+                        **info()}
             if act == "merge_curve":
                 # Curve.AppendCurve(Source)：把另一条曲线**追加成本曲线的子路径**
                 # （实测 2 节点曲线 → 4 节点 / 2 子路径，同一个对象里）
@@ -2848,12 +2886,14 @@ NODE_ACTIONS = (
     "add_node", "break_segment", "control_points",
     # 第三十六波：节点拓扑
     "neighbors", "distance", "average", "join_nodes",
+    # 第四十一波：任意节点集合（Application.CreateNodeRange + Add）
+    "arbitrary",
 )
 
 NODE_MUTATIONS = {
     "move", "select", "delete", "type", "fillet", "chamfer", "scallop",
     "smoothen", "stretch", "rotate", "skew", "break_apart",
-    "average", "join_nodes",
+    "average", "join_nodes", "arbitrary",
     "add_node", "break_segment", "control_points",
 }
 
@@ -2963,7 +3003,8 @@ def node_ops(doc: Any, page_index: int | None, target: dict, action: str, *,
              ratio_x: float = 1.0, ratio_y: float = 1.0, angle: float = 0.0,
              angle_x: float = 0.0, angle_y: float = 0.0, offset: float = 0.5,
              segment_index: int | None = None, control: str | None = None,
-             hot_area: float = -1.0, label: str = "cdr_node") -> dict:
+             hot_area: float = -1.0, params: dict | None = None,
+             label: str = "cdr_node") -> dict:
     """节点 / 线段级编辑。
 
     action（只读）：list / segments / segment_info / find
@@ -3006,6 +3047,67 @@ def node_ops(doc: Any, page_index: int | None, target: dict, action: str, *,
                         "height": _round(max(ys) - min(ys))}
             return {"action": act, **base(), "node_list": items, "bbox": bbox,
                     "truncated": count > 500}
+        if act == "arbitrary":
+            # 实测：Application.CreateNodeRange() + Add(node) 可以凑出**不连续**的节点集合，
+            # 再 Move/Rotate/Skew/Stretch/AutoReduce/Smoothen/SetType/Fillet/Chamfer/Scallop
+            spec = dict(params or {})
+            wanted = [int(i) for i in (spec.get("nodes") or [])]
+            if not wanted:
+                raise CdrBadArgument("arbitrary 需要 params.nodes=[节点序号…]")
+            total = _node_count(curve)
+            rng = _s(lambda: _app_of(doc).CreateNodeRange())
+            if rng is None:
+                raise CdrComFailure("Application.CreateNodeRange 返回空")
+            for idx in wanted:
+                if not 1 <= idx <= total:
+                    raise CdrBadArgument(f"节点 {idx} 越界（共 {total} 个）")
+                rng.Add(curve.Nodes.Item(idx))
+            count = _n(lambda: int(rng.Count), 0) or 0
+            op = str(spec.get("op", "move")).lower()
+            with atomic(doc, label):
+                if op == "move":
+                    rng.Move(float(spec.get("dx", 0.0)), float(spec.get("dy", 0.0)),
+                             1, False)
+                elif op == "rotate":
+                    rng.Rotate(float(spec.get("angle", 0.0)), False,
+                               float(spec.get("cx", 0.0)), float(spec.get("cy", 0.0)))
+                elif op == "skew":
+                    rng.Skew(float(spec.get("angle_x", 0.0)),
+                             float(spec.get("angle_y", 0.0)), False,
+                             float(spec.get("cx", 0.0)), float(spec.get("cy", 0.0)))
+                elif op == "stretch":
+                    rng.Stretch(float(spec.get("ratio_x", 1.0)),
+                                float(spec.get("ratio_y", 1.0)), False,
+                                float(spec.get("cx", 0.0)), float(spec.get("cy", 0.0)))
+                elif op == "autoreduce":
+                    rng.AutoReduce(float(spec.get("tolerance", 0.5)))
+                elif op == "smoothen":
+                    rng.Smoothen(int(spec.get("smoothness", 0)))
+                elif op == "set_type":
+                    rng.SetType(int(spec.get("node_type", 0)))
+                elif op == "delete":
+                    rng.Delete()
+                elif op == "fillet":
+                    rng.Fillet(float(spec.get("radius", 2.0)), False)
+                elif op == "chamfer":
+                    rng.Chamfer(float(spec.get("radius", 2.0)),
+                                float(spec.get("radius2", spec.get("radius", 2.0))), False)
+                elif op == "scallop":
+                    rng.Scallop(float(spec.get("radius", 2.0)), False)
+                elif op == "select":
+                    rng.CreateSelection()
+                else:
+                    raise CdrBadArgument(
+                        "arbitrary 的 op 可用 move/rotate/skew/stretch/autoreduce/"
+                        "smoothen/set_type/delete/fillet/chamfer/scallop/select")
+            bbox = _s(lambda: rng.GetBoundingBox())
+            return {"action": act, **base(), "op": op, "nodes_selected": count,
+                    "nodes_after": _node_count(curve),
+                    "range_bbox": ([_round(float(v)) for v in bbox[1:]]
+                                   if isinstance(bbox, (tuple, list)) and len(bbox) >= 5
+                                   else None),
+                    "note": "CreateNodeRange 支持不连续节点；Move 的第三个参数是"
+                            "范围内起始索引（实测 1 可用）"}
         if act == "neighbors":
             # Next/Previous 是**方法**（返回 IVGNode），不是属性
             if node is None:
@@ -3717,6 +3819,8 @@ CREATABLE = (
     # 第三十八波：显式 (left, top, right, bottom) 版本，走 Layer.CreateRectangle/
     # CreateEllipse/CreatePolygon 的完整参数形态
     "rect_ltrb", "ellipse_ltrb", "polygon_full",
+    # 第四十一波：CreateBitmap2 / CreateBitmapRect（用 IVGImage 直接摆位图）
+    "bitmap_at", "bitmap_rect",
 )
 
 
@@ -3833,6 +3937,23 @@ def _create_one(doc: Any, layer: Any, item: dict) -> Any:
         if closed:
             sub.AppendLineSegment(x0, y0)
         sub.Closed = closed
+    elif kind in {"bitmap_at", "bitmap_rect"}:
+        # 实测：CreateBitmap2(x,y,w,h,Image,Alpha) 与 CreateBitmapRect(IVGRect,Image,Alpha)
+        # 都要 IVGImage（用 Document.CreateImage 造）与 Alpha=None
+        px_w = int(g("pixels_w", g("px_width", 32)))
+        px_h = int(g("pixels_h", g("px_height", 32)))
+        image_type = int(g("image_type", 4))
+        image = doc.CreateImage(image_type, max(1, px_w), max(1, px_h),
+                                _color(doc, g("color", "#FFFFFF")))
+        if kind == "bitmap_at":
+            shape = layer.CreateBitmap2(
+                float(g("x", 0)), float(g("y", 0)),
+                float(g("width", 20)), float(g("height", 20)), image, None)
+        else:
+            rect = _app_of(doc).CreateRect()
+            rect.SetRect(float(g("x", 0)), float(g("y", 0)),
+                         float(g("width", 20)), float(g("height", 20)))
+            shape = layer.CreateBitmapRect(rect, image, None)
     elif kind in {"bitmap", "image"}:
         # 从内存像素缓冲区创建位图（实测：Document.CreateImage → IVGImage，
         # 再 Layer.CreateBitmap 落地；ImageAlpha 必须传对象或 None，传 0 会 TypeError）
