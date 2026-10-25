@@ -3119,6 +3119,51 @@ def main() -> int:
                           cp.get("cleared") in (True, False), str(cp.get("cleared")))
         no_error("关闭文字结构体测试文档", server.cdr_close(tx_id))
 
+    # ---------------- 15ar. 第三十八波：结构体建文档 / Fill 工厂 / 命名箭头 / 边界构造器 ----------------
+    print("\n[15ar] 第三十八波：CreateDocumentEx、CreateUniformFill、CreateArrowHead2、边界构造器")
+    w38 = server.cdr_open(create_options={"name": "MCP-Struct", "width_mm": 120,
+                                          "height_mm": 90, "resolution": 150})
+    if "document_id" in w38:
+        w38_id = w38["document_id"]
+        check("可按结构体建文档（名称/尺寸）",
+              w38.get("name") == "MCP-Struct"
+              and w38.get("width_mm") == 120.0 and w38.get("height_mm") == 90.0,
+              f"name={w38.get('name')} size={w38.get('width_mm')}x{w38.get('height_mm')}")
+        w38r = server.cdr_create(w38_id, [
+            {"type": "rect_ltrb", "left": 0, "top": 30, "right": 40, "bottom": 0,
+             "radius": 3},
+            {"type": "ellipse_ltrb", "left": 50, "top": 30, "right": 90, "bottom": 0,
+             "start_angle": 0, "end_angle": 270, "pie": True},
+            {"type": "polygon_full", "left": 10, "top": 80, "right": 50, "bottom": 40,
+             "sides": 6, "star": True, "star_complexity": 2, "max_complexity": 1},
+            {"type": "curve_segment", "x1": 0, "y1": 60, "x2": 40, "y2": 70},
+        ])
+        if no_error("cdr_create(边界构造器)", w38r):
+            w_names = [c["name"] for c in w38r.get("created") or []]
+            made = w38r.get("created") or []
+            check("边界版矩形/椭圆/多边形可建",
+                  (made[0] or {}).get("type") == "rectangle"
+                  and (made[1] or {}).get("type") == "ellipse"
+                  and (made[2] or {}).get("type") == "polygon"
+                  and abs(((made[0] or {}).get("bbox") or {}).get("width", 0) - 40) < 0.01,
+                  f"types={[m.get('type') for m in made[:3]]}")
+            server.cdr_select(w38_id, name=w_names[0])
+            server.cdr_select(w38_id, name=w_names[1])
+            af = server.cdr_shape_ops(w38_id, op="apply_fill", base_color="#22AA66")
+            if no_error("cdr_shape_ops(apply_fill)", af):
+                check("可用 Fill 工厂批量上色（CreateUniformFill+ApplyFill）",
+                      af.get("fill_type") == 1 and "34,170,102" in str(af.get("color")),
+                      f"type={af.get('fill_type')} color={af.get('color')}")
+            ahn = server.cdr_doc(w38_id, action="arrowhead_named",
+                                 target={"name": w_names[3]}, query="MCP箭头38",
+                                 register=True)
+            if no_error("cdr_doc(arrowhead_named)", ahn):
+                check("可建命名箭头并登记（CreateArrowHead2）",
+                      ahn.get("name") == "MCP箭头38" and ahn.get("registered") is True
+                      and (ahn.get("arrowheads") or 0) > 0,
+                      f"name={ahn.get('name')} count={ahn.get('arrowheads')}")
+        no_error("关闭结构体建文档测试", server.cdr_close(w38_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

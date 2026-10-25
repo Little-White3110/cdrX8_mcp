@@ -235,7 +235,31 @@ def list_documents(app: Any) -> list[dict]:
 
 
 def create_document(app: Any, width: float | None, height: float | None,
-                    orientation: str | None, preset: str | None = None) -> Any:
+                    orientation: str | None, preset: str | None = None,
+                    options: dict | None = None) -> Any:
+    """新建文档。`options` 会走 `CreateStructCreateOptions + CreateDocumentEx`
+    （实测可一次定好 名称 / 页宽 / 页高 / 分辨率，见第三十八波）。"""
+    if options:
+        opts = app.CreateStructCreateOptions()
+        if opts is None:
+            raise CdrComFailure("CreateStructCreateOptions 返回空")
+        if options.get("name"):
+            opts.Name = str(options["name"])
+        if options.get("width_mm"):
+            opts.PageWidth = float(options["width_mm"])
+        if options.get("height_mm"):
+            opts.PageHeight = float(options["height_mm"])
+        if options.get("resolution"):
+            opts.Resolution = int(options["resolution"])
+        if options.get("units") is not None:
+            try:
+                opts.Units = int(options["units"])
+            except Exception:  # noqa: BLE001
+                pass
+        doc = app.CreateDocumentEx(opts)
+        if doc is None:
+            raise CdrComFailure("CreateDocumentEx 返回空")
+        return doc
     doc = app.CreateDocument()
     with mm_units(doc):
         if preset:
@@ -253,7 +277,19 @@ def create_document(app: Any, width: float | None, height: float | None,
     return doc
 
 
-def open_document(app: Any, path: str) -> Any:
+def open_document(app: Any, path: str, options: dict | None = None) -> Any:
+    """打开文档。`options` 走 `CreateStructOpenOptions + OpenDocumentEx`
+    （结构体成员实测只有 CodePage / ColorConversionOptions）。"""
+    if options:
+        opts = app.CreateStructOpenOptions()
+        if opts is None:
+            raise CdrComFailure("CreateStructOpenOptions 返回空")
+        if options.get("code_page") is not None:
+            try:
+                opts.CodePage = int(options["code_page"])
+            except Exception:  # noqa: BLE001
+                pass
+        return app.OpenDocumentEx(path, opts)
     return app.OpenDocument(path)
 
 
@@ -448,7 +484,7 @@ DOC_ACTIONS = ("info", "clear_selection", "clear_undo", "palette", "arrowhead",
                "metadata_localized", "set_metadata_localized",
                # 第三十五波：单位换算（COM）/ 文档设置快照 / 解析位图链接
                "convert_units", "save_settings", "restore_settings",
-               "reset_settings", "resolve_links")
+               "reset_settings", "resolve_links", "arrowhead_named")
 
 
 def doc_ops(doc: Any, action: str, *, target: dict | None = None,
@@ -1244,6 +1280,29 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
                     "spacing_y": _s(lambda: float(grid.SpacingY)),
                     "visible": bool(_s(lambda: bool(grid.Visible), False)),
                     "snap": bool(_s(lambda: bool(grid.Snap), False))}
+    # arrowhead_named（第三十八波：Document.CreateArrowHead2 可给箭头命名）
+    if act == "arrowhead_named":
+        with mm_units(doc):
+            page = _page(doc, page_index)
+            shape = find_shape(doc, page, target or {})
+            curve = _s(lambda: shape.Curve)
+            if curve is None:
+                raise CdrBadArgument("arrowhead_named 需要一条曲线对象")
+            head_name = str(query or "MCP 箭头")
+            head = _s(lambda: doc.CreateArrowHead2(curve, head_name))
+            if head is None:
+                raise CdrComFailure("Document.CreateArrowHead2 返回空")
+            app = _app_of(doc)
+            before = _n(lambda: int(app.ArrowHeads.Count), 0)
+            registered = False
+            if register:
+                app.ArrowHeads.Add(head)
+                registered = True
+            after = _n(lambda: int(app.ArrowHeads.Count), before)
+            return {"action": act, "created": True, "name": head_name,
+                    "curve": _s(lambda: str(shape.Name)),
+                    "registered": registered, "arrowheads": after,
+                    "index": after if registered else None}
     # arrowhead
     with mm_units(doc):
         page = _page(doc, page_index)
@@ -3655,6 +3714,9 @@ CREATABLE = (
     "rectangle", "ellipse", "polygon", "spiral", "grid", "line", "bezier",
     "polyline", "bitmap", "text", "paragraph_text", "curve_segment", "guide",
     "ole_file",
+    # 第三十八波：显式 (left, top, right, bottom) 版本，走 Layer.CreateRectangle/
+    # CreateEllipse/CreatePolygon 的完整参数形态
+    "rect_ltrb", "ellipse_ltrb", "polygon_full",
 )
 
 
@@ -3695,6 +3757,28 @@ def _create_one(doc: Any, layer: Any, item: dict) -> Any:
             float(g("x", 0)), float(g("y", 0)), float(g("width", 10)), float(g("height", 10)),
             float(g("radius_ul", g("radius", 0))), float(g("radius_ur", g("radius", 0))),
             float(g("radius_lr", g("radius", 0))), float(g("radius_ll", g("radius", 0))),
+        )
+    elif kind in {"rect_ltrb"}:
+        shape = layer.CreateRectangle(
+            float(g("left", 0)), float(g("top", 10)), float(g("right", 20)),
+            float(g("bottom", 0)),
+            float(g("radius_ul", g("radius", 0))), float(g("radius_ur", g("radius", 0))),
+            float(g("radius_lr", g("radius", 0))), float(g("radius_ll", g("radius", 0))),
+        )
+    elif kind in {"ellipse_ltrb"}:
+        shape = layer.CreateEllipse(
+            float(g("left", 0)), float(g("top", 10)), float(g("right", 20)),
+            float(g("bottom", 0)),
+            float(g("start_angle", 0)), float(g("end_angle", 360)),
+            bool(g("pie", False)),
+        )
+    elif kind in {"polygon_full"}:
+        shape = layer.CreatePolygon(
+            float(g("left", 0)), float(g("top", 10)), float(g("right", 20)),
+            float(g("bottom", 0)),
+            int(g("sides", 5)), int(g("subpaths", 1)), int(g("complexity", 1)),
+            bool(g("star", False)), int(g("star_complexity", 0)),
+            int(g("max_complexity", 1)),
         )
     elif kind in {"ellipse", "circle", "arc", "pie"}:
         pie = kind in {"arc", "pie"} or bool(g("pie", False))
@@ -4970,6 +5054,8 @@ SHAPE_OPS = (
     # 第三十三波：范围级批量（解锁/全解组/炸开/清效果/范围查询/范围合并）
     "unlock_all", "ungroup_all", "break_apart_ex", "clear_effect", "range_info",
     "range_add", "range_remove",
+    # 第三十八波：用 Document.CreateUniformFill + ShapeRange.ApplyFill 上色
+    "apply_fill",
 )
 
 
@@ -5165,6 +5251,30 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
                     "shapes": total_shapes(new_doc),
                     "note": "新文档已创建；可用 cdr_documents 获取 document_id"}
 
+        if op == "apply_fill":
+            # 实测：Document.CreateUniformFill(IVGColor) → IVGFill，
+            # 再 ShapeRange.ApplyFill(fill) 可一次给多个对象上均匀填充
+            with atomic(doc, label):
+                sr = selection_range(doc)
+                if target:
+                    try:
+                        doc.Selection().RemoveAll()
+                    except Exception:
+                        pass
+                    find_shape(doc, page, target).AddToSelection()
+                    sr = selection_range(doc)
+                if _n(lambda: int(sr.Count), 0) < 1:
+                    raise CdrBadArgument("apply_fill 需要先选中对象，或用 target 指定")
+                color = _color(doc, base_color)
+                fill = doc.CreateUniformFill(color)
+                if fill is None:
+                    raise CdrComFailure("Document.CreateUniformFill 返回空")
+                sr.ApplyFill(fill)
+                first = _s(lambda: sr.Item(1))
+                return {"op": op, "count": _n(lambda: int(sr.Count), 0),
+                        "fill_type": _n(lambda: int(first.Fill.Type), 0)
+                        if first is not None else None,
+                        "color": _s(lambda: str(color.ToString()))}
         if op == "effect_info":
             src = find_shape(doc, page, target or {})
             return {"op": op, "target": _s(lambda: str(src.Name)),

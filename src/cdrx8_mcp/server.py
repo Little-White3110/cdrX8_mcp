@@ -183,7 +183,9 @@ def cdr_documents() -> dict:
 def cdr_open(path: str | None = None, width_mm: float | None = None,
              height_mm: float | None = None, orientation: str | None = None,
              preset: str | None = None, template: str | None = None,
-             include_graphics: bool = True) -> dict:
+             include_graphics: bool = True,
+             create_options: dict | None = None,
+             open_options: dict | None = None) -> dict:
     """打开已有 .cdr，或新建空白文档，或**从模板创建**。
 
     Args:
@@ -194,6 +196,10 @@ def cdr_open(path: str | None = None, width_mm: float | None = None,
         template: 模板文件路径（实测 .cdr 也可当模板）；给定时走
                   `Application.CreateDocumentFromTemplate`。
         include_graphics: 从模板创建时是否带模板里的图形（默认 true）。
+        create_options: 走 `CreateStructCreateOptions + CreateDocumentEx` 新建，可给
+            {"name":…, "width_mm":…, "height_mm":…, "resolution":…, "units":…}
+        open_options: 走 `CreateStructOpenOptions + OpenDocumentEx` 打开，可给
+            {"code_page":…}（结构体只有 CodePage / ColorConversionOptions）
     """
     def _run():
         target = str(resolve_read_path(path)) if path else None
@@ -206,9 +212,10 @@ def cdr_open(path: str | None = None, width_mm: float | None = None,
             if tpl:
                 doc = app.CreateDocumentFromTemplate(tpl, bool(include_graphics))
             elif target:
-                doc = ops.open_document(app, target)
+                doc = ops.open_document(app, target, open_options)
             else:
-                doc = ops.create_document(app, width_mm, height_mm, orientation, preset)
+                doc = ops.create_document(app, width_mm, height_mm, orientation, preset,
+                                          create_options)
             name = str(doc.Name)
             with ops.mm_units(doc):
                 page = doc.ActivePage
@@ -277,6 +284,10 @@ def cdr_create(document_id: str, items: list[dict],
       * line:      x1,y1,x2,y2
       * bezier:    x1,y1,c1x,c1y,c2x,c2y,x2,y2
       * polyline:  points:[[x,y],…][,closed] —— 任意多边形/折线（逐点连线）
+      * rect_ltrb: left,top,right,bottom[,radius] —— 显式边界版矩形（Layer.CreateRectangle）
+      * ellipse_ltrb: left,top,right,bottom[,start_angle,end_angle,pie] —— 显式边界版椭圆/扇形
+      * polygon_full: left,top,right,bottom,sides[,subpaths,complexity,star,star_complexity,max_complexity]
+                    —— Layer.CreatePolygon 完整参数（星形/多子路径）
       * bitmap:    x,y,width,height[,color,pixels_w,pixels_h,image_type,fills]
                    —— 从内存像素缓冲区创建位图；
                    fills=[{x,y,width,height,color},…] 按像素坐标涂色块；
