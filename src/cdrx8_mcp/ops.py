@@ -445,7 +445,10 @@ DOC_ACTIONS = ("info", "clear_selection", "clear_undo", "palette", "arrowhead",
                "pref_register", "pref_get", "pref_set",
                "views", "create_view", "activate_view", "delete_view",
                "grid", "set_grid", "overprint",
-               "metadata_localized", "set_metadata_localized")
+               "metadata_localized", "set_metadata_localized",
+               # 第三十五波：单位换算（COM）/ 文档设置快照 / 解析位图链接
+               "convert_units", "save_settings", "restore_settings",
+               "reset_settings", "resolve_links")
 
 
 def doc_ops(doc: Any, action: str, *, target: dict | None = None,
@@ -515,6 +518,37 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
     if act == "palette":
         doc.AddColorsToDocPalette(False, 0)
         return {"action": act, "done": True}
+    if act == "convert_units":
+        # 实测 Application.ConvertUnits(Value, FromUnit, ToUnit) 用 cdrUnit 枚举：
+        # inch=1, foot=2, mm=3, cm=4, pixel=5, meter=7, point=14 …
+        if value is None or from_unit is None or to_unit is None:
+            raise CdrBadArgument("convert_units 需要 value / from_unit / to_unit"
+                                 "（cdrUnit：inch=1 mm=3 cm=4 point=14）")
+        got = _s(lambda: float(_app_of(doc).ConvertUnits(float(value),
+                                                         int(from_unit), int(to_unit))))
+        if got is None:
+            raise CdrComFailure("Application.ConvertUnits 返回空")
+        return {"action": act, "value": float(value), "from_unit": int(from_unit),
+                "to_unit": int(to_unit), "result": _round(got), "source": "com"}
+    if act in {"save_settings", "restore_settings", "reset_settings"}:
+        # 实测：SaveSettings(Tag) / RestoreSettings(Tag) / ResetSettings() 都返回 2 个值（无异常），
+        # 用于把当前文档设置打快照，再恢复/重置。
+        tag = str(query or "mcp_snapshot")
+        if act == "save_settings":
+            doc.SaveSettings(tag)
+        elif act == "restore_settings":
+            doc.RestoreSettings(tag)
+        else:
+            doc.ResetSettings()
+        return {"action": act, "tag": tag if act != "reset_settings" else None,
+                "unit": _n(lambda: int(doc.Unit)),
+                "resolution": _n(lambda: int(doc.Resolution)),
+                "edit_across_layers": bool(_s(
+                    lambda: bool(doc.EditAcrossLayers), False))}
+    if act == "resolve_links":
+        doc.ResolveAllBitmapsLinks()
+        return {"action": act, "resolved": True,
+                "shapes": total_shapes(doc)}
     if act == "units":
         if value is None:
             raise CdrBadArgument("units 需要 value")
@@ -1306,25 +1340,42 @@ def activate_page(doc: Any, index: int) -> dict:
     return {"active": _n(lambda: int(doc.ActivePage.Index))}
 
 
-def add_pages(doc: Any, count: int = 1) -> dict:
+def add_pages(doc: Any, count: int = 1, width: float | None = None,
+              height: float | None = None) -> dict:
+    """加页。给 width+height 时走 `AddPagesEx`（一次把新页尺寸定好）。"""
+    if width is not None and height is not None:
+        with mm_units(doc):
+            made = doc.AddPagesEx(max(1, int(count)), float(width), float(height))
+        return {"pages": _n(lambda: int(doc.Pages.Count)),
+                "width": float(width), "height": float(height),
+                "sized": True, "returned": made is not None}
     doc.AddPages(max(1, int(count)))
-    return {"pages": _n(lambda: int(doc.Pages.Count))}
+    return {"pages": _n(lambda: int(doc.Pages.Count)), "sized": False}
 
 
 def insert_pages(doc: Any, count: int = 1, before: bool = True,
-                 page_index: int | None = None) -> dict:
-    """插入空白页（实测 `Document.InsertPages(count, before, pageIndex)`）。
+                 page_index: int | None = None, width: float | None = None,
+                 height: float | None = None) -> dict:
+    """插入空白页（`InsertPages`；给 width+height 时走 `InsertPagesEx` 定尺寸）。
 
     第三个参数是**页码数字**，不是 Page 对象（传对象会 TypeError）。
     """
     idx = int(page_index if page_index is not None else 1)
+    sized = width is not None and height is not None
     with mm_units(doc):
-        created = doc.InsertPages(max(1, int(count)), bool(before), idx)
+        if sized:
+            created = doc.InsertPagesEx(max(1, int(count)), bool(before), idx,
+                                        float(width), float(height))
+        else:
+            created = doc.InsertPages(max(1, int(count)), bool(before), idx)
         active = _n(lambda: int(doc.ActivePage.Index), 0)
-    return {"action": "insert", "count": max(1, int(count)), "before": bool(before),
-            "page": idx, "inserted": created is not None, "active_page": active,
-            "note": "插入到第 1 页前面会把新页设为活动页；后续操作请显式传 page_index",
-            "pages": _n(lambda: int(doc.Pages.Count))}
+    out = {"action": "insert", "count": max(1, int(count)), "before": bool(before),
+           "page": idx, "inserted": created is not None, "active_page": active,
+           "note": "插入到第 1 页前面会把新页设为活动页；后续操作请显式传 page_index",
+           "pages": _n(lambda: int(doc.Pages.Count)), "sized": sized}
+    if sized:
+        out.update({"width": float(width), "height": float(height)})
+    return out
 
 
 def delete_page(doc: Any, index: int) -> dict:
@@ -4047,7 +4098,9 @@ def _apply_effect(shape: Any, spec: Any) -> str:
 
 COLOR_OBJECT_ACTIONS = ("object_info", "object_name", "object_compare", "object_blend",
                         "object_copy", "object_string_assign", "object_convert",
-                        "object_fixed", "object_assign")
+                        "object_fixed", "object_assign",
+                        # 第三十五波：其它色彩模型工厂 + 颜色串工厂
+                        "object_model", "object_from_string")
 # 显式写法（而不是 getattr 动态调用）：既方便 grep，也让覆盖率审计能统计到
 COLOR_CONVERT_CALLS = {
     "rgb": lambda c: c.ConvertToRGB(),
@@ -4178,6 +4231,48 @@ def color_object_ops(action: str, *, color: Any = None, color2: Any = None,
         return {"action": act, "model": want, "before": before,
                 "after": _s(lambda: str(a.ToString())),
                 "type_after": _n(lambda: int(a.Type))}
+
+    if act == "object_model":
+        # 实测各模型工厂：CreateHSBColor(H,S,B) / CreateCMYColor(C,M,Y) /
+        # CreateBWColor(White) / CreateYIQColor(Y,I,Q) / CreateFixedColor(palette, index, tint)
+        want = str(model or "hsb").lower()
+        if want not in ("hsb", "cmy", "bw", "yiq", "fixed", "ex"):
+            raise CdrBadArgument("object_model 的 model 可用 hsb/cmy/bw/yiq/fixed/ex")
+        vals = [float(v) for v in (values or [])]
+        app = _app_of(None)
+        if want == "hsb":
+            obj = app.CreateHSBColor(int(vals[0]), int(vals[1]), int(vals[2]))
+        elif want == "cmy":
+            obj = app.CreateCMYColor(int(vals[0]), int(vals[1]), int(vals[2]))
+        elif want == "bw":
+            obj = app.CreateBWColor(bool(vals[0]) if vals else True)
+        elif want == "yiq":
+            obj = app.CreateYIQColor(int(vals[0]), int(vals[1]), int(vals[2]))
+        elif want == "fixed":
+            obj = app.CreateFixedColor(int(vals[0]), int(vals[1]), int(vals[2]))
+        elif want == "ex":
+            # CreateColorEx(ColorModel, V1..V7)：模型号同 ToString 前缀（2=CMYK, 5=RGB…）
+            model_id = int(vals[0])
+            rest = [int(v) for v in vals[1:8]] + [0] * (7 - len(vals[1:8]))
+            obj = app.CreateColorEx(model_id, *rest)
+        else:
+            raise CdrBadArgument("object_model 的 model 可用 hsb/cmy/bw/yiq/fixed/ex")
+        if obj is None:
+            raise CdrComFailure(f"Create{want}Color 返回空")
+        return {"action": act, "model": want, "values": vals,
+                "type": _n(lambda: int(obj.Type)),
+                "to_string": _s(lambda: str(obj.ToString()))}
+
+    if act == "object_from_string":
+        if not isinstance(color2, str) or not color2:
+            raise CdrBadArgument('object_from_string 需要 color2 = 颜色串')
+        obj = _s(lambda: _app_of(None).CreateColor(color2))
+        if obj is None:
+            raise CdrComFailure("Application.CreateColor 返回空")
+        return {"action": act, "input": color2,
+                "type": _n(lambda: int(obj.Type)),
+                "to_string": _s(lambda: str(obj.ToString())),
+                "name": _s(lambda: str(obj.GetName()))}
 
     if act == "object_assign":
         want = str(model or "rgb").lower()

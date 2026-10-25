@@ -2,7 +2,7 @@
 
 > 目的：证明"还有多少没探"。每一行要么有对应的工具，要么有实测失败证据。
 > 环境：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）/ Python 3.11.9 64 位
-> 最近更新：2026-10-26 第三十四波（矩形对象 IVGRect / 曲线段 / 文字样式修正）
+> 最近更新：2026-10-26 第三十五波（COM 单位换算 / 颜色工厂 / 定尺寸加页 / 设置快照）
 
 ## 怎么得出这份清单
 
@@ -17,10 +17,10 @@
 
 | 接口 | 方法数 | 覆盖情况 |
 |---|---:|---|
-| `IVGApplication` | 82 | 已用：CreateDocument / **CreateDocumentFromTemplate** / OpenDocument / 全套 Create*Color / CreateShapeRange / CreateStructExportOptions / CreateStructImportOptions / **CreateStructSaveAsOptions** / OutlineStyles（含 **AddStyle/Save**）/ ArrowHeads / Version / Path / Documents / **ColorManager / ActiveTool / ActiveToolStateGuid / RegisterUserApplicationPreference / GetApplicationPreferenceValue / SetApplicationPreferenceValue / CreateOnScreenText / CreateOnScreenCurve / CreateOnScreenHandle** / **FontList / Palettes（含 OpenFixed / Create / Item） / CreateDuotone / CreateSpotColorByName / CreatePatternCanvas / PatternCanvases / GetSupportedOpenTypeFeatures / CheckPlatformVersion / IsUILanguageAvailable**；OpenDocumentAsCopy 参数 TypeError |
+| `IVGApplication` | 82 | 已用：CreateDocument / **CreateDocumentFromTemplate** / OpenDocument / 全套 Create*Color（**第三十五波补齐 HSB/CMY/BW/YIQ/Fixed/CreateColor/CreateColorEx**）/ CreateShapeRange / CreateStructExportOptions / CreateStructImportOptions / **CreateStructSaveAsOptions** / **CreateStructFontProperties** / OutlineStyles（含 **AddStyle/Save**）/ ArrowHeads / Version / Path / Documents / **ColorManager / ActiveTool / ActiveToolStateGuid / RegisterUserApplicationPreference / GetApplicationPreferenceValue / SetApplicationPreferenceValue / CreateOnScreenText / CreateOnScreenCurve / CreateOnScreenHandle** / **FontList / ForceUpdateFontTable / Palettes（含 OpenFixed / Create / Item） / CreateDuotone / CreateSpotColorByName / CreatePatternCanvas / PatternCanvases / GetSupportedOpenTypeFeatures / CheckPlatformVersion / IsUILanguageAvailable / CreateRect / ConvertUnits / ConvertToUnicode / ConvertFromUnicode / CreateProperties**；OpenDocumentAsCopy 参数 TypeError |
 | `IVGApplicationEvents` | 24 | **新打通（第二十六波）**：通过生成的 `DIVGApplicationEvents` 连接点 sink 订阅；实测捕获 WindowActivate / DocumentNew / DocumentClose / SelectionChange / DocumentBeforeSave / DocumentAfterSave / DocumentBeforeExport / DocumentAfterExport / Start / PluginCommand；`ApplicationEvent` 高频忽略 |
 | `IVGDocumentEvents` | 28 | **新打通（第二十七波）**：每个文档挂 `DIVGDocumentEvents` sink；捕获 ShapeCreate/Delete/Move/Transform/Distort/Change、LayerCreate/Delete/Activate/Change、PageCreate/Delete/Activate/Change、SelectionChange、Before/AfterSave、Before/AfterExport |
-| `IVGDocument` | 78 | 已用：Unit / Pages / AddPages / DeletePages / ActivePage / ActiveLayer / Selection / Save·SaveAs / ExportEx / ExportBitmap(不适用) / PublishToPDF / Undo / Redo / Begin·EndCommandGroup / FileName / Dirty / Name / StyleSheet / **Metadata / DataFields / ColorContext / ConvertToColorContext / Revert / Views / CreateView** / **设置：EditAcrossLayers / ApplyToDuplicate / CurvePrecision / Resolution / ReferencePoint / ShapeEnumDirection / TextFormatter / WorldScale / FacingPages / FirstPageOnRightSide / Layout / Unit / DrawingOriginX·Y / PreserveSelection** / **Keywords·Notes（可写，读需走 Metadata）** / **ToUnits / FromUnits / SampleColorAtPoint / SampleColorInArea / ShowAllHiddenObjects / SetLayout / Repeat / CreateImage / CreateColorStyles / InsertPages / HatchLibraries / SaveStyleSheet / LoadStyleSheet / CreateFill / CreateOutline（字符串格式无效）** |
+| `IVGDocument` | 78 | 已用：Unit / Pages / AddPages / DeletePages / ActivePage / ActiveLayer / Selection / Save·SaveAs / ExportEx / ExportBitmap(不适用) / PublishToPDF / Undo / Redo / Begin·EndCommandGroup / FileName / Dirty / Name / StyleSheet / **Metadata / DataFields / ColorContext / ConvertToColorContext / Revert / Views / CreateView** / **设置：EditAcrossLayers / ApplyToDuplicate / CurvePrecision / Resolution / ReferencePoint / ShapeEnumDirection / TextFormatter / WorldScale / FacingPages / FirstPageOnRightSide / Layout / Unit / DrawingOriginX·Y / PreserveSelection** / **Keywords·Notes（可写，读需走 Metadata）** / **ToUnits / FromUnits / SampleColorAtPoint / SampleColorInArea / ShowAllHiddenObjects / SetLayout / Repeat / CreateImage / CreateColorStyles / InsertPages / HatchLibraries / SaveStyleSheet / LoadStyleSheet / CreateFill / CreateOutline（字符串格式无效）**；**第三十五波**：`AddPagesEx` / `InsertPagesEx`（定尺寸加页/插页）、`CreateArrowHead2/Ex/Ex2`（命名箭头）、`ResolveAllBitmapsLinks`、`SaveSettings`/`RestoreSettings`/`ResetSettings`（设置快照，调用无异常、可见效果未确认）、`CreateColor`（在 Application 上）/ `CreateUniformFill` |
 | `IVGPage` | 22 | **全覆盖**：SetSize / SelectSize / GetSize / CreateLayer / Activate / Delete / MoveTo / FindShape(s) / TextFind / TextReplace / GetGuides / UnlockAllShapes / GetObjectsBoundingBox(改用自算) / SelectShapesFromRectangle / Shapes / Layers / Orientation / **FindClosestSnapPoint** |
 | `IVGLayer` | 50 | 已用：Create*（矩形/椭圆/多边形/螺旋/网格/线/贝塞尔/艺术字/段落字/参考线/**角度参考线**/**位图 CreateBitmap·CreateBitmap2**/**OLE 文件 CreateOLEObjectFromFile**/**矩形造形 CreateRectangleRect·CreateEllipseRect**（第三十四波）/**曲线段 CreateCurveSegment**（第三十四波））/ Import / ImportEx / CreateCurve / Activate / Delete / MoveAbove / **MoveBelow / GetAbove / GetBelow / Paste / FindShape** / Visible / Editable / Printable / Master / **IsGuidesLayer（属性，不是方法）** |
 | `IVGShape` | 124 | 已用：几何 / Fill / Outline / Transparency / Locked / Name / Type / GetBoundingBox / Duplicate / Clone / Delete / **层级 / StepAndRepeat / Distribute / CreateBoundary / CreatePerspective / Separate / CreateEnvelopeFromCurve / CreateEnvelopeFromShape / CompareTo / CreateSelection / RemoveFromSelection / IsOnShape / Copy / Cut / CopyToLayer / MoveToLayer / Project / Unproject / CreateDocumentFrom / CreateExtrude / CreateLens / CreateBlend / OverprintFill / OverprintOutline / OverprintBitmap** / ConvertToCurves / ConvertToSymbol / Weld·Trim·Intersect / AddToPowerClip / CreateDropShadow·Contour·Envelope / AlignToPage·AlignToShape / Fillet·Chamfer·Scallop / Group / Ungroup / BreakApart / Combine |
@@ -87,9 +87,9 @@
 | 选择与查找 | `cdr_select`（加入/**移除/清空**）`cdr_find` | ✅ |
 | 图层 | `cdr_layers`（增删改/显隐/锁定/打印/移动/**上下相邻查询·下移·粘贴剪贴板**） | ✅ |
 | **跨文档 / 对象到图层** | `cdr_modify(copy_clipboard/cut_clipboard)` + `cdr_layers(action="paste")`；`cdr_modify(move_to_layer/copy_to_layer)` | ✅ 第八波 |
-| 页面 | `cdr_pages`（列表/增删/插入空白页/切页/自定义尺寸/纸张预设/参考线/角度参考线/**吸附点查询**/解锁/包围盒） | ✅ |
+| 页面 | `cdr_pages`（列表/增删/**定尺寸加页（AddPagesEx）**/**定尺寸插页（InsertPagesEx）**/插入空白页/切页/自定义尺寸/纸张预设/参考线/角度参考线/**吸附点查询**/解锁/包围盒） | ✅ |
 | **吸附点** | `cdr_snap`（枚举/类型掩码过滤/自动·包围盒·对象·边定址/新增用户点（GUID）/文档·应用级自由点/页面级与集合级最近点/相对移动·绝对定位/删除/方向/选择/**SnapPointRange 批量**） | ✅ 第三十一波 |
-| **颜色对象** | `cdr_color`（object_info / object_name / object_compare / object_blend / object_copy / object_string_assign / object_convert / object_fixed / object_assign） | ✅ 第三十二波 |
+| **颜色对象** | `cdr_color`（object_info / object_name / object_compare / object_blend / object_copy / object_string_assign / object_convert / object_fixed / object_assign / **object_model（HSB/CMY/BW/YIQ/Fixed/CreateColorEx）/ object_from_string**） | ✅ 第三十二/三十五波 |
 | **矩形对象** | `cdr_rect`（info / offset / inflate / union / intersect / contains / copy / create_rectangle（四角圆角）/ create_ellipse（角度+扇形）） | ✅ 第三十四波 |
 | **描边对象** | `cdr_outline`（info / set（含 SetProperties 全参）/ convert_to_object / copy / compare） | ✅ 第三十二波 |
 | 位图 | `cdr_bitmap`（信息/转色彩模式/重采样/裁剪/取消裁剪/取像素色·图像缓冲信息·调色板模式 0~9·双色调/内容替换 SetImageData/位图特效命令串 ApplyBitmapEffect/**链接信息·重新加载·解析链接**） | ✅（Trace 除外） |
@@ -114,6 +114,7 @@
 | **文字区间查询** | `TextRange.FindRanges(Query)` | `Identifier 'Wave' is not a method of 'global'`（Query 是查询表达式，不是普通字符串） | 只提供 `Text.Range(start,end)` 直接取区间 |
 | 立体化 / 透镜 / 尺寸标注 / 连接线 / 符号插入 | `CreateExtrude` `CreateLens` `CreateLinearDimension` `CreateConnector` `CreateSymbol` | `TypeError: Python instance can not be converted to a COM object`（5 组参数组合均失败） | 需要 pywin32 无法构造的结构体/枚举参数 |
 | 描边整体设置 | `Outline.SetProperties(Width, Style, Color, …)`（14 参）/ `SetPropertiesEx`（15 参） | **第三十二波纠正**：早先「TypeError」是因为把 `None` 传给了 int 形参；**14 个实参全给对（可选对象位传 None、可选数值位传 0/0.0）即可用**，宽度/颜色/线帽/连接/斜接都生效 | 已封装 `cdr_outline(action="set", changes={"use_set_properties":true,…})` |
+| 文档设置快照 | `Document.SaveSettings(Tag)` / `RestoreSettings(Tag)` / `ResetSettings()` | 三个方法都**调用成功且不报错**，但实测把 `Resolution` 从 300 改成 72 再 `RestoreSettings` 并没有恢复（仍 72）—— Tag 语义未逆出，可见效果未确认 | 已封装为 `cdr_doc(action="save_settings"/"restore_settings"/"reset_settings")`，标注为实验性；需要可靠改设置请用 `cdr_doc(action="set_settings")` |
 | 文字粗斜体 | `CreateArtisticText(..., Bold, Italic, …)` / `Text.Story.Bold` | **第三十四波纠正**：这两个形参是 `cdrTriState`（**true = -1**）。传 Python `True`（=1）不仅不生效，`Story.Bold = True` 还会把粗体**关掉**；下划线形参又是另一套枚举（1=有、0=无） | 已封装 `_tristate()` / `_underline()`；`cdr_create`、`cdr_modify`、`cdr_text` 全部改走这两个映射 |
 | 字体表 | `Application.ForceUpdateFontTable()` | 长时间批量建文本后，`CreateArtisticText` 传 `"Arial"` 会**静默回退默认字体**（中文机=宋体）且丢掉 Bold/Italic；调一次 FontTable 刷新后恢复 | `cdr_doc(action="refresh_fonts")`；建文本时也会自动兜底刷一次 |
 | 中文字体文档的字体改写 | `Story.Font` / `TextRange.Font` | 当文档默认字体是宋体时，把 Font 改成 `"Arial"`、或设 `Bold/Italic`，**不报错但不生效**（Size/Underline 仍然生效） | 属 X8 字体替换限制；`cdr_text` 会如实回 `applied`，需要拉丁字体时建议新建文档先设默认字体 |
@@ -223,6 +224,9 @@
 >   `CreateFreeConnector` 报「未实现」；本机无符号库。
 > * 混合 **可用（第十七波）**：`CreateBlend` 传全参数且 `Path=None` 时成功；
 >   效果经 `Effects.Item(i).Blend`（IVGEffectBlend）读写 Steps/Spacing/Angle 等。
+> * COM 单位换算 **可用（第三十五波）**：`Application.ConvertUnits(value, cdrUnit, cdrUnit)`，inch=1 mm=3 cm=4 point=14；比 `Document.ToUnits/FromUnits` 更直接。
+> * 颜色工厂 **补齐（第三十五波）**：`CreateHSBColor/CMYColor/BWColor/YIQColor/FixedColor/CreateColor(串)/CreateColorEx(模型号,…)` 全部可用。
+> * 定尺寸加页/插页 **可用（第三十五波）**：`AddPagesEx(count,w,h)` / `InsertPagesEx(n,before,page,w,h)`。
 > * 矩形对象 **可用（第三十四波）**：`IVGRect` 的 SetRect/Offset/Inflate/Union/Intersect/IsPointInside/GetCopy/Clear 全通，且 `Layer.CreateRectangleRect/CreateEllipseRect` 能按矩形造形。
 > * 曲线段 **可直接建**：`Layer.CreateCurveSegment`（端点 + 两端控制柄长度/角度）。
 > * 原生范围对齐 **可用（第三十三波）**：`AlignRangeToPageCenter/Grid/Point/Shape/ShapeRange`，一次只吃一个轴（`cdrAlignLeft=1/Right=2/HCenter=3/Top=4/Bottom=8/VCenter=12`），`cdr_align(to=…)` 会把 horizontal/vertical 拆成两次调用。
@@ -264,8 +268,8 @@
 ## 五、复现方式
 
 ```powershell
-python -m pytest -q              # 78 项纯逻辑
-python scripts/live_smoke.py     # 354 项端到端（真实 CorelDRAW）
+python -m pytest -q              # 83 项纯逻辑
+python scripts/live_smoke.py     # 369 项端到端（真实 CorelDRAW）
 ```
 
 联调断言覆盖了上表所有 ✅ 项。反解脚本属于过程产物，已按要求放在 `tmp/` 并在完成时清理；
@@ -273,14 +277,14 @@ python scripts/live_smoke.py     # 354 项端到端（真实 CorelDRAW）
 
 ---
 
-## 六、量化覆盖率（2026-10-26 第三十四波实测）
+## 六、量化覆盖率（2026-10-26 第三十五波实测）
 
 方法：反解类型库拿到 196 个自动化类 / **1619** 个方法（已剔除 `QueryInterface` 等 COM 基础设施）；
 用 AST 扫描 `src/cdrx8_mcp/*.py`，收集所有 `.方法名(` 调用与 `setattr/getattr` 的属性名，
 与主干接口的方法名求交集。**注意：属性名（如 `curve.Nodes`）也会被计入**，所以本波数字含真实属性访问。
 
-**全局：834 / 1619 = 51.5%**（21.2% → … → 50.7% → 本轮 51.5%）
-**主干 20 接口：486 / 743 = 65.4%**
+**全局：848 / 1619 = 52.4%**（21.2% → … → 51.5% → 本轮 52.4%）
+**主干 20 接口：500 / 743 = 67.3%**
 
 复现命令：`python scripts/coverage_audit.py`（会临时展开类型库到 `tmp/gen_py`，跑完自动清理）
 
@@ -289,12 +293,12 @@ python scripts/live_smoke.py     # 354 项端到端（真实 CorelDRAW）
 | `IVGShape` | 123 | 83 | **67%** |
 | `IVGShapeRange` | 125 | 94 | **75%** |
 | `IVGSubPath` | 38 | 30 | **79%** |
-| `IVGDocument` | 74 | 40 | **54%** |
+| `IVGDocument` | 74 | 46 | **62%** |
 | `IVGPage` | 21 | 20 | **95%** |
 | `IVGCurve` | 36 | 23 | 64% |
 | `IVGLayer` | 49 | 27 | **55%** |
 | `IVGTextRange` | 31 | 23 | **74%** |
-| `IVGApplication` | 78 | 31 | **40%** |
+| `IVGApplication` | 78 | 39 | **50%** |
 | `IVGText` | 29 | 16 | **55%** |
 | `IVGNode` | 18 | 9 | 50% |
 | `IVGBitmap` | 15 | 13 | **87%** |
@@ -306,10 +310,10 @@ python scripts/live_smoke.py     # 354 项端到端（真实 CorelDRAW）
 | `IVGTransparency` | 8 | 6 | **75%** |
 | `IVGStyle` | 15 | 9 | **60%** |
 | `IVGColorContext` | 6 | 3 | 50% |
-| **合计** | **743** | **486** | **65.4%** |
+| **合计** | **743** | **500** | **67.3%** |
 
 > **怎么读这两个数**：
-> 1. 全局 51.5% 覆盖 1619 个方法（含变体与重复）；主干 20 接口 65.4%。
+> 1. 全局 52.4% 覆盖 1619 个方法（含变体与重复）；主干 20 接口 67.3%。
 > 2. 它是**方法/属性名匹配**的近似值，同名方法会跨接口误计。
 > 3. `IVGColor` 已到 74%：分量**读写**现在走 `*Assign`（RGBAssign/CMYKAssign/…），纯 Python 只用于无 COM 场景的换算。
 > 4. 未调用方法多为变体（Wide/Ex/2/3 后缀）与事件订阅、CorelScriptTools/MathUtils。
@@ -759,6 +763,24 @@ python scripts/live_smoke.py     # 354 项端到端（真实 CorelDRAW）
 >    `Story.Bold = -1`、`TextRange.Font = …` 都不报错也不生效（Size/Underline 仍生效），
 >    属 X8 字体替换限制 —— `cdr_text` 会如实返回 `applied`，不撒谎。
 
+## 七之三十三、第三十五波已接入（2026-10-26，COM 单位换算 / 颜色工厂 / 定尺寸加页）
+
+| 能力 | 落地位置 | 实测 |
+|---|---|---|
+| **COM 单位换算** | `cdr_doc(action="convert_units", value, from_unit, to_unit)` | ✅ `Application.ConvertUnits`：25.4 mm→inch = **1.0**；72 pt→mm = **25.4**；10 cm→mm = 100 |
+| **颜色模型工厂** | `cdr_color(action="object_model", model=…, values=[…])` | ✅ HSB(Type 6) / CMY(Type 4) / YIQ(Type 11) / BW(Type 8) / Fixed(`CMYK255,PAN_PROC,…`) / ex(`CreateColorEx`) |
+| **颜色串造色** | `cdr_color(action="object_from_string", color2="…")` | ✅ `Application.CreateColor("RGB255,USER,12,34,56,…")` → Type 5 |
+| **定尺寸加页** | `cdr_pages(action="add", count, width_mm, height_mm)` | ✅ `AddPagesEx(2,100,150)`：页数 1→3，第 2 页尺寸正是 100×150 |
+| **定尺寸插页** | `cdr_pages(action="insert", …, width_mm, height_mm)` | ✅ `InsertPagesEx(1,True,1,80,60)`：页数 3→4 |
+| 命名箭头 | `Document.CreateArrowHead2/Ex/Ex2` | ✅ 由曲线生成 `IVGArrowHead`（可再 `ArrowHeads.Add` 入库） |
+| 解析位图链接 | `cdr_doc(action="resolve_links")` | ✅ `ResolveAllBitmapsLinks()` 调用成功 |
+| 文档设置快照 | `cdr_doc(action="save_settings"/"restore_settings"/"reset_settings")` | ⚠️ 调用无异常，但实测 `RestoreSettings` 并没有把改过的 Resolution 恢复（Tag 语义未逆出，标为实验性） |
+| Unicode 转换 | `Application.ConvertToUnicode/ConvertFromUnicode` | ✅ 往返字符串不变（CodePage=0） |
+
+> **第三十五波记录**：`Application.CreateProperties` 返回 `IVGProperties` 但 `Count=0` 且
+> `Name/Add/Value` 在 pywin32 包装类里不存在（AttributeError），`IVGProperties` 的用法仍未打通；
+> `Document.CreateShapeRangeFromArray` / `CreateCurveFromArray` 需要对象数组指针，暂未尝试。
+
 ## 七之二、仍未接入（第三轮候选）
 
 | 能力 | 接口 | 为什么还没做 |
@@ -780,16 +802,16 @@ python scripts/live_smoke.py     # 354 项端到端（真实 CorelDRAW）
 
 ## 八、一句话总结
 
-* **能力域覆盖**：60 个能力域 / 30 个工具，日常出图闭环完整；节点编辑、对象样式、专色、
+* **能力域覆盖**：61 个能力域 / 30 个工具，日常出图闭环完整；节点编辑、对象样式、专色、
   图案/纹理填充、跨文档复制、模板/样式表/颜色样式、文档元数据、本地化元数据、对象数据字段、
   自定义虚线、文档设置、文本区间编辑、自定义箭头、图案微调、文本格式查询、位图内容替换/链接、
   文档回滚、立体化/透镜/效果管理、位图特效命令串、混合、文档颜色转换、用户偏好 KV、OLE 嵌入、
   命名视图、网格设置、叠印、段落缩进、制表位、屏幕叠加层、应用/文档事件、导出/保存/导入选项、吸附点全家族、颜色对象分量、描边对象全量属性都已补上。
-* **方法级覆盖**：全局 51.5%（834/1619），主干 20 接口 65.4%（486/743）。
+* **方法级覆盖**：全局 52.4%（848/1619），主干 20 接口 67.3%（500/743）。
 * **明确不可用**：位图描摹、文本导入、点集数组建曲线、尺寸标注/连接线（MathUtils 点对象
   不可创建）、符号库、文件型图案/影线填充（本机无库）、曲线贴笔触、OpenDocumentAsCopy、
   HTML 兼容文本、断字写入、填充字符串、文本尺寸查询、灰度→RGB 转换、真实应用偏好读取、
   文本分栏（SetColumns 数组参数）。
-* **第三十四波新增**：矩形对象 IVGRect（含按矩形造形）、曲线段直建、图层查找、字体表刷新；并修正了 bold/italic/underline 三态传参（此前全部静默失效）。
+* **第三十五波新增**：COM 单位换算、颜色模型工厂（HSB/CMY/BW/YIQ/Fixed/CreateColorEx/颜色串）、定尺寸加页与插页、命名箭头、解析全部位图链接、文档设置快照（实验性）。
 
 

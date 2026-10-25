@@ -6,10 +6,10 @@
 所有坐标统一 **毫米 / 页面左下角原点 / Y 轴向上**，每次变更都收成**一个原子 undo 步**。
 
 > **已在真机验证**：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）+ Python 3.11.9 64 位
-> - 单元测试 **78 项通过**
-> - 端到端联调（真实 CorelDRAW）**354/354 通过**
+> - 单元测试 **83 项通过**
+> - 端到端联调（真实 CorelDRAW）**369/369 通过**
 > - 能力边界来自对 `vgcoreauto.tlb` 的反解（196 个自动化类 / 1619 个方法）+ 逐项实跑
-> - 方法级覆盖 **51.5%**（主干 20 接口 65.4%），可用 `python scripts/coverage_audit.py` 复现
+> - 方法级覆盖 **52.4%**（主干 20 接口 67.3%），可用 `python scripts/coverage_audit.py` 复现
 > - 完整清单见 [docs/COVERAGE.md](docs/COVERAGE.md)
 
 ---
@@ -78,8 +78,8 @@ python -m cdrx8_mcp              # 启动 MCP 服务器（stdio）
 | `cdr_node` | **节点/线段级编辑（第五波打通）**：列节点·列线段 / 移动·选中·删除 / 圆角·倒角· scallop·平滑 / 拉伸·旋转·斜切·断开 / 加节点·断线 / 读写贝塞尔控制点 / 按坐标找节点与线段 |
 | `cdr_bitmap` | 位图：信息 / 转色彩模式（rgb·cmyk·gray·bw）/ **阈值二值化** / **调色板模式 0~9（9=自定义调色板）** / **双色调 0~3（可给 .cpd 预设）** / **取像素颜色** / 图像缓冲信息 / 重采样 / **扩边** / 裁剪 / **内容替换（SetImageData，支持色块/像素绘制）** / **位图特效命令串（ApplyBitmapEffect）** / **链接信息·重新加载·解析链接** |
 | `cdr_rect` | **矩形对象（IVGRect）**：读派生值 / 平移 / 四边外扩内缩 / 并 / 交 / 点包含 / 复制；**按矩形造形**（CreateRectangleRect 带四角圆角、CreateEllipseRect 带角度/扇形） |
-| `cdr_color` | **颜色运算**：解析成 HEX/RGB/CMYK/Gray/HLS/Lab、转换、两色混合（纯 Python）；**X8 颜色对象**：`object_info` / `object_name` / `object_compare`（IsSame·IsSimilar·距离）/ `object_blend`（原地混合）/ `object_copy` / `object_string_assign` / `object_convert`（8 种模型原地转换）/ `object_fixed`（USER·TRU·PAN_PROC）/ `object_assign`（分量直写，含套版色）|
-| `cdr_doc` | **文档级**：概况 / 清空选择集 / 清撤销栈 / **登记调色板** / **用曲线生成自定义箭头（可登记全局箭头库）** / **单位换算** / **取色（点/区域）** / **字体列表** / **调色板列表·取色·固定调色板打开·颜色枚举·专色创建·自定义调色板创建** / **图案画布创建（含区域变换）** / **纹理库列表** / **文档元数据读写·本地化元数据** / **数据字段·对象数据·色彩管理·线型样式·叠印读取** / **文档设置读写** / **应用信息·文档回滚** / **色彩配置文件·文档颜色转换** / **用户偏好 KV** / **命名视图** / **网格设置** / **应用/文档事件队列** / **显示隐藏对象** / **页面版式** / **重复上一操作** |
+| `cdr_color` | **颜色运算**：解析成 HEX/RGB/CMYK/Gray/HLS/Lab、转换、两色混合（纯 Python）；**X8 颜色对象**：`object_info` / `object_name` / `object_compare`（IsSame·IsSimilar·距离）/ `object_blend`（原地混合）/ `object_copy` / `object_string_assign` / `object_convert`（8 种模型原地转换）/ `object_fixed`（USER·TRU·PAN_PROC）/ `object_assign`（分量直写，含套版色）/ **`object_model`（HSB·CMY·BW·YIQ·Fixed·CreateColorEx 工厂）/ `object_from_string`（颜色串造色）** |
+| `cdr_doc` | **文档级**：概况 / 清空选择集 / 清撤销栈 / **登记调色板** / **用曲线生成自定义箭头（可登记全局箭头库）** / **单位换算** / **取色（点/区域）** / **字体列表** / **调色板列表·取色·固定调色板打开·颜色枚举·专色创建·自定义调色板创建** / **图案画布创建（含区域变换）** / **纹理库列表** / **文档元数据读写·本地化元数据** / **数据字段·对象数据·色彩管理·线型样式·叠印读取** / **文档设置读写** / **应用信息·文档回滚** / **色彩配置文件·文档颜色转换** / **用户偏好 KV** / **命名视图** / **网格设置** / **应用/文档事件队列** / **显示隐藏对象** / **页面版式** / **重复上一操作**  / **COM 单位换算（convert_units）** / **文档设置快照（save_settings·restore_settings·reset_settings，实验性）** / **解析全部位图链接（resolve_links）** |
 | `cdr_view` | **视图**：刷新重绘 / 激活窗口 / 文档↔屏幕坐标换算 / **屏幕距离↔文档距离** / **屏幕叠加层（文字/矩形/直线/圆，不写入文档）** |
 | `cdr_snap` | **吸附点**：对象吸附点枚举（类型掩码过滤）/ **自动点·包围盒点·对象点·边上点定址** / **新增用户吸附点（GUID）** / **文档·应用级自由点** / 最近吸附点查询（页面级与集合级）/ 移动（相对+绝对）/ 删除 / 方向 / 选择 / **SnapPointRange 批量（Move·Delete·Add·Remove·Find·ChangeDirection·SetAutoSnap）** |
 | `cdr_outline` | **描边对象**：全量属性读取（宽度/颜色/线型/线帽/连接/笔尖角度与拉伸/斜接/对齐/箭头）/ 写入（含 `SetProperties` 全参路径）/ **描边转曲线对象** / 复制描边 / 描边比较 |
@@ -89,7 +89,7 @@ python -m cdrx8_mcp              # 启动 MCP 服务器（stdio）
 | 工具 | 作用 |
 |---|---|
 | `cdr_layers` | 图层列表 / 新建 / 激活 / 显隐 / 锁定 / 打印 / **上移·下移** / **读上下相邻图层** / **粘贴剪贴板（可跨文档）** / **图层信息（含 is_guides_layer）** / **图层内按名找对象（FindShape）** / 删除 |
-| `cdr_pages` | 页面列表 / 新增 / **插入空白页** / 切页 / 删除 / 自定义尺寸 / **纸张预设** / **参考线列表** / **角度参考线** / **吸附点查询** / **解锁全部** / **对象总包围盒** |
+| `cdr_pages` | 页面列表 / 新增（**可定尺寸 AddPagesEx**）/ **插入空白页（可定尺寸 InsertPagesEx）** / 切页 / 删除 / 自定义尺寸 / **纸张预设** / **参考线列表** / **角度参考线** / **吸附点查询** / **解锁全部** / **对象总包围盒** |
 | `cdr_import` | 导入 png / jpg / svg / pdf / ai / eps / dxf 等，**可传 import_options（外链位图/重采样/保留图层/水印检测/ICC）** |
 | `cdr_export` | 导出 **png / jpg / svg / pdf**，位图可指定 DPI，可只导选区，**可传 export_options（抗锯齿/透明/压缩/尺寸/分辨率等）** |
 
@@ -186,7 +186,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ---
 
-## X8 特有问题（117 条，全部实测）
+## X8 特有问题（118 条，全部实测）
 
 这些是 **X8 与 2024+ 的差异**，也是本项目存在的主要理由。
 
@@ -309,6 +309,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 | 115 | **粗体/斜体的形参是 `cdrTriState`，true = -1** | `CreateArtisticText(...,Bold=True)` 与 `Text.Story.Bold = True` 都**不生效**（后者还会把粗体关掉）；传 `-1` 才生效。下划线又是另一套枚举：1=有、0/-1=无 | `cdr_create`/`cdr_modify`/`cdr_text` 已改走 `_tristate()` 与 `_underline()`；此 bug 存在了 30 多波才被发现 |
 | 116 | **字体表会过期，建文本静默回退默认字体** | 长时间批量建文本后，`CreateArtisticText(font="Arial")` 得到的是宋体且 Bold/Italic 丢失；`Application.ForceUpdateFontTable()` 后恢复 | `cdr_doc(action="refresh_fonts")`；建文本时自动兜底刷一次 |
 | 117 | **中文默认字体文档改不动拉丁字体** | 文档默认字体=宋体时，`Story.Font="Arial"`、`Story.Bold=-1`、`TextRange.Font=…` 全部「不报错也不生效」，Size/Underline 仍生效 | X8 字体替换限制；`cdr_text` 如实返回 `applied`，需要 Arial 等拉丁字体时建议新文档先设默认字体 |
+| 118 | **`SaveSettings/RestoreSettings` 调用成功但看不到效果** | 把 `Resolution` 300→72 后`RestoreSettings(Tag)` 仍是 72（三方法都不报错）；`CreateProperties` 返回的 `IVGProperties` 也缺 `Name/Add/Value` 方法 | 设置快照标为实验性；可靠改设置走 `cdr_doc(action="set_settings")` |
 
 改代码前请先读 [`src/cdrx8_mcp/constants.py`](src/cdrx8_mcp/constants.py) 里的注释。
 
@@ -357,8 +358,8 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 ## 测试
 
 ```powershell
-python -m pytest -q                # 78 项纯逻辑测试，任何平台可跑
-python scripts/live_smoke.py       # 354 项端到端，需要 CorelDRAW X8
+python -m pytest -q                # 83 项纯逻辑测试，任何平台可跑
+python scripts/live_smoke.py       # 369 项端到端，需要 CorelDRAW X8
 python scripts/live_smoke.py --keep   # 保留文档方便肉眼看效果
 python scripts/coverage_audit.py   # 覆盖率审计（复现 README/COVERAGE 里的数字）
 ```

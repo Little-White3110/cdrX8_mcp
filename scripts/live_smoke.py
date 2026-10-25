@@ -2895,6 +2895,63 @@ def main() -> int:
         check("查不到时返回 found=false", lf2.get("found") is False, str(lf2.get("found")))
         no_error("关闭矩形/文字测试文档", server.cdr_close(rc_id))
 
+    # ---------------- 15ao. 第三十五波：单位换算 / 颜色工厂 / 定尺寸加页 ----------------
+    print("\n[15ao] 第三十五波：COM 单位换算、颜色模型工厂、定尺寸加页、文档设置快照")
+    cu = server.cdr_doc("doc1", action="convert_units", value=25.4, from_unit=3, to_unit=1)
+    if no_error("cdr_doc(convert_units)", cu):
+        check("COM 单位换算（mm→inch）", abs(float(cu.get("result") or 0) - 1.0) < 1e-6,
+              f"result={cu.get('result')}")
+    cu2 = server.cdr_doc("doc1", action="convert_units", value=72, from_unit=14, to_unit=3)
+    check("COM 单位换算（pt→mm）", abs(float(cu2.get("result") or 0) - 25.4) < 1e-3,
+          f"result={cu2.get('result')}")
+    for mdl, vals, pref, tid in (("hsb", [120, 80, 90], "HSB", 6),
+                                 ("cmy", [10, 20, 30], "CMY255", 4),
+                                 ("yiq", [100, 50, 50], "YIQ255", 11),
+                                 ("bw", [1], "BW", 8)):
+        cm = server.cdr_color(action="object_model", model=mdl, values=vals)
+        if no_error(f"cdr_color(object_model={mdl})", cm):
+            check(f"颜色模型工厂 {mdl}", str(cm.get("to_string", "")).startswith(pref)
+                  and cm.get("type") == tid, f"type={cm.get('type')}")
+    cfx2 = server.cdr_color(action="object_model", model="fixed", values=[2, 5, 100])
+    if no_error("cdr_color(object_model=fixed)", cfx2):
+        check("固定调色板工厂", "PAN_PROC" in str(cfx2.get("to_string")),
+              f"str={cfx2.get('to_string')}")
+    cex = server.cdr_color(action="object_model", model="ex", values=[2, 10, 20, 30, 40])
+    if no_error("cdr_color(object_model=ex)", cex):
+        check("CreateColorEx 工厂", str(cex.get("to_string", "")).startswith("CMYK,USER,10,20"),
+              f"str={cex.get('to_string')}")
+    cfs = server.cdr_color(
+        action="object_from_string",
+        color2="RGB255,USER,12,34,56,100,00000000-0000-0000-0000-000000000000")
+    if no_error("cdr_color(object_from_string)", cfs):
+        check("颜色串造色", cfs.get("type") == 5
+              and "12,34,56" in str(cfs.get("to_string")),
+              f"type={cfs.get('type')} str={cfs.get('to_string')}")
+    pg_doc = server.cdr_open(preset="A4")
+    if "document_id" in pg_doc:
+        pg_id = pg_doc["document_id"]
+        ad = server.cdr_pages(pg_id, action="add", count=1, width_mm=100, height_mm=150)
+        if no_error("cdr_pages(add sized)", ad):
+            plist = (server.cdr_pages(pg_id, action="list").get("pages") or [])
+            sizes = [(p.get("width_mm"), p.get("height_mm")) for p in plist]
+            check("可定尺寸加页（AddPagesEx）", (100.0, 150.0) in sizes,
+                  f"sizes={sizes}")
+        ins = server.cdr_pages(pg_id, action="insert", count=1, width_mm=80,
+                               height_mm=60, page_index=1)
+        if no_error("cdr_pages(insert sized)", ins):
+            check("可定尺寸插页（InsertPagesEx）", ins.get("sized") is True
+                  and (ins.get("pages") or 0) >= 3, f"pages={ins.get('pages')}")
+        ss = server.cdr_doc(pg_id, action="save_settings", query="smoke_snap")
+        check("文档设置可打快照", ss.get("action") == "save_settings", str(ss.get("tag")))
+        rs = server.cdr_doc(pg_id, action="restore_settings", query="smoke_snap")
+        check("文档设置可恢复（调用无异常）", rs.get("action") == "restore_settings",
+              str(rs.get("tag")))
+        rz = server.cdr_doc(pg_id, action="reset_settings")
+        check("文档设置可重置", rz.get("action") == "reset_settings", str(rz.get("action")))
+        rl = server.cdr_doc(pg_id, action="resolve_links")
+        check("可解析全部位图链接", rl.get("resolved") is True, str(rl.get("resolved")))
+        no_error("关闭加页测试文档", server.cdr_close(pg_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

@@ -912,9 +912,11 @@ def cdr_pages(document_id: str, action: str = "list",
                           label="cdr_pages:unlock")
             return _commit(doc, sess, result, warnings)
         if act == "add":
-            result = _com(lambda _b: ops.add_pages(doc, count), label="cdr_pages:add")
+            result = _com(lambda _b: ops.add_pages(doc, count, width_mm, height_mm),
+                          label="cdr_pages:add")
         elif act == "insert":
-            result = _com(lambda _b: ops.insert_pages(doc, count, insert_before, page_index),
+            result = _com(lambda _b: ops.insert_pages(doc, count, insert_before, page_index,
+                                                      width_mm, height_mm),
                           label="cdr_pages:insert")
         elif act == "activate":
             if page_index is None:
@@ -1026,6 +1028,9 @@ def cdr_color(action: str = "info", color: Any = None, color2: Any = None,
           object_fixed     ConvertToFixed(0=USER/1=TRU/2=PAN_PROC) 转固定调色板
           object_assign    按分量直接赋值（model=rgb/cmyk/gray/hls/hsb/lab/cmy/yiq/bw/
                            registration，values=[…]）
+          object_model     用其它模型工厂造色（model=hsb/cmy/bw/yiq/fixed/ex，values=[…]；
+                           fixed 的 values=[palette_id,index,tint]，ex 的 values=[模型号,v1..v7]）
+          object_from_string  用颜色串造色（color2="CMYK,USER,10,20,30,40,100,<GUID>"）
         color: 任意颜色写法：#RRGGBB / {c,m,y,k} / {r,g,b} / {gray} / {lab} / {hls}
         color2: blend / compare 的第二个颜色；convert 时传目标空间名
         model: object_convert / object_assign 的目标模型
@@ -1178,7 +1183,7 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
                       grid_type=grid_type)
         if action == "info":
             return _com(lambda _b: ops.doc_ops(doc, "info", **kwargs), label="cdr_doc")
-        if action in {"clear_selection", "units", "sample_color", "fonts",
+        if action in {"clear_selection", "units", "convert_units", "sample_color", "fonts",
                       "refresh_fonts",
                       "palettes", "palette_color", "palette_open_fixed",
                       "palette_colors", "spot_color", "pattern_canvas",
