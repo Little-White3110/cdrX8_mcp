@@ -288,7 +288,7 @@ DOC_ACTIONS = ("info", "clear_selection", "clear_undo", "palette", "arrowhead",
                "revert", "app_info", "color_profiles", "convert_color",
                "pref_register", "pref_get", "pref_set",
                "views", "create_view", "activate_view", "delete_view",
-               "grid", "set_grid")
+               "grid", "set_grid", "overprint")
 
 
 def doc_ops(doc: Any, action: str, *, target: dict | None = None,
@@ -694,6 +694,13 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
                           "formatted": _s(lambda it=it: str(it.FormattedValue))})
         return {"action": act, "target": _s(lambda: str(shape.Name)),
                 "count": count, "data": items}
+    if act == "overprint":
+        page = _page(doc, page_index)
+        shape = find_shape(doc, page, target or {})
+        return {"action": act, "target": _s(lambda: str(shape.Name)),
+                "overprint_fill": bool(_s(lambda: bool(shape.OverprintFill), False)),
+                "overprint_outline": bool(_s(lambda: bool(shape.OverprintOutline), False)),
+                "overprint_bitmap": bool(_s(lambda: bool(shape.OverprintBitmap), False))}
     if act == "color_context":
         cc = _s(lambda: doc.ColorContext)
         if cc is None:
@@ -3520,6 +3527,19 @@ def _apply_changes(doc: Any, shape: Any, changes: dict) -> dict:
         except Exception as exc:  # noqa: BLE001
             warnings.append(f"设置旋转中心失败：{exc}")
 
+    if any(k in changes for k in ("overprint_fill", "overprint_outline",
+                                  "overprint_bitmap")):
+        try:
+            if "overprint_fill" in changes:
+                shape.OverprintFill = bool(changes["overprint_fill"])
+            if "overprint_outline" in changes:
+                shape.OverprintOutline = bool(changes["overprint_outline"])
+            if "overprint_bitmap" in changes:
+                shape.OverprintBitmap = bool(changes["overprint_bitmap"])
+            applied.append("overprint")
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"叠印设置失败：{exc}")
+
     if changes.get("copy_clipboard"):
         try:
             shape.Copy()
@@ -4239,6 +4259,8 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
              change_case: Any = None, bullet: Any = None, drop_cap: Any = None,
              no_effect: bool = False, line_spacing: float | None = None,
              char_spacing: float | None = None, word_spacing: float | None = None,
+             indent_left: float | None = None, indent_right: float | None = None,
+             indent_first_line: float | None = None,
              insert_before: str | None = None, insert_after: str | None = None,
              to_paragraph: bool = False, to_artistic: bool = False,
              contents: str | None = None, find: str | None = None,
@@ -4262,7 +4284,8 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
         mutating = any(v is not None for v in (
             text, font, size, bold, italic, underline, alignment,
             fit_to_path, change_case, bullet, drop_cap, line_spacing,
-            char_spacing, word_spacing, insert_before, insert_after,
+            char_spacing, word_spacing, indent_left, indent_right,
+            indent_first_line, insert_before, insert_after,
             contents, find, replace_old, replace_new, copy_attributes_from,
             opentype,
         )) or any((to_curves, fit_frame, no_effect, to_paragraph, to_artistic,
@@ -4311,6 +4334,13 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
                 info = _text_hyphenation_info(shape)
                 if info is not None:
                     result["hyphenation"] = info
+            story = _s(lambda: shape.Text.Story)
+            if story is not None:
+                result["indent"] = {
+                    "left": _s(lambda: float(story.LeftIndent)),
+                    "right": _s(lambda: float(story.RightIndent)),
+                    "first_line": _s(lambda: float(story.FirstLineIndent)),
+                }
             return result
         with atomic(doc, label):
             story = shape.Text.Story
@@ -4442,6 +4472,19 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
                     applied.append("spacing")
                 except Exception as exc:  # noqa: BLE001
                     warnings.append(f"间距设置失败：{exc}")
+            if any(v is not None for v in (indent_left, indent_right,
+                                           indent_first_line)):
+                try:
+                    para = shape.Text.Story
+                    if indent_left is not None:
+                        para.LeftIndent = float(indent_left)
+                    if indent_right is not None:
+                        para.RightIndent = float(indent_right)
+                    if indent_first_line is not None:
+                        para.FirstLineIndent = float(indent_first_line)
+                    applied.append("indent")
+                except Exception as exc:  # noqa: BLE001
+                    warnings.append(f"段落缩进设置失败：{exc}")
             if fit_to_path:
                 try:
                     path_shape = find_shape(doc, _page(doc, page_index), fit_to_path)
@@ -4544,6 +4587,13 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
                 info = _text_hyphenation_info(shape)
                 if info is not None:
                     reading["hyphenation"] = info
+            story = _s(lambda: shape.Text.Story)
+            if story is not None:
+                reading["indent"] = {
+                    "left": _s(lambda: float(story.LeftIndent)),
+                    "right": _s(lambda: float(story.RightIndent)),
+                    "first_line": _s(lambda: float(story.FirstLineIndent)),
+                }
             return {
                 "applied": applied,
                 "warnings": warnings,

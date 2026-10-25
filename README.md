@@ -7,7 +7,7 @@
 
 > **已在真机验证**：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）+ Python 3.11.9 64 位
 > - 单元测试 **55 项通过**
-> - 端到端联调（真实 CorelDRAW）**242/242 通过**
+> - 端到端联调（真实 CorelDRAW）**247/247 通过**
 > - 能力边界来自对 `vgcoreauto.tlb` 的反解（196 个自动化类 / 1619 个方法）+ 逐项实跑
 > - 方法级覆盖 **43.1%**（主干 20 接口 56.3%），可用 `python scripts/coverage_audit.py` 复现
 > - 完整清单见 [docs/COVERAGE.md](docs/COVERAGE.md)
@@ -66,8 +66,8 @@ python -m cdrx8_mcp              # 启动 MCP 服务器（stdio）
 | 工具 | 作用 |
 |---|---|
 | `cdr_create` | 批量创建：矩形（含圆角）/ 椭圆（含圆弧、扇形）/ 多边形 / 星形 / 螺旋 / 网格 / 直线 / 贝塞尔 / 文字 / 段落文字 / 参考线 / **内存位图（纯色 + 像素色块）** / **OLE 文件嵌入（ole_file）** |
-| `cdr_modify` | 单个或**批量**修改：移动、缩放、旋转、翻转、斜切、矩阵/仿射变换、清除变换、旋转中心、克隆、锁定；填充（纯色/渐变/纹理/图案/专色/无色/复制）；**图案填充微调（旋转/平铺/镜像/前景色）**；描边（虚线、箭头、专色、自定义虚线线型）；透明度/图案透明、冻结/解冻；投影、轮廓图、封套；渐变微调；色彩滤镜；层级调整、复制/剪切到剪贴板、移动到/复制到图层、对象数据字段、复制、删除 |
-| `cdr_text` | 排版级：内容 / 字体 / 字号 / 粗斜体 / 下划线 / 对齐 / 大小写 / 项目符号 / 首字下沉 / 行距字距 / 前后插入 / 沿路径 / 自适应 / 转曲 / 艺术字↔段落字互转 / 段落内容读写与替换 / 文本区间 / 区间删除·复制·粘贴·拉直 / 读取全文·指定区间·导出纯文本 / **字体属性读取·断字设置读取·格式段列表·按格式查询区间（@font/@bold）** / OpenType 特性 |
+| `cdr_modify` | 单个或**批量**修改：移动、缩放、旋转、翻转、斜切、矩阵/仿射变换、清除变换、旋转中心、克隆、锁定；填充（纯色/渐变/纹理/图案/专色/无色/复制）；**图案填充微调（旋转/平铺/镜像/前景色）**；描边（虚线、箭头、专色、自定义虚线线型）；透明度/图案透明、冻结/解冻；投影、轮廓图、封套；渐变微调；色彩滤镜；层级调整、复制/剪切到剪贴板、移动到/复制到图层、对象数据字段、**叠印（填充/描边/位图）**、复制、删除 |
+| `cdr_text` | 排版级：内容 / 字体 / 字号 / 粗斜体 / 下划线 / 对齐 / 大小写 / 项目符号 / 首字下沉 / 行距字距 / **段落缩进** / 前后插入 / 沿路径 / 自适应 / 转曲 / 艺术字↔段落字互转 / 段落内容读写与替换 / 文本区间 / 区间删除·复制·粘贴·拉直 / 读取全文·指定区间·导出纯文本 / **字体属性读取·断字设置读取·格式段列表·按格式查询区间（@font/@bold）** / OpenType 特性 |
 | `cdr_replace_text` | 全文档文字替换（底层用 X8 原生 `Page.TextReplace`） |
 | `cdr_select` | 按名字 / 类型 / 矩形框选，加入选择集；**可移除或清空选择集** |
 | `cdr_shape_ops` | **布尔与整形**：weld / trim / intersect / combine / group / ungroup / break_apart / to_curves / **outline_to_curves** / to_symbol / powerclip / fillet / chamfer / scallop / **step_repeat / distribute / boundary / perspective / separate / parallel_curves / rasterize / batch_outline_to_curves / fill_mode / pixel_aligned / range_boundary / envelope_from_shape / compare / project / unproject / to_document / extrude / lens / extrude_set / lens_set / effect_info / clear_effects / blend / blend_set** |
@@ -78,7 +78,7 @@ python -m cdrx8_mcp              # 启动 MCP 服务器（stdio）
 | `cdr_node` | **节点/线段级编辑（第五波打通）**：列节点·列线段 / 移动·选中·删除 / 圆角·倒角· scallop·平滑 / 拉伸·旋转·斜切·断开 / 加节点·断线 / 读写贝塞尔控制点 / 按坐标找节点与线段 |
 | `cdr_bitmap` | 位图：信息 / 转色彩模式（rgb·cmyk·gray·bw）/ **阈值二值化** / **调色板模式 0~9（9=自定义调色板）** / **双色调 0~3（可给 .cpd 预设）** / **取像素颜色** / 图像缓冲信息 / 重采样 / **扩边** / 裁剪 / **内容替换（SetImageData，支持色块/像素绘制）** / **位图特效命令串（ApplyBitmapEffect）** |
 | `cdr_color` | **颜色运算（纯 Python）**：解析成 HEX/RGB/CMYK/Gray/HLS/Lab、转换、两色混合 |
-| `cdr_doc` | **文档级**：概况 / 清空选择集 / 清撤销栈 / **登记调色板** / **用曲线生成自定义箭头（可登记全局箭头库）** / **单位换算** / **取色（点/区域）** / **字体列表** / **调色板列表·取色·固定调色板打开·颜色枚举·专色创建·自定义调色板创建** / **图案画布创建（含区域变换）** / **纹理库列表** / **文档元数据读写** / **数据字段·对象数据·色彩管理·线型样式** / **文档设置读写** / **应用信息·文档回滚** / **色彩配置文件·文档颜色转换** / **用户偏好 KV** / **命名视图** / **网格设置** / **显示隐藏对象** / **页面版式** / **重复上一操作** |
+| `cdr_doc` | **文档级**：概况 / 清空选择集 / 清撤销栈 / **登记调色板** / **用曲线生成自定义箭头（可登记全局箭头库）** / **单位换算** / **取色（点/区域）** / **字体列表** / **调色板列表·取色·固定调色板打开·颜色枚举·专色创建·自定义调色板创建** / **图案画布创建（含区域变换）** / **纹理库列表** / **文档元数据读写** / **数据字段·对象数据·色彩管理·线型样式·叠印读取** / **文档设置读写** / **应用信息·文档回滚** / **色彩配置文件·文档颜色转换** / **用户偏好 KV** / **命名视图** / **网格设置** / **显示隐藏对象** / **页面版式** / **重复上一操作** |
 | `cdr_view` | **视图**：刷新重绘 / 激活窗口 / 文档↔屏幕坐标换算 / **屏幕距离↔文档距离** |
 
 ### 图层 / 页面 / 文件
@@ -183,7 +183,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ---
 
-## X8 特有问题（93 条，全部实测）
+## X8 特有问题（95 条，全部实测）
 
 这些是 **X8 与 2024+ 的差异**，也是本项目存在的主要理由。
 
@@ -282,6 +282,8 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 | 91 | **OLE 文件可直接嵌入** | `Layer.CreateOLEObjectFromFile(绝对路径, False, False, caption, None)` 返回 `type_id=12` 形状（约 28×18mm 居中）；.txt 实测成功 | 不弹对话框；可用 cdr_modify 移动/删除 |
 | 92 | **`Document.CreateView` 的 Page 参数必须是 IVGPage 对象** | 传 int 报 `TypeError: Python instance can not be converted to a COM object`；传 `doc.ActivePage` 才成功 | 命名视图可创建/列出/激活/删除 |
 | 93 | **`Document.Grid` 网格设置可读写** | Type / SpacingX / SpacingY / Visible / Snap 全部可写；mm 上下文下 spacing 单位是毫米（默认 5×5） | 已封装 `cdr_doc(action="grid"/"set_grid")` |
+| 94 | **叠印设置可读写** | `Shape.OverprintFill/OverprintOutline/OverprintBitmap` 三个布尔属性；cdr_modify 写入后回读一致 | 适合印前输出 |
+| 95 | **段落缩进可读写** | `TextRange.LeftIndent/RightIndent/FirstLineIndent`；写 5/6/3mm 后回读一致 | `cdr_text` 读取结果含 `indent`；Tabs/Columns 未封装 |
 
 改代码前请先读 [`src/cdrx8_mcp/constants.py`](src/cdrx8_mcp/constants.py) 里的注释。
 
@@ -331,7 +333,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ```powershell
 python -m pytest -q                # 55 项纯逻辑测试，任何平台可跑
-python scripts/live_smoke.py       # 242 项端到端，需要 CorelDRAW X8
+python scripts/live_smoke.py       # 247 项端到端，需要 CorelDRAW X8
 python scripts/live_smoke.py --keep   # 保留文档方便肉眼看效果
 python scripts/coverage_audit.py   # 覆盖率审计（复现 README/COVERAGE 里的数字）
 ```
@@ -365,6 +367,7 @@ weld/fillet → 框选/组合/解组 → 对齐 → 图层 → 查找 → 分页
 **用户偏好注册/读写 → 当前工具信息** →
 **OLE 文件嵌入 → 命名视图创建/激活/删除** →
 **网格设置读写（间距/显示/吸附）** →
+**叠印 Fill/Outline 读写 → 段落左右/首行缩进** →
 过期 token 拒绝 → 关闭。
 
 完整能力矩阵见 [docs/COVERAGE.md](docs/COVERAGE.md)。

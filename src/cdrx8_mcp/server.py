@@ -320,6 +320,7 @@ def cdr_modify(document_id: str, target: dict, changes: dict,
       自定义虚线：outline={"width":2,"dash_pattern":[2,2],"save_outline_styles":false}
                 （2/4/6 个数字，实线/空白交替；实测会注册成新的线型样式）
       对象数据：changes={"data":{"SKU":"A-123"},"data_format":"0"}（数据合并字段，持久化在文档里）
+      叠印：changes={"overprint_fill":true,"overprint_outline":true,"overprint_bitmap":true}
       outline_from（复制另一对象的描边：{"name":"..."}）
       drop_shadow {opacity,offset_x,offset_y,color}｜contour {offset,steps}｜envelope 1..39
       transparency（0~100 均匀透明度 / {type:"fountain",start,end,angle} /
@@ -371,6 +372,8 @@ def cdr_text(document_id: str, target: dict, text: str | None = None,
              drop_cap: int | None = None, no_effect: bool = False,
              line_spacing: float | None = None, char_spacing: float | None = None,
              word_spacing: float | None = None,
+             indent_left: float | None = None, indent_right: float | None = None,
+             indent_first_line: float | None = None,
              insert_before: str | None = None, insert_after: str | None = None,
              to_paragraph: bool = False, to_artistic: bool = False,
              contents: str | None = None, find: str | None = None,
@@ -393,7 +396,8 @@ def cdr_text(document_id: str, target: dict, text: str | None = None,
                 to_paragraph / to_artistic（艺术字↔段落字互转）
     样式：font / size / bold / italic / underline / alignment /
           change_case（sentence·lower·upper·title·toggle）/ bullet / drop_cap /
-          line_spacing / char_spacing / word_spacing
+          line_spacing / char_spacing / word_spacing /
+          indent_left / indent_right / indent_first_line（段落缩进，mm）
     文本区间：select_all / align_to_baseline / copy_attributes_from（复制另一对象的文字属性）
     版式：fit_to_path（沿曲线）/ fit_frame（自动适配文本框）/ insert_before / insert_after
     输出：to_curves（转曲，发排前必做）
@@ -414,7 +418,8 @@ def cdr_text(document_id: str, target: dict, text: str | None = None,
         mutating = any(v is not None for v in (
             text, font, size, bold, italic, underline, alignment,
             fit_to_path, change_case, bullet, drop_cap, line_spacing,
-            char_spacing, word_spacing, insert_before, insert_after,
+            char_spacing, word_spacing, indent_left, indent_right,
+            indent_first_line, insert_before, insert_after,
             contents, find, replace_old, replace_new, copy_attributes_from,
             opentype,
         )) or any((to_curves, fit_frame, no_effect, to_paragraph, to_artistic,
@@ -430,7 +435,9 @@ def cdr_text(document_id: str, target: dict, text: str | None = None,
             fit_to_path=fit_to_path, fit_frame=fit_frame, change_case=change_case,
             bullet=bullet, drop_cap=drop_cap, no_effect=no_effect,
             line_spacing=line_spacing, char_spacing=char_spacing,
-            word_spacing=word_spacing, insert_before=insert_before,
+            word_spacing=word_spacing, indent_left=indent_left,
+            indent_right=indent_right, indent_first_line=indent_first_line,
+            insert_before=insert_before,
             insert_after=insert_after, to_paragraph=to_paragraph, to_artistic=to_artistic,
             contents=contents, find=find, replace_old=replace_old,
             replace_new=replace_new, select_all=select_all,
@@ -1083,6 +1090,7 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
       delete_view      删除指定视图（view_index 从 1 开始）
       grid             读文档网格（类型/间距/显示/吸附）
       set_grid         写网格：grid_spacing_x/y + grid_visible + grid_snap + grid_type
+      overprint        读对象的叠印设置（fill/outline/bitmap）
     """
     def _run():
         doc, sess = _with_doc(document_id)
@@ -1123,7 +1131,7 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
                       "settings", "app_info", "color_profiles",
                       "pref_register", "pref_get", "pref_set",
                       "views", "create_view", "activate_view", "delete_view",
-                      "grid", "set_grid"}:
+                      "grid", "set_grid", "overprint"}:
             return _com(lambda _b: ops.doc_ops(doc, action, **kwargs), label="cdr_doc")
         warnings = _check_view(sess, expected_revision, snapshot_token, doc)
         result = _com(lambda _b: ops.doc_ops(doc, action, **kwargs), label="cdr_doc")

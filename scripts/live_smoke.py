@@ -2201,6 +2201,51 @@ def main() -> int:
                            grid_snap=bool(orig.get("snap")),
                            grid_type=int(orig.get("type") or 1))
 
+    # ---------------- 15ab. 第二十二波：叠印设置 / 段落缩进 ----------------
+    print("\n[15ab] 第二十二波：叠印 + 段落缩进")
+    fresh22 = server.cdr_inspect(doc_id)
+    if "state" in fresh22:
+        state = fresh22["state"]
+    w22 = server.cdr_create(doc_id, items=[
+        {"type": "rectangle", "x": 20, "y": 240, "width": 30, "height": 20,
+         "fill": "#FF0000"},
+        {"type": "paragraph_text", "x": 70, "y": 240, "x2": 170, "y2": 260,
+         "text": "Indent me now", "font": "Arial", "size": 12},
+    ], expected_revision=state["revision"], snapshot_token=state["snapshot_token"])
+    if no_error("创建第二十二波对象", w22):
+        state = w22["state"]
+        r22 = w22["created"][0]["name"]
+        t22 = w22["created"][1]["name"]
+        op0 = server.cdr_doc(doc_id, "overprint", target={"name": r22})
+        if no_error("cdr_doc(overprint)", op0):
+            check("叠印设置可读", op0.get("overprint_fill") is False,
+                  f"fill={op0.get('overprint_fill')}")
+        op1 = server.cdr_modify(doc_id, {"name": r22},
+                                {"overprint_fill": True,
+                                 "overprint_outline": True},
+                                expected_revision=state["revision"],
+                                snapshot_token=state["snapshot_token"])
+        if no_error("cdr_modify(overprint)", op1):
+            check("叠印设置可写", "overprint" in (op1.get("applied") or []),
+                  str(op1.get("applied")))
+            state = op1["state"]
+            op2 = server.cdr_doc(doc_id, "overprint", target={"name": r22})
+            check("叠印写入后回读", op2.get("overprint_fill") is True
+                  and op2.get("overprint_outline") is True, str(op2))
+        ind = server.cdr_text(doc_id, {"name": t22}, indent_left=5,
+                              indent_right=6, indent_first_line=3,
+                              expected_revision=state["revision"],
+                              snapshot_token=state["snapshot_token"])
+        if no_error("cdr_text(indent)", ind):
+            check("段落缩进可写", "indent" in (ind.get("applied") or []),
+                  str(ind.get("indent")))
+            state = ind["state"]
+            ind2 = server.cdr_text(doc_id, {"name": t22})
+            vals = ind2.get("indent") or {}
+            check("段落缩进写入后回读", vals.get("left") == 5
+                  and vals.get("right") == 6 and vals.get("first_line") == 3,
+                  str(vals))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,
