@@ -1422,7 +1422,8 @@ def cdr_import(document_id: str, path: str, center: bool = True,
 @mcp.tool()
 def cdr_export(document_id: str, path: str, format: str = "png",
                dpi: int | None = None, overwrite: bool = False,
-               selection: bool = False, export_options: dict | None = None) -> dict:
+               selection: bool = False, export_options: dict | None = None,
+                export_api: str = "ex") -> dict:
     """导出 png / jpg / svg / pdf。
 
     Args:
@@ -1443,7 +1444,8 @@ def cdr_export(document_id: str, path: str, format: str = "png",
         doc, _sess = _with_doc(document_id)
         result = _com(lambda _b: ops.export(doc, fmt, str(p), dpi=dpi,
                                             selection=selection,
-                                            options=export_options),
+                                            options=export_options,
+                                            api=export_api),
                       timeout=DEFAULT_EXPORT_TIMEOUT_S, label="cdr_export")
         if fmt in {"png", "jpg", "svg"}:
             result["scope"] = "selection" if selection else "current_page"
@@ -1528,7 +1530,8 @@ def cdr_bitmap(document_id: str, target: dict, action: str = "info",
                effect_command: str | None = None,
                expected_revision: int | None = None,
                snapshot_token: str | None = None,
-               page_index: int | None = None) -> dict:
+               page_index: int | None = None,
+                dither_type: int | None = None) -> dict:
     """位图处理（只对 type_id=5 的位图对象有效，例如 cdr_import 导入的图片）。
 
     action:
@@ -1570,7 +1573,7 @@ def cdr_bitmap(document_id: str, target: dict, action: str = "info",
         preset_path = str(resolve_read_path(preset)) if preset else None
         if act in {"info", "image_info", "pixel"}:
             return _com(lambda _b: ops.bitmap_action(
-                doc, page_index, target, act, x_px=x_px, y_px=y_px),
+                doc, page_index, target, act, x_px=x_px, y_px=y_px, dither_type=dither_type),
                 label="cdr_bitmap")
         warnings = _check_view(sess, expected_revision, snapshot_token, doc)
         result = _com(lambda _b: ops.bitmap_action(

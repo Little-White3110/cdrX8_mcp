@@ -7,9 +7,9 @@
 
 > **已在真机验证**：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）+ Python 3.11.9 64 位
 > - 单元测试 **93 项通过**
-> - 端到端联调（真实 CorelDRAW）**427/427 通过**
+> - 端到端联调（真实 CorelDRAW）**431/431 通过**
 > - 能力边界来自对 `vgcoreauto.tlb` 的反解（196 个自动化类 / 1619 个方法）+ 逐项实跑
-> - 方法级覆盖 **57.0%**（主干 20 接口 76.6%），可用 `python scripts/coverage_audit.py` 复现
+> - 方法级覆盖 **57.4%**（主干 20 接口 77.4%），可用 `python scripts/coverage_audit.py` 复现
 > - 完整清单见 [docs/COVERAGE.md](docs/COVERAGE.md)
 
 ---
@@ -76,7 +76,7 @@ python -m cdrx8_mcp              # 启动 MCP 服务器（stdio）
 | `cdr_style` | **对象样式**：列出 / 从对象创建（fill·outline·character·paragraph）/ **基于已有样式派生** / 按名套用 / 改名 / 删除 / **读可读属性·改属性** / 列派生样式 / **样式表 .cdst 导入导出** / **颜色样式与颜色协调** / **覆盖属性（override_props）·继承状态（inherited）·属性取值（get_property）·属性清除** |
 | `cdr_path` | 曲线/子路径级：长度面积 / 偏移轮廓（刀模线）/ **折线采样** / **追加圆·椭圆·矩形·三点弧·贝塞尔** / **节点精简** / **自焊接** / **路径等分** / **加节点·断开·移动子路径** / **点在形状内·曲线求交·取点取切向** / **参数取点·切向量·法向量·速度·交点·按坐标找节点/线段·反转方向·焊接子路径·去重叠** / **曲线合并（AppendCurve）·焊接（WeldWith）·命中判定·曲线副本·曲线结构信息·任意线段集合（segment_range：set_type/add_node/select/remove_all）** |
 | `cdr_node` | **节点/线段级编辑（第五波打通）**：列节点·列线段 / 移动·选中·删除 / 圆角·倒角· scallop·平滑 / 拉伸·旋转·斜切·断开 / 加节点·断线 / 读写贝塞尔控制点 / 按坐标找节点与线段 / **前后邻居（Next·Previous）·节点间距·平均位置·末端节点合并·任意不连续节点集合（arbitrary：move/rotate/skew/stretch/autoreduce/smoothen/set_type/delete/fillet/chamfer/scallop）** |
-| `cdr_bitmap` | 位图：信息 / 转色彩模式（rgb·cmyk·gray·bw）/ **阈值二值化** / **调色板模式 0~9（9=自定义调色板）** / **双色调 0~3（可给 .cpd 预设）** / **取像素颜色** / 图像缓冲信息 / 重采样 / **扩边** / 裁剪 / **内容替换（SetImageData，支持色块/像素绘制）** / **位图特效命令串（ApplyBitmapEffect）** / **链接信息·重新加载·解析链接** |
+| `cdr_bitmap` | 位图：信息 / 转色彩模式（rgb·cmyk·gray·bw）/ **阈值二值化** / **调色板模式 0~9（9=自定义调色板）** / **双色调 0~3（可给 .cpd 预设）** / **取像素颜色** / 图像缓冲信息 / 重采样 / **扩边** / 裁剪 / **内容替换（SetImageData，支持色块/像素绘制）** / **位图特效命令串（ApplyBitmapEffect）** / **链接信息·重新加载·解析链接** / **调色板选项转换（paletted_options：颜色数·抖动·指定调色板）** |
 | `cdr_rect` | **矩形对象（IVGRect）**：读派生值 / 平移 / 四边外扩内缩 / 并 / 交 / 点包含 / 复制；**按矩形造形**（CreateRectangleRect 带四角圆角、CreateEllipseRect 带角度/扇形） |
 | `cdr_color` | **颜色运算**：解析成 HEX/RGB/CMYK/Gray/HLS/Lab、转换、两色混合（纯 Python）；**X8 颜色对象**：`object_info` / `object_name` / `object_compare`（IsSame·IsSimilar·距离）/ `object_blend`（原地混合）/ `object_copy` / `object_string_assign` / `object_convert`（8 种模型原地转换）/ `object_fixed`（USER·TRU·PAN_PROC）/ `object_assign`（分量直写，含套版色）/ **`object_model`（HSB·CMY·BW·YIQ·Fixed·CreateColorEx 工厂）/ `object_from_string`（颜色串造色）** |
 | `cdr_doc` | **文档级**：概况 / 清空选择集 / 清撤销栈 / **登记调色板** / **用曲线生成自定义箭头（可登记全局箭头库）/ 命名箭头（CreateArrowHead2）** / **单位换算** / **取色（点/区域）** / **字体列表** / **调色板列表·取色·固定调色板打开·颜色枚举·专色创建·自定义调色板创建** / **图案画布创建（含区域变换）** / **纹理库列表** / **文档元数据读写·本地化元数据** / **数据字段·对象数据·色彩管理·线型样式·叠印读取** / **文档设置读写** / **应用信息·文档回滚** / **色彩配置文件·文档颜色转换** / **用户偏好 KV** / **命名视图** / **网格设置** / **应用/文档事件队列** / **显示隐藏对象** / **页面版式** / **重复上一操作**  / **COM 单位换算（convert_units）** / **文档设置快照（save_settings·restore_settings·reset_settings，实验性）** / **解析全部位图链接（resolve_links）** / **指派色彩上下文（assign_color_context）** / **样式表设为默认（stylesheet_default）** / **命名箭头变体（arrowhead_ex）** |
@@ -88,10 +88,10 @@ python -m cdrx8_mcp              # 启动 MCP 服务器（stdio）
 
 | 工具 | 作用 |
 |---|---|
-| `cdr_layers` | 图层列表 / 新建 / 激活 / 显隐 / 锁定 / 打印 / **上移·下移** / **读上下相邻图层** / **粘贴剪贴板（可跨文档）** / **图层信息（含 is_guides_layer）** / **图层内按名找对象（FindShape）** / 删除 |
+| `cdr_layers` | 图层列表 / 新建 / 激活 / 显隐 / 锁定 / 打印 / **上移·下移** / **读上下相邻图层** / **粘贴剪贴板（可跨文档）** / **图层信息（含 is_guides_layer）** / **图层内按名找对象（FindShape）** / **高级粘贴（paste_ex）** / 删除 |
 | `cdr_pages` | 页面列表 / 新增（**可定尺寸 AddPagesEx**）/ **插入空白页（可定尺寸 InsertPagesEx）** / 切页 / 删除 / 自定义尺寸 / **纸张预设** / **参考线列表** / **角度参考线** / **吸附点查询** / **解锁全部** / **对象总包围盒** |
 | `cdr_import` | 导入 png / jpg / svg / pdf / ai / eps / dxf 等，**可传 import_options（外链位图/重采样/保留图层/水印检测/ICC）** |
-| `cdr_export` | 导出 **png / jpg / svg / pdf**，位图可指定 DPI，可只导选区，**可传 export_options（抗锯齿/透明/压缩/尺寸/分辨率等）** |
+| `cdr_export` | 导出 **png / jpg / svg / pdf**，位图可指定 DPI，可只导选区，**可传 export_options（抗锯齿/透明/压缩/尺寸/分辨率等）**；**`export_api` 可选 ex（ExportEx）/ document（Document.Export）/ bitmap（Document.ExportBitmap）** |
 
 ### 标准调用顺序
 
@@ -186,7 +186,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ---
 
-## X8 特有问题（125 条，全部实测）
+## X8 特有问题（126 条，全部实测）
 
 这些是 **X8 与 2024+ 的差异**，也是本项目存在的主要理由。
 
@@ -317,6 +317,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 | 123 | **`GetOverprintFillState` 恒为 1** | `Shape.GetOverprintFillState()` 在`OverprintFill` 开/关前后都返回 1（outline 版才随开关 2→4 变化）；`RemoveFromContainer(1)` 报「参考的对象已不再存在」；`Shape.Next/Previous` 是带 3 个参数的 propget，取不到 | 判断填充叠印读布尔属性 `OverprintFill/OverprintOutline`；z 序用页面枚举 |
 | 124 | **`NodeRange.Move` 的第三参是"范围内起始索引"** | `Move(0,10,0,False)` 报「参数 Index 超出范围（1~N）」；传 1 才正常。另外 `SegmentRange.Remove(1)` 把 2 条删成 3 条（行为反直觉），`Layer.CreateBSpline(Curve)` 报类型不匹配 | 已封装 `arbitrary`/`segment_range` 并规避这些参数坑；`SegmentRange.Remove` 不暴露 |
 | 125 | **`CreateShapeRangeFromArray` 是少数吃 Python list 的数组入参** | `doc.CreateShapeRangeFromArray([shape,…])` 直接可用（Count/Exists/Item 都正常），而点集类 `CreateCurveFitToPoints([[...]])` 仍报 TypeError；`ShapeRange.CopyPropertiesFrom` 报「执行方法 coVGShape::CopyPropertiesFrom 时发生意外」 | 批量操作用对象列表建范围；属性复制走 `cdr_modify(fill_from/outline_from)` |
+| 126 | **`ExportBitmap` 不调 `Finish()` 就不生成文件** | `doc.ExportBitmap(...)` 返回 `ICorelExportFilter`，调用本身不报错、也不写盘；必须再调 `handle.Finish()`。`ExportEx` 同理 | 已在 `ops.export` 里统一 `Finish()` + 等待文件出现；`PasteSpecial` 格式串不匹配返回 False，`LogCreateShape` 直接报 com_error |
 
 改代码前请先读 [`src/cdrx8_mcp/constants.py`](src/cdrx8_mcp/constants.py) 里的注释。
 
@@ -366,7 +367,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ```powershell
 python -m pytest -q                # 93 项逻辑测试，任何平台可跑
-python scripts/live_smoke.py       # 427 项端到端，需要 CorelDRAW X8
+python scripts/live_smoke.py       # 431 项端到端，需要 CorelDRAW X8
 python scripts/live_smoke.py --keep   # 保留文档方便肉眼看效果
 python scripts/coverage_audit.py   # 覆盖率审计（复现 README/COVERAGE 里的数字）
 ```

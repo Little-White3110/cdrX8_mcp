@@ -2311,8 +2311,8 @@ def objects_bounds(doc: Any, page_index: int | None = None,
 # --------------------------------------------------------------------------- #
 BITMAP_MODES = {"rgb": 1, "cmyk": 2, "gray": 3, "grayscale": 3, "bw": 4, "blackwhite": 4}
 BITMAP_ACTIONS = ("info", "convert", "resample", "crop", "reset_crop", "bw", "inflate",
-                  "pixel", "image_info", "duotone", "paletted", "replace_image",
-                  "effect", "link_info", "update_link", "resolve_link")
+                  "pixel", "image_info", "duotone", "paletted", "paletted_options",
+                  "replace_image", "effect", "link_info", "update_link", "resolve_link")
 
 
 def _bitmap_of(shape: Any) -> Any:
@@ -2332,8 +2332,9 @@ def bitmap_action(doc: Any, page_index: int | None, target: dict, action: str, *
                   inflate_x: float = 2.0, inflate_y: float = 2.0,
                   x_px: int | None = None, y_px: int | None = None,
                   duotone_type: int | None = None, ink_colors: list | None = None,
-                  preset: str | None = None, palette_type: int = 3,
+                  preset: str | None = None, palette_type: int | None = 3,
                   num_colors: int = 256, palette_index: int | None = None,
+                  dither_type: int | None = None,
                   image_color: Any = "#FFFFFF", image_pixels_w: int = 16,
                   image_pixels_h: int = 16, image_fills: list | None = None,
                   image_pixels: list | None = None, offset_x: int = 0,
@@ -2447,6 +2448,39 @@ def bitmap_action(doc: Any, page_index: int | None, target: dict, action: str, *
                 for idx, spec in enumerate(inks[:ink_count], 1):
                     duo.Inks(idx).Color = _color(doc, spec)
                 bmp.ConvertToDuotone(duo)
+            elif act == "paletted_options":
+                # 实测：Application.CreateStructPaletteOptions() + Bitmap.ConvertToPaletted2(opts)
+                # 可指定 NumColors / DitherType / PaletteType，并可挂已打开的调色板
+                app = _app_of(doc)
+                opts = _s(lambda: app.CreateStructPaletteOptions())
+                if opts is None:
+                    raise CdrComFailure("CreateStructPaletteOptions 返回空")
+                if num_colors:
+                    try:
+                        opts.NumColors = int(num_colors)
+                    except Exception:
+                        pass
+                if dither_type is not None:
+                    try:
+                        opts.DitherType = int(dither_type)
+                    except Exception:
+                        pass
+                if palette_type is not None:
+                    try:
+                        opts.PaletteType = int(palette_type)
+                    except Exception:
+                        pass
+                if palette_index is not None:
+                    pal = _find_palette(doc, int(palette_index))
+                    try:
+                        opts.Palette = pal
+                    except Exception:
+                        pass
+                bmp.ConvertToPaletted2(opts)
+                return {"action": act, "mode": _n(lambda: int(bmp.Mode)),
+                        "num_colors": _n(lambda: int(opts.NumColors)),
+                        "palette_type": _n(lambda: int(opts.PaletteType)),
+                        "dither_type": _n(lambda: int(opts.DitherType))}
             elif act == "paletted":
                 pt = int(palette_type)
                 palette = None
@@ -3615,6 +3649,20 @@ def layer_action(doc: Any, action: str, name: str | None = None,
                 "printable": bool(_s(lambda: bool(layer.Printable), True)),
                 "master": bool(_s(lambda: bool(layer.Master), False)),
                 "is_guides_layer": bool(_s(lambda: bool(layer.IsGuidesLayer), False))}
+    if act == "paste_ex":
+        # 实测：Application.CreateStructPasteOptions() → Layer.PasteEx(opts) 返回 ShapeRange
+        app = _app_of(doc)
+        opts = _s(lambda: app.CreateStructPasteOptions())
+        if opts is None:
+            raise CdrComFailure("CreateStructPasteOptions 返回空")
+        rng = _s(lambda: layer.PasteEx(opts))
+        if rng is None:
+            raise CdrComFailure("Layer.PasteEx 返回空（剪贴板可能为空）")
+        count = _n(lambda: int(rng.Count), 0) or 0
+        return {"pasted": count,
+                "names": [_s(lambda i=i: str(rng.Item(i).Name))
+                          for i in range(1, min(count, 20) + 1)],
+                "layer": _s(lambda: str(layer.Name))}
     if act == "find":
         if not shape_name:
             raise CdrBadArgument("action=find 需要 shape_name（要查找的对象名）")
@@ -6874,8 +6922,39 @@ def import_file(doc: Any, path: str, page_index: int | None = None,
 # 导出
 # --------------------------------------------------------------------------- #
 def export(doc: Any, fmt: str, path: str, *, dpi: int | None = None,
-           selection: bool = False, options: dict | None = None) -> dict:
+           selection: bool = False, options: dict | None = None,
+           api: str = "ex") -> dict:
+    """导出。`api` 可选 ex（ExportEx，默认）/ document（Document.Export）/
+    bitmap（Document.ExportBitmap，只对位图格式有意义）。"""
     fmt = (fmt or "").lower().strip().lstrip(".")
+    api = (api or "ex").lower()
+    if api in {"document", "bitmap"}:
+        # 实测：Document.Export(FileName, Filter, Range, Options, PaletteOptions) 与
+        # Document.ExportBitmap(16 参) 都能落盘；bitmap 版返回 ICorelExportFilter
+        if fmt == "pdf":
+            doc.PublishToPDF(path)
+            return _export_result(fmt, path, dpi=None)
+        if fmt not in EXPORT_FILTERS:
+            raise CdrBadArgument(f"不支持的格式 {fmt}；可用：png / jpg / svg / pdf")
+        rng = EXPORT_RANGE_SELECTION if selection else EXPORT_RANGE_CURRENT_PAGE
+        app = _app_of(doc)
+        if api == "document":
+            doc.Export(path, EXPORT_FILTERS[fmt], rng, None, None)
+        else:
+            # ExportBitmap 返回 ICorelExportFilter，必须调 Finish() 才会真正写盘
+            res = int(dpi or 96)
+            handle = doc.ExportBitmap(path, EXPORT_FILTERS[fmt], rng, 0, res, res,
+                                      96, 96, 0, False, False, False, False, 0,
+                                      None, None)
+            if handle is not None:
+                handle.Finish()
+        for _ in range(40):
+            if os.path.exists(path) and os.path.getsize(path) > 0:
+                break
+            time.sleep(0.05)
+        result = _export_result(fmt, path, dpi=dpi)
+        result["export_api"] = api
+        return result
     if fmt == "pdf":
         doc.PublishToPDF(path)
         return _export_result(fmt, path, dpi=None)

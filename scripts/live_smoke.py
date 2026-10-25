@@ -3403,6 +3403,48 @@ def main() -> int:
                       f"type={rbm.get('type_id')}")
         no_error("关闭对象列表测试文档", server.cdr_close(r42_id))
 
+    # ---------------- 15aw. 第四十三波：调色板选项 / PasteEx / 两种导出 API ----------------
+    print("\n[15aw] 第四十三波：CreateStructPaletteOptions、PasteEx、Document.Export/ExportBitmap")
+    e43_doc = server.cdr_open(preset="A4")
+    if "document_id" in e43_doc:
+        e43_id = e43_doc["document_id"]
+        e43r = server.cdr_create(e43_id, [
+            {"type": "bitmap", "x": 20, "y": 20, "width": 40, "height": 40,
+             "color": "#CC8844", "pixels_w": 32, "pixels_h": 32},
+            {"type": "rectangle", "x": 80, "y": 20, "width": 30, "height": 20,
+             "fill": "#3366CC"},
+        ])
+        if no_error("cdr_create(调色板/导出测试)", e43r):
+            bm43 = e43r["created"][0]["name"]
+            rect43 = e43r["created"][1]["name"]
+            po = server.cdr_bitmap(e43_id, {"name": bm43},
+                                   action="paletted_options", num_colors=16,
+                                   dither_type=1)
+            if no_error("cdr_bitmap(paletted_options)", po):
+                check("调色板选项可转索引色（ConvertToPaletted2）",
+                      po.get("mode") == 3 and po.get("num_colors") == 16,
+                      f"mode={po.get('mode')} colors={po.get('num_colors')}")
+            server.cdr_select(e43_id, name=rect43)
+            pex = server.cdr_layers(e43_id, action="paste_ex")
+            if no_error("cdr_layers(paste_ex)", pex):
+                check("可高级粘贴（CreateStructPasteOptions + PasteEx）",
+                      (pex.get("pasted") or 0) >= 1,
+                      f"pasted={pex.get('pasted')}")
+            p_doc = os.path.join(os.getcwd(), "tmp", "live_smoke43_doc.png")
+            ex_doc = server.cdr_export(e43_id, p_doc, "png", export_api="document")
+            if no_error("cdr_export(api=document)", ex_doc):
+                check("Document.Export 可落盘",
+                      (ex_doc.get("bytes") or 0) > 0 and os.path.exists(p_doc),
+                      f"bytes={ex_doc.get('bytes')} api={ex_doc.get('export_api')}")
+            p_bmp = os.path.join(os.getcwd(), "tmp", "live_smoke43_bmp.png")
+            ex_bmp = server.cdr_export(e43_id, p_bmp, "png", dpi=96,
+                                       export_api="bitmap")
+            if no_error("cdr_export(api=bitmap)", ex_bmp):
+                check("Document.ExportBitmap 可落盘（需 Finish）",
+                      (ex_bmp.get("bytes") or 0) > 0 and os.path.exists(p_bmp),
+                      f"bytes={ex_bmp.get('bytes')} api={ex_bmp.get('export_api')}")
+        no_error("关闭调色板/导出测试文档", server.cdr_close(e43_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,
