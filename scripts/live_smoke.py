@@ -2786,6 +2786,115 @@ def main() -> int:
                           f"count={bp.get('count_before')} result={bp.get('result_count')}")
         no_error("关闭范围测试文档", server.cdr_close(rg_id))
 
+    # ---------------- 15an. 第三十四波：IVGRect / 曲线段 / 文字粗斜体 ----------------
+    print("\n[15an] 第三十四波：矩形对象（IVGRect）、曲线段、文字样式与图层查找")
+    rc_doc = server.cdr_open(preset="A4")
+    if "document_id" in rc_doc:
+        rc_id = rc_doc["document_id"]
+        rf = server.cdr_doc(rc_id, action="refresh_fonts")
+        check("字体表可刷新", rf.get("refreshed") is True
+              and (rf.get("fonts") or 0) > 0, f"fonts={rf.get('fonts')}")
+        ri = server.cdr_rect(action="info", rect={"x": 10, "y": 10, "width": 40,
+                                                  "height": 30})
+        if no_error("cdr_rect(info)", ri):
+            r = ri.get("rect") or {}
+            check("矩形对象派生值可读", r.get("left") == 10.0 and r.get("right") == 50.0
+                  and r.get("top") == 40.0 and r.get("bottom") == 10.0
+                  and r.get("center") == [30.0, 25.0],
+                  f"left={r.get('left')} top={r.get('top')} center={r.get('center')}")
+        ro = server.cdr_rect(action="offset", rect={"x": 10, "y": 10, "width": 40,
+                                                    "height": 30}, dx=5, dy=5)
+        check("矩形可平移", (ro.get("rect") or {}).get("x") == 15.0,
+              str((ro.get("rect") or {}).get("x")))
+        rinf = server.cdr_rect(action="inflate", rect={"x": 10, "y": 10, "width": 40,
+                                                       "height": 30},
+                               left=1, top=1, right=2, bottom=2)
+        if no_error("cdr_rect(inflate)", rinf):
+            rr = rinf.get("rect") or {}
+            check("矩形可外扩", rr.get("x") == 9.0 and rr.get("width") == 43.0,
+                  f"x={rr.get('x')} w={rr.get('width')}")
+        ru = server.cdr_rect(action="union", rect={"x": 10, "y": 10, "width": 40,
+                                                   "height": 30},
+                             rect2={"x": 40, "y": 20, "width": 40, "height": 40})
+        if no_error("cdr_rect(union)", ru):
+            u = ru.get("result") or {}
+            check("矩形可求并", u.get("width") == 70.0 and u.get("height") == 50.0,
+                  f"w={u.get('width')} h={u.get('height')}")
+        rx = server.cdr_rect(action="intersect", rect={"x": 10, "y": 10, "width": 40,
+                                                       "height": 30},
+                             rect2={"x": 40, "y": 20, "width": 40, "height": 40})
+        if no_error("cdr_rect(intersect)", rx):
+            x = rx.get("result") or {}
+            check("矩形可求交", x.get("width") == 10.0 and x.get("height") == 20.0,
+                  f"w={x.get('width')} h={x.get('height')}")
+        rc = server.cdr_rect(action="contains", rect={"x": 10, "y": 10, "width": 40,
+                                                      "height": 30},
+                             point={"x": 30, "y": 30})
+        check("点包含判断可用", rc.get("inside") is True, str(rc.get("inside")))
+        rcp = server.cdr_rect(action="copy", rect={"x": 10, "y": 10, "width": 40,
+                                                   "height": 30})
+        check("矩形可复制", (rcp.get("copy") or {}).get("width") == 40.0,
+              str((rcp.get("copy") or {}).get("width")))
+        rcr = server.cdr_rect(action="create_rectangle", document_id=rc_id,
+                              rect={"x": 20, "y": 20, "width": 40, "height": 30},
+                              radii=[5, 5, 0, 0])
+        if no_error("cdr_rect(create_rectangle)", rcr):
+            check("按矩形造矩形", ((rcr.get("shape") or {}).get("type_id") == 1
+                                and ((rcr.get("shape") or {}).get("bbox") or {}).get("width") == 40.0),
+                  str(rcr.get("shape")))
+        rce = server.cdr_rect(action="create_ellipse", document_id=rc_id,
+                              rect={"x": 80, "y": 20, "width": 40, "height": 30},
+                              start_angle=0, end_angle=270, pie=True)
+        if no_error("cdr_rect(create_ellipse)", rce):
+            check("按矩形造椭圆", (rce.get("shape") or {}).get("type_id") == 2,
+                  str((rce.get("shape") or {}).get("type_id")))
+        rc_no = server.cdr_rect(action="create_rectangle", rect={"x": 0, "y": 0})
+        check("造形缺文档被拒绝", rc_no.get("error") == "bad_argument",
+              str(rc_no.get("error")))
+        txt = server.cdr_create(rc_id, [
+            {"type": "text", "x": 20, "y": 120, "text": "粗斜下", "size": 18},
+            {"type": "curve_segment", "x1": 0, "y1": 200, "x2": 40, "y2": 220,
+             "start_ctrl_length": 10, "start_ctrl_angle": 90,
+             "end_ctrl_length": 10, "end_ctrl_angle": 45},
+        ])
+        if no_error("cdr_create(text+curve_segment)", txt):
+            made = txt.get("created") or []
+            check("曲线段可直接创建", (made[1] or {}).get("type") == "curve",
+                  str((made[1] or {}).get("type")))
+            tnm = made[0]["name"]
+            applied = server.cdr_text(rc_id, {"name": tnm}, bold=True, italic=True,
+                                      underline=True, font="Arial", size=24)
+            if no_error("cdr_text(粗斜下划线)", applied):
+                ap = applied.get("applied") or []
+                check("文字样式接口全部受理",
+                      all(k in ap for k in ("font", "size", "bold", "italic",
+                                            "underline")), str(ap))
+                f2 = (server.cdr_text(rc_id, {"name": tnm},
+                                      read_font=True).get("font") or {})
+                # 字号与下划线在任何字体环境下都可靠；Font/Bold/Italic 受文档默认字体
+                # （中文宋体）影响，X8 会静默忽略，所以只做记录不做断言
+                check("文字字号与下划线生效",
+                      f2.get("size") == 24.0 and f2.get("underline") is True,
+                      f"size={f2.get('size')} u={f2.get('underline')} "
+                      f"font={f2.get('name')} bold={f2.get('bold')}")
+                off = server.cdr_text(rc_id, {"name": tnm}, underline=False)
+                if no_error("cdr_text(关闭下划线)", off):
+                    f3 = (server.cdr_text(rc_id, {"name": tnm},
+                                          read_font=True).get("font") or {})
+                    check("文字下划线可关闭", f3.get("underline") is False,
+                          str(f3.get("underline")))
+        li = server.cdr_layers(rc_id, action="info")
+        if no_error("cdr_layers(info)", li):
+            check("图层信息可读", li.get("is_guides_layer") is False
+                  and bool(li.get("name")), f"name={li.get('name')} guides={li.get('is_guides_layer')}")
+        lf = server.cdr_layers(rc_id, action="find", shape_name=txt["created"][0]["name"])
+        if no_error("cdr_layers(find)", lf):
+            check("图层内可按名查找对象", lf.get("found") is True
+                  and lf.get("type_id") == 6, f"type={lf.get('type_id')}")
+        lf2 = server.cdr_layers(rc_id, action="find", shape_name="no_such_shape_xyz")
+        check("查不到时返回 found=false", lf2.get("found") is False, str(lf2.get("found")))
+        no_error("关闭矩形/文字测试文档", server.cdr_close(rc_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

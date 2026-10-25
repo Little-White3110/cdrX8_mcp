@@ -90,6 +90,86 @@ def _round(value, digits: int = 3):
         return None
 
 
+_FONT_TABLE = {"refreshed": False}
+
+
+def ensure_font_table(app: Any) -> bool:
+    """保证 Corel 的字体表是新的（每个进程只刷一次）。
+
+    实测坑：长时间批量建文本后，`CreateArtisticText` 传 "Arial" 会**静默退回默认字体**
+    （中文机器上是宋体）并且丢掉 Bold/Italic；调一次 `Application.ForceUpdateFontTable()`
+    之后同一个调用立刻恢复正常。所以建文本前先兜底刷一次。
+    """
+    if _FONT_TABLE["refreshed"]:
+        return True
+    ok = False
+    try:
+        app.ForceUpdateFontTable()
+        ok = True
+    except Exception:
+        ok = False
+    _FONT_TABLE["refreshed"] = True
+    return ok
+
+
+def restate_text_format(shape: Any, spec: dict) -> dict:
+    """建完文本后再用 Story 属性重申一遍字体/字号/粗斜下。
+
+    实测坑：`CreateArtisticText` 的 Font/Bold/Italic 形参在长时间运行后会**静默失效**
+    （字体回退成默认宋体、Bold/Italic 变 False，但 Underline 还能生效）。
+    创建立即通过 `Text.Story` 复写这几个属性则稳定得多，所以这里做一次兜底。
+    """
+    story = _s(lambda: shape.Text.Story)
+    if story is None:
+        return {}
+    done = {}
+    if spec.get("font"):
+        try:
+            story.Font = str(spec["font"])
+            done["font"] = str(_s(lambda: str(story.Font)))
+        except Exception:
+            pass
+    if spec.get("size"):
+        try:
+            story.Size = float(spec["size"])
+            done["size"] = _round(_s(lambda: float(story.Size)))
+        except Exception:
+            pass
+    for key, prop in (("bold", "Bold"), ("italic", "Italic")):
+        if key in spec and spec[key] is not None:
+            try:
+                setattr(story, prop, _tristate(spec[key]))
+                done[key] = bool(_s(lambda prop=prop: bool(getattr(story, prop)), False))
+            except Exception:
+                pass
+    if "underline" in spec and spec["underline"] is not None:
+        try:
+            story.Underline = _underline(spec["underline"])
+            done["underline"] = bool(_s(lambda: bool(story.Underline), False))
+        except Exception:
+            pass
+    return done
+
+
+def _underline(value: Any) -> int:
+    """下划线形参是 `cdrTextUnderlineStyle` 之类的枚举，不是 cdrTriState。
+
+    实测：0 = 无，1~5 = 有（不同样式），-1 也等于“无”。所以只能用 1/0。
+    """
+    return 1 if value else 0
+
+
+def _tristate(value: Any) -> int:
+    """X8 的布尔型形参用 `cdrTriState`：`cdrTrue = -1`、`cdrFalse = 0`、`cdrUndefined = -2`。
+
+    实测踩坑：`Text.Story.Bold = True` 会把粗体**关掉**（Python 的 1 不在枚举里），
+    必须传 **-1**；创建文本时的 Bold/Italic/Underline 形参同理。
+    """
+    if value is None:
+        return 0
+    return -1 if bool(value) else 0
+
+
 def _app_of(doc: Any) -> Any:
     """取 Application 工厂对象。
 
@@ -356,7 +436,7 @@ def view_ops(doc: Any, action: str, *, x: float | None = None, y: float | None =
 
 DOC_ACTIONS = ("info", "clear_selection", "clear_undo", "palette", "arrowhead",
                "units", "sample_color", "show_all", "layout", "repeat",
-               "fonts", "palettes", "palette_color",
+               "fonts", "refresh_fonts", "palettes", "palette_color",
                "palette_open_fixed", "palette_colors", "spot_color",
                "pattern_canvas", "textures", "metadata", "set_metadata",
                "palette_create", "data_fields", "add_data_field", "object_data",
@@ -477,6 +557,12 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
         doc.Repeat()
         return {"action": act, "done": True,
                 "shapes": total_shapes(doc)}
+    if act == "refresh_fonts":
+        app = _app_of(doc)
+        _FONT_TABLE["refreshed"] = False
+        ok = ensure_font_table(app)
+        return {"action": act, "refreshed": ok,
+                "fonts": _n(lambda: int(app.FontList.Count), 0)}
     if act == "fonts":
         app = _app_of(doc)
         total = _n(lambda: int(app.FontList.Count), 0)
@@ -1897,6 +1983,127 @@ def outline_ops(doc: Any, page_index: int | None, target: dict, action: str, *,
         return {"action": act, "applied": applied, **_outline_info(shape)}
 
 
+# --------------------------------------------------------------------------- #
+# 矩形对象（IVGRect）与矩形造形
+# --------------------------------------------------------------------------- #
+RECT_ACTIONS = ("info", "offset", "inflate", "union", "intersect", "contains",
+                "copy", "create_rectangle", "create_ellipse")
+RECT_READ_ACTIONS = ("info", "offset", "inflate", "union", "intersect", "contains",
+                     "copy")
+
+
+def _rect_from_spec(app: Any, spec: dict | None) -> Any:
+    """用 `Application.CreateRect()` + `SetRect(x,y,w,h)` 造一个 IVGRect。
+
+    实测：IVGRect 没有 Left/Top/Right/Bottom 的 setter（只有 getter），
+    尺寸写入必须走小写 `x`/`y` + `Width`/`Height`，或 `SetRect`。
+    """
+    spec = spec or {}
+    r = app.CreateRect()
+    if r is None:
+        raise CdrComFailure("Application.CreateRect 返回空")
+    r.SetRect(float(spec.get("x", 0.0)), float(spec.get("y", 0.0)),
+              float(spec.get("width", spec.get("w", 10.0))),
+              float(spec.get("height", spec.get("h", 10.0))))
+    return r
+
+
+def _rect_dict(r: Any) -> dict:
+    if r is None:
+        raise CdrComFailure("矩形对象为空")
+    return {
+        "x": _round(_s(lambda: float(r.x))),
+        "y": _round(_s(lambda: float(r.y))),
+        "width": _round(_s(lambda: float(r.Width))),
+        "height": _round(_s(lambda: float(r.Height))),
+        "left": _round(_s(lambda: float(r.Left))),
+        "right": _round(_s(lambda: float(r.Right))),
+        "top": _round(_s(lambda: float(r.Top))),
+        "bottom": _round(_s(lambda: float(r.Bottom))),
+        "center": [_round(_s(lambda: float(r.CenterX))),
+                   _round(_s(lambda: float(r.CenterY)))],
+        "empty": bool(_s(lambda: bool(r.IsEmpty), False)),
+    }
+
+
+def rect_ops(doc: Any, action: str, *, rect: dict | None = None,
+             rect2: dict | None = None, dx: float = 0.0, dy: float = 0.0,
+             left: float = 0.0, top: float = 0.0, right: float = 0.0,
+             bottom: float = 0.0, point: dict | None = None,
+             kind: str = "rectangle", radii: list | None = None,
+             start_angle: float = 0.0, end_angle: float = 360.0,
+             pie: bool = False, layer: str | None = None,
+             page_index: int | None = None) -> dict:
+    """IVGRect 矩形数学 + 用矩形造形（实测全通）。
+
+    * `SetRect(x,y,w,h)` / `x`·`y`·`Width`·`Height`（可写）/ `Left`·`Right`·`Top`·`Bottom`·
+      `CenterX`·`CenterY`（只读）/ `IsEmpty` / `GetCopy` / `CopyAssign` / `Offset` /
+      `Inflate(l,t,r,b)` / `IsPointInside(x,y)` / `Union` / `Intersect` / `Clear`
+    * `Layer.CreateRectangleRect(rect, rUL, rUR, rLR, rLL)` 与
+      `Layer.CreateEllipseRect(rect, start, end, pie)` 可直接按矩形造形
+    """
+    act = (action or "").lower()
+    if act not in RECT_ACTIONS:
+        raise CdrBadArgument(f"未知 action {action!r}；可用：{', '.join(RECT_ACTIONS)}")
+
+    if act in RECT_READ_ACTIONS:
+        # 纯 Application 侧，不依赖文档
+        app = _app_of(doc)
+        r = _rect_from_spec(app, rect)
+        if act == "info":
+            result = {"action": act, "rect": _rect_dict(r)}
+            result["is_point_inside"] = None
+            return result
+        if act == "offset":
+            r.Offset(float(dx), float(dy))
+            return {"action": act, "dx": float(dx), "dy": float(dy),
+                    "rect": _rect_dict(r)}
+        if act == "inflate":
+            changed = bool(_s(lambda: bool(r.Inflate(float(left), float(top),
+                                                     float(right), float(bottom))), False))
+            return {"action": act, "deltas": [float(left), float(top), float(right),
+                                              float(bottom)],
+                    "changed": changed, "rect": _rect_dict(r)}
+        if act in ("union", "intersect"):
+            other = _rect_from_spec(app, rect2)
+            got = r.Union(other) if act == "union" else r.Intersect(other)
+            return {"action": act, "a": _rect_dict(r), "b": _rect_dict(other),
+                    "result": _rect_dict(got)}
+        if act == "contains":
+            pt = point or {}
+            inside = bool(_s(lambda: bool(r.IsPointInside(float(pt.get("x", 0)),
+                                                          float(pt.get("y", 0)))), False))
+            return {"action": act, "point": [float(pt.get("x", 0)),
+                                             float(pt.get("y", 0))],
+                    "inside": inside, "rect": _rect_dict(r)}
+        # copy
+        clone = _s(lambda: r.GetCopy())
+        return {"action": act, "source": _rect_dict(r), "copy": _rect_dict(clone)}
+
+    # create_rectangle / create_ellipse —— 需要文档与图层
+    with mm_units(doc):
+        page = _page(doc, page_index)
+        if layer:
+            target_layer = _find_layer(page, layer, None)
+        else:
+            target_layer = _active_layer(page)
+        r = _rect_from_spec(_app_of(doc), rect)
+        if act == "create_rectangle":
+            rs = list(radii or [0, 0, 0, 0]) + [0, 0, 0, 0]
+            shape = target_layer.CreateRectangleRect(r, float(rs[0]), float(rs[1]),
+                                                     float(rs[2]), float(rs[3]))
+        else:
+            shape = target_layer.CreateEllipseRect(r, float(start_angle),
+                                                   float(end_angle), bool(pie))
+        if shape is None:
+            raise CdrComFailure(f"{act} 没有返回对象")
+        name = _ensure_name(shape)
+        return {"action": act, "rect": _rect_dict(r),
+                "kind": ("rectangle" if act == "create_rectangle" else "ellipse"),
+                "shape": {"name": name, "type_id": _n(lambda: int(shape.Type)),
+                          "bbox": _bbox(shape)}}
+
+
 def objects_bounds(doc: Any, page_index: int | None = None,
                    selected_only: bool = False) -> dict:
     """本页所有对象（或当前选中对象）的总包围盒。
@@ -2986,7 +3193,9 @@ def layer_action(doc: Any, action: str, name: str | None = None,
                  page_index: int | None = None, index: int | None = None,
                  visible: bool | None = None, editable: bool | None = None,
                  printable: bool | None = None, move: str | None = None,
-                 move_below: str | None = None) -> dict:
+                 move_below: str | None = None, shape_name: str | None = None,
+                 shape_type: int | None = None, static_id: int | None = None,
+                 recursive: bool = True) -> dict:
     page = _page(doc, page_index)
     act = (action or "").lower()
 
@@ -2997,6 +3206,29 @@ def layer_action(doc: Any, action: str, name: str | None = None,
         return {"created": _s(lambda: str(layer.Name), name), "layers": list_layers(doc, page_index)}
 
     layer = _find_layer(page, name=name, index=index)
+
+    if act == "info":
+        # 实测 IsGuidesLayer 是**属性**（不是方法），FindShape 需要 Name/Type/StaticID/Recursive
+        return {"name": _s(lambda: str(layer.Name)),
+                "index": _n(lambda: int(layer.Index)),
+                "visible": bool(_s(lambda: bool(layer.Visible), True)),
+                "editable": bool(_s(lambda: bool(layer.Editable), True)),
+                "printable": bool(_s(lambda: bool(layer.Printable), True)),
+                "master": bool(_s(lambda: bool(layer.Master), False)),
+                "is_guides_layer": bool(_s(lambda: bool(layer.IsGuidesLayer), False))}
+    if act == "find":
+        if not shape_name:
+            raise CdrBadArgument("action=find 需要 shape_name（要查找的对象名）")
+        found = _s(lambda: layer.FindShape(str(shape_name),
+                                           int(shape_type or 0),
+                                           int(static_id or 0),
+                                           bool(recursive)))
+        if found is None:
+            return {"found": False, "shape_name": str(shape_name)}
+        return {"found": True, "shape_name": str(shape_name),
+                "name": _s(lambda: str(found.Name)),
+                "type_id": _n(lambda: int(found.Type)),
+                "bbox": _bbox(found)}
 
     if act == "activate":
         layer.Activate()
@@ -3239,7 +3471,8 @@ def selection_range(doc: Any) -> Any:
 # --------------------------------------------------------------------------- #
 CREATABLE = (
     "rectangle", "ellipse", "polygon", "spiral", "grid", "line", "bezier",
-    "polyline", "bitmap", "text", "paragraph_text", "guide", "ole_file",
+    "polyline", "bitmap", "text", "paragraph_text", "curve_segment", "guide",
+    "ole_file",
 )
 
 
@@ -3356,21 +3589,36 @@ def _create_one(doc: Any, layer: Any, item: dict) -> Any:
                            _color(doc, area.get("color", "#000000")))
         shape = layer.CreateBitmap(x, y, x + w, y + h, image, None)
     elif kind in {"text", "artistic_text"}:
+        if g("font"):
+            ensure_font_table(_app_of(doc))
         shape = layer.CreateArtisticText(
             float(g("x", 0)), float(g("y", 0)), str(g("text", "")),
             int(g("language_id", 0)), int(g("charset", 0)),
             str(g("font", "")), float(g("size", 0)),
-            bool(g("bold", False)), bool(g("italic", False)), bool(g("underline", False)),
+            _tristate(g("bold", False)), _tristate(g("italic", False)),
+            _underline(g("underline", False)),
             int(_align(g("align", "left"))),
         )
+        restate_text_format(shape, item)
     elif kind in {"paragraph_text", "paragraph"}:
+        if g("font"):
+            ensure_font_table(_app_of(doc))
         shape = layer.CreateParagraphText(
             float(g("x", 0)), float(g("y", 0)), float(g("x2", 60)), float(g("y2", 20)),
             str(g("text", "")),
             int(g("language_id", 0)), int(g("charset", 0)),
             str(g("font", "")), float(g("size", 0)),
-            bool(g("bold", False)), bool(g("italic", False)), bool(g("underline", False)),
+            _tristate(g("bold", False)), _tristate(g("italic", False)),
+            _underline(g("underline", False)),
             int(_align(g("align", "left"))),
+        )
+        restate_text_format(shape, item)
+    elif kind == "curve_segment":
+        # 实测：Layer.CreateCurveSegment 直接给端点 + 两端控制柄长度/角度就能造曲线
+        shape = layer.CreateCurveSegment(
+            float(g("x1", 0)), float(g("y1", 0)), float(g("x2", 20)), float(g("y2", 10)),
+            float(g("start_ctrl_length", 5)), float(g("start_ctrl_angle", 90)),
+            float(g("end_ctrl_length", 5)), float(g("end_ctrl_angle", 45)),
         )
     elif kind == "guide":
         layer.CreateGuide(float(g("x1", 0)), float(g("y1", 0)),
@@ -3447,11 +3695,14 @@ def _apply_style(doc: Any, shape: Any, spec: dict) -> None:
             pass
 
     if int(_s(lambda: int(shape.Type), -1)) == TEXT_TYPE:
+        tri = {"bold", "italic", "underline"}
         for key, prop in (("font", "Font"), ("size", "Size"),
                           ("bold", "Bold"), ("italic", "Italic"), ("underline", "Underline")):
             if spec.get(key) not in (None, ""):
                 try:
-                    setattr(shape.Text.Story, prop, spec[key])
+                    setattr(shape.Text.Story, prop,
+                            _underline(spec[key]) if key == "underline"
+                            else (_tristate(spec[key]) if key in tri else spec[key]))
                 except Exception:
                     pass
 
@@ -4301,6 +4552,7 @@ def _apply_changes(doc: Any, shape: Any, changes: dict) -> dict:
         except Exception as exc:  # noqa: BLE001
             warnings.append(f"文本适应文本框失败：{exc}")
 
+    tri = {"bold", "italic", "underline"}
     for key, prop in (("font", "Font"), ("size", "Size"), ("bold", "Bold"),
                       ("italic", "Italic"), ("underline", "Underline"),
                       ("alignment", None)):
@@ -4309,7 +4561,9 @@ def _apply_changes(doc: Any, shape: Any, changes: dict) -> dict:
                 if key == "alignment":
                     _set_text_align(shape, changes[key])
                 else:
-                    setattr(shape.Text.Story, prop, changes[key])
+                    setattr(shape.Text.Story, prop,
+                            _underline(changes[key]) if key == "underline"
+                            else (_tristate(changes[key]) if key in tri else changes[key]))
                 applied.append(key)
             except Exception as exc:  # noqa: BLE001
                 warnings.append(f"{key} 设置失败：{exc}")
@@ -5390,12 +5644,15 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
             if text is not None:
                 story.Text = str(text)
                 applied.append("text")
+            tri = {"bold", "italic", "underline"}
             for key, prop, val in (("font", "Font", font), ("size", "Size", size),
                                    ("bold", "Bold", bold), ("italic", "Italic", italic),
                                    ("underline", "Underline", underline)):
                 if val is not None:
                     try:
-                        setattr(story, prop, val)
+                        setattr(story, prop,
+                                _underline(val) if key == "underline"
+                                else (_tristate(val) if key in tri else val))
                         applied.append(key)
                     except Exception as exc:  # noqa: BLE001
                         warnings.append(f"{key} 设置失败：{exc}")

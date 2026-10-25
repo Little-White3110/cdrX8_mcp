@@ -1,6 +1,6 @@
 """CorelDRAW X8 的 MCP 服务器（stdio / 可选 HTTP）。
 
-工具面是 29 个**语义化**操作，而不是把 6800 多个 COM 方法直接暴露给模型——
+工具面是 30 个**语义化**操作，而不是把 6800 多个 COM 方法直接暴露给模型——
 模型在几千个方法里会迷路，安全审计也无从下手。
 每个工具背后能做的事，都是先反解 vgcoreauto.tlb、再在 X8 真机上实测通过才写进来的。
 """
@@ -21,7 +21,8 @@ from .constants import (
     SHAPE_TYPES,
     TEXT_TYPE,
 )
-from .errors import CdrComFailure, CdrError, CdrLaunchForbidden, CdrStaleView
+from .errors import (CdrBadArgument, CdrComFailure, CdrError, CdrLaunchForbidden,
+                     CdrStaleView)
 from .safety import env_flag, env_float, resolve_read_path, resolve_write_path
 from .session import registry, snapshot_token
 
@@ -145,7 +146,7 @@ def cdr_status() -> dict:
             info.update({"running": False, "probe_error": str(exc)})
         except Exception as exc:  # noqa: BLE001
             info.update({"running": False, "probe_error": f"{type(exc).__name__}: {exc}"})
-        info["tools"] = 29
+        info["tools"] = 30
         return info
 
     return _guard(_run)
@@ -672,13 +673,16 @@ def cdr_layers(document_id: str, action: str = "list",
                editable: bool | None = None, printable: bool | None = None,
                move_above: str | None = None,
                move_below: str | None = None,
+               shape_name: str | None = None, shape_type: int | None = None,
+               static_id: int | None = None, recursive: bool = True,
                expected_revision: int | None = None,
                snapshot_token: str | None = None) -> dict:
     """图层管理。
 
     action: list / create（给 name）/ activate / set（visible/editable/printable）/
             move（move_above=目标图层名）/ move_below（move_below=目标图层名）/
-            above / below（读相邻图层）/ paste（把系统剪贴板内容粘到该图层）/ delete
+            above / below（读相邻图层）/ paste（把系统剪贴板内容粘到该图层）/ delete /
+            **info**（含 is_guides_layer）/ **find**（shape_name=对象名，走 Layer.FindShape）
     layer_index 或 name 用来定位图层；都不给则作用于活动图层。
     """
     def _run():
@@ -691,6 +695,8 @@ def cdr_layers(document_id: str, action: str = "list",
             "above", "below"} else []
         result = _com(lambda _b: ops.layer_action(
             doc, act, name=name, page_index=page_index, index=layer_index,
+            shape_name=shape_name, shape_type=shape_type, static_id=static_id,
+            recursive=recursive,
             visible=visible, editable=editable, printable=printable, move=move_above,
             move_below=move_below,
         ), label="cdr_layers")
@@ -1173,6 +1179,7 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
         if action == "info":
             return _com(lambda _b: ops.doc_ops(doc, "info", **kwargs), label="cdr_doc")
         if action in {"clear_selection", "units", "sample_color", "fonts",
+                      "refresh_fonts",
                       "palettes", "palette_color", "palette_open_fixed",
                       "palette_colors", "spot_color", "pattern_canvas",
                       "textures", "metadata", "palette_create", "data_fields",
@@ -1219,6 +1226,55 @@ def cdr_view(document_id: str, action: str = "refresh",
                                            x2=x2, y2=y2, radius=radius,
                                            color=color, width=width),
                     label="cdr_view")
+
+    return _guard(_run)
+
+
+@mcp.tool()
+def cdr_rect(action: str = "info", rect: dict | None = None,
+             rect2: dict | None = None, dx: float = 0.0, dy: float = 0.0,
+             left: float = 0.0, top: float = 0.0, right: float = 0.0,
+             bottom: float = 0.0, point: dict | None = None,
+             kind: str = "rectangle", radii: list | None = None,
+             start_angle: float = 0.0, end_angle: float = 360.0,
+             pie: bool = False, document_id: str | None = None,
+             layer: str | None = None, page_index: int | None = None,
+             expected_revision: int | None = None,
+             snapshot_token: str | None = None) -> dict:
+    """矩形对象（IVGRect）数学与用矩形造形。
+
+    action:
+      info            读矩形派生值（x/y/w/h、left/right/top/bottom、中心、是否为空）
+      offset（dx,dy）  平移
+      inflate（left,top,right,bottom）  四边外扩/内缩（负数内缩）
+      union / intersect（rect2）        两个矩形的并/交
+      contains（point={x,y}）           点是否在矩形内
+      copy            取副本
+      create_rectangle（document_id,rect,radii=[ul,ur,lr,ll]）
+                      用 Layer.CreateRectangleRect 按矩形造矩形（可带四角圆角）
+      create_ellipse（document_id,rect,start_angle,end_angle,pie）
+                      用 Layer.CreateEllipseRect 按矩形造椭圆/圆弧/扇形
+
+    rect 写法：{"x":0,"y":0,"width":40,"height":30}（毫米，页面左下角原点）。
+    info/offset/inflate/union/intersect/contains/copy 只用 Application，不需要 document_id。
+    """
+    def _run():
+        needs_doc = action in ("create_rectangle", "create_ellipse")
+        if not needs_doc:
+            return _com(lambda _b: ops.rect_ops(
+                None, action, rect=rect, rect2=rect2, dx=dx, dy=dy,
+                left=left, top=top, right=right, bottom=bottom, point=point,
+                kind=kind, radii=radii, start_angle=start_angle,
+                end_angle=end_angle, pie=pie), label="cdr_rect")
+        if not document_id:
+            raise CdrBadArgument("create_rectangle / create_ellipse 需要 document_id")
+        doc, sess = _with_doc(document_id)
+        warnings = _check_view(sess, expected_revision, snapshot_token, doc)
+        result = _com(lambda _b: ops.rect_ops(
+            doc, action, rect=rect, radii=radii, kind=kind,
+            start_angle=start_angle, end_angle=end_angle, pie=pie,
+            layer=layer, page_index=page_index), label="cdr_rect")
+        return _commit(doc, sess, result, warnings)
 
     return _guard(_run)
 
