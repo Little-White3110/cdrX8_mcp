@@ -2952,6 +2952,77 @@ def main() -> int:
         check("可解析全部位图链接", rl.get("resolved") is True, str(rl.get("resolved")))
         no_error("关闭加页测试文档", server.cdr_close(pg_id))
 
+    # ---------------- 15ap. 第三十六波：节点拓扑与曲线合并 ----------------
+    print("\n[15ap] 第三十六波：节点拓扑（Next/Previous·Join·Average）与曲线合并/焊接")
+    nd_doc = server.cdr_open(preset="A4")
+    if "document_id" in nd_doc:
+        nd_id = nd_doc["document_id"]
+        ndr = server.cdr_create(nd_id, [
+            {"type": "polyline", "points": [[0, 0], [20, 0], [40, 20]],
+             "closed": False},
+            {"type": "polyline", "points": [[40, 20], [60, 20]], "closed": False},
+        ])
+        if no_error("cdr_create(节点拓扑测试)", ndr):
+            na, nb = ndr["created"][0]["name"], ndr["created"][1]["name"]
+            nA = {"name": na}
+            nb_ = {"name": nb}
+            nb1 = server.cdr_node(nd_id, nA, action="neighbors", node=1)
+            if no_error("cdr_node(neighbors)", nb1):
+                check("节点前后邻居可读（Next/Previous 是方法）",
+                      nb1.get("next") == 2 and nb1.get("previous") == 3,
+                      f"next={nb1.get('next')} prev={nb1.get('previous')}")
+            ndist = server.cdr_node(nd_id, nA, action="distance", node=1, end=3)
+            if no_error("cdr_node(distance)", ndist):
+                check("节点间距可算", abs(float(ndist.get("distance") or 0) - 44.721) < 0.05,
+                      f"distance={ndist.get('distance')}")
+            navg = server.cdr_node(nd_id, nA, action="average", node=1, end=3)
+            if no_error("cdr_node(average)", navg):
+                check("两节点可取平均位置",
+                      navg.get("pos") == [20.0, 10.0], f"pos={navg.get('pos')}")
+            join_before = (server.cdr_node(nd_id, nA, action="list") or {}).get("nodes")
+            njoin = server.cdr_node(nd_id, nA, action="join_nodes", node=1, end=3)
+            if no_error("cdr_node(join_nodes)", njoin):
+                check("末端节点可合并", (njoin.get("nodes") or 99) < (join_before or 0),
+                      f"{join_before}→{njoin.get('nodes')}")
+            nlist = server.cdr_node(nd_id, nA, action="list")
+            first_xy = [0.0, 0.0]
+            if (nlist.get("node_list") or []):
+                first_xy = [nlist["node_list"][0].get("x") or 0.0,
+                            nlist["node_list"][0].get("y") or 0.0]
+            ion = server.cdr_path(nd_id, nA, action="is_on_curve",
+                                  x=first_xy[0], y=first_xy[1], hot_area=2)
+            if no_error("cdr_path(is_on_curve)", ion):
+                check("曲线命中判定可用", ion.get("on_curve") is True
+                      and ion.get("hit_state") == 1,
+                      f"at={first_xy} on={ion.get('on_curve')} state={ion.get('hit_state')}")
+            ion2 = server.cdr_path(nd_id, nA, action="is_on_curve", x=999, y=999,
+                                   hot_area=2)
+            check("远离曲线时判定为不在线上", ion2.get("on_curve") is False,
+                  str(ion2.get("on_curve")))
+            ccp = server.cdr_path(nd_id, nA, action="curve_copy")
+            if no_error("cdr_path(curve_copy)", ccp):
+                check("曲线可复制", (ccp.get("copy_nodes") or 0) >= 1,
+                      f"copy_nodes={ccp.get('copy_nodes')}")
+            cinfo = server.cdr_path(nd_id, nA, action="curve_info")
+            if no_error("cdr_path(curve_info)", cinfo):
+                check("Curve.GetCurveInfo 可读", (cinfo.get("info_elements") or 0) >= 1,
+                      f"elements={cinfo.get('info_elements')}")
+            mg = server.cdr_path(nd_id, nA, action="merge_curve", other=nb_)
+            if no_error("cdr_path(merge_curve)", mg):
+                check("曲线可合并（AppendCurve→多子路径）",
+                      (mg.get("subpaths") or 0) == 2 and (mg.get("nodes") or 0) >= 3,
+                      f"nodes={mg.get('nodes')} subpaths={mg.get('subpaths')}")
+            wd = server.cdr_path(nd_id, nA, action="weld_curve", other=nb_)
+            if no_error("cdr_path(weld_curve)", wd):
+                check("曲线可焊接（WeldWith 返回新曲线）",
+                      (wd.get("welded_nodes") or 0) >= 2
+                      and (wd.get("welded_length") or 0) > 0,
+                      f"welded_nodes={wd.get('welded_nodes')} len={wd.get('welded_length')}")
+            nbad = server.cdr_node(nd_id, nA, action="distance", node=1)
+            check("distance 缺参数被拒绝", nbad.get("error") == "bad_argument",
+                  str(nbad.get("error")))
+        no_error("关闭节点拓扑测试文档", server.cdr_close(nd_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

@@ -2395,6 +2395,8 @@ PATH_ACTIONS = (
     "point_position", "tangent_vector", "perpendicular_vector", "curve_speed",
     "intersections", "find_node", "find_segment",
     "reverse_direction", "join_subpaths", "remove_overlaps",
+    # 第三十六波：曲线合并 / 焊接 / 命中判定
+    "merge_curve", "weld_curve", "is_on_curve", "curve_copy", "curve_info",
 )
 
 
@@ -2671,6 +2673,62 @@ def path_ops(doc: Any, page_index: int | None, target: dict, action: str, *,
             if act == "reduce_nodes":
                 curve.AutoReduceNodes(float(amount), False)
                 return {"action": act, **info()}
+            if act == "merge_curve":
+                # Curve.AppendCurve(Source)：把另一条曲线**追加成本曲线的子路径**
+                # （实测 2 节点曲线 → 4 节点 / 2 子路径，同一个对象里）
+                if not other:
+                    raise CdrBadArgument("merge_curve 需要 other（要并入的另一个对象）")
+                src = find_shape(doc, page, other)
+                src_curve = _s(lambda: src.Curve)
+                if src_curve is None:
+                    raise CdrBadArgument("other 不是曲线对象")
+                curve.AppendCurve(src_curve)
+                return {"action": act, "merged_from": _s(lambda: str(src.Name)),
+                        "nodes": _node_count(curve),
+                        "subpaths": _n(lambda: int(curve.SubPaths.Count), 0), **info()}
+            if act == "weld_curve":
+                # Curve.WeldWith(Curve) 返回**新曲线对象**（不在文档里），这里只报告结果
+                if not other:
+                    raise CdrBadArgument("weld_curve 需要 other（要焊接的另一个对象）")
+                src = find_shape(doc, page, other)
+                src_curve = _s(lambda: src.Curve)
+                if src_curve is None:
+                    raise CdrBadArgument("other 不是曲线对象")
+                welded = _s(lambda: curve.WeldWith(src_curve))
+                if welded is None:
+                    raise CdrComFailure("Curve.WeldWith 返回空")
+                return {"action": act, "welded_from": _s(lambda: str(src.Name)),
+                        "welded_nodes": _n(lambda: int(welded.Nodes.Count), 0),
+                        "welded_length": _round(_s(lambda: float(welded.Length))),
+                        "note": "WeldWith 返回的是新曲线对象，不会替换原对象；"
+                                "需要替换请用 cdr_path(merge_curve) 或 CDR 的焊接工具",
+                        "nodes": _node_count(curve), **info()}
+            if act == "is_on_curve":
+                if x is None or y is None:
+                    raise CdrBadArgument("is_on_curve 需要 x / y")
+                state = _n(lambda: int(curve.IsOnCurve(float(x), float(y),
+                                                       float(hot_area))))
+                return {"action": act, "x": float(x), "y": float(y),
+                        "hot_area": float(hot_area), "hit_state": state,
+                        "on_curve": state == 1, **info()}
+            if act == "curve_copy":
+                clone = _s(lambda: curve.GetCopy())
+                if clone is None:
+                    raise CdrComFailure("Curve.GetCopy 返回空")
+                return {"action": act, "copy_nodes": _n(lambda: int(clone.Nodes.Count), 0),
+                        "copy_subpaths": _n(lambda: int(clone.SubPaths.Count), 0),
+                        "copy_length": _round(_s(lambda: float(clone.Length))),
+                        "nodes": _node_count(curve), **info()}
+            if act == "curve_info":
+                arr = _s(lambda: curve.GetCurveInfo())
+                count = 0
+                try:
+                    count = len(arr) if arr is not None else 0
+                except TypeError:
+                    count = int(arr or 0)
+                return {"action": act, "info_elements": count,
+                        "first": (str(arr[0])[:120] if count else None),
+                        "nodes": _node_count(curve), **info()}
             if act == "self_weld":
                 curve.SelfWeldClosedSubpaths()
                 return {"action": act, **info()}
@@ -2729,11 +2787,14 @@ NODE_ACTIONS = (
     "fillet", "chamfer", "scallop", "smoothen",
     "stretch", "rotate", "skew", "break_apart",
     "add_node", "break_segment", "control_points",
+    # 第三十六波：节点拓扑
+    "neighbors", "distance", "average", "join_nodes",
 )
 
 NODE_MUTATIONS = {
     "move", "select", "delete", "type", "fillet", "chamfer", "scallop",
     "smoothen", "stretch", "rotate", "skew", "break_apart",
+    "average", "join_nodes",
     "add_node", "break_segment", "control_points",
 }
 
@@ -2886,6 +2947,40 @@ def node_ops(doc: Any, page_index: int | None, target: dict, action: str, *,
                         "height": _round(max(ys) - min(ys))}
             return {"action": act, **base(), "node_list": items, "bbox": bbox,
                     "truncated": count > 500}
+        if act == "neighbors":
+            # Next/Previous 是**方法**（返回 IVGNode），不是属性
+            if node is None:
+                raise CdrBadArgument("neighbors 需要 node")
+            ref = curve.Nodes.Item(int(node))
+            nxt = _s(lambda: ref.Next())
+            prv = _s(lambda: ref.Previous())
+            return {"action": act, **base(),
+                    "node": int(node),
+                    "next": _n(lambda: int(nxt.Index)) if nxt is not None else None,
+                    "previous": _n(lambda: int(prv.Index)) if prv is not None else None}
+        if act == "distance":
+            if node is None or end is None:
+                raise CdrBadArgument("distance 需要 node 与 end（两个节点序号）")
+            a1 = curve.Nodes.Item(int(node))
+            b1 = curve.Nodes.Item(int(end))
+            dist = _s(lambda: float(a1.GetDistanceFrom(b1)))
+            return {"action": act, **base(), "node": int(node), "other": int(end),
+                    "distance": _round(dist)}
+        if act in ("average", "join_nodes"):
+            if node is None or end is None:
+                raise CdrBadArgument(f"{act} 需要 node 与 end（两个**开放曲线末端**节点）")
+            a1 = curve.Nodes.Item(int(node))
+            b1 = curve.Nodes.Item(int(end))
+            if act == "average":
+                a1.AveragePositionWith(b1, False)
+            else:
+                a1.JoinWith(b1)
+            return {"action": act, **base(),
+                    "node": int(node), "other": int(end),
+                    "pos": [_round(_s(lambda: float(curve.Nodes.Item(int(node)).PositionX))),
+                            _round(_s(lambda: float(curve.Nodes.Item(int(node)).PositionY)))],
+                    "note": "X8 要求两个节点都是开放曲线的末端节点，否则报"
+                            "「两个节点都必须是开放曲线的末端节点」"}
         if act == "segments":
             count = _n(lambda: int(curve.Segments.Count), 0)
             items = [_segment_dict(curve.Segments.Item(i), float(offset))

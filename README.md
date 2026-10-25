@@ -6,10 +6,10 @@
 所有坐标统一 **毫米 / 页面左下角原点 / Y 轴向上**，每次变更都收成**一个原子 undo 步**。
 
 > **已在真机验证**：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）+ Python 3.11.9 64 位
-> - 单元测试 **83 项通过**
-> - 端到端联调（真实 CorelDRAW）**369/369 通过**
+> - 单元测试 **86 项通过**
+> - 端到端联调（真实 CorelDRAW）**380/380 通过**
 > - 能力边界来自对 `vgcoreauto.tlb` 的反解（196 个自动化类 / 1619 个方法）+ 逐项实跑
-> - 方法级覆盖 **52.4%**（主干 20 接口 67.3%），可用 `python scripts/coverage_audit.py` 复现
+> - 方法级覆盖 **53.2%**（主干 20 接口 68.9%），可用 `python scripts/coverage_audit.py` 复现
 > - 完整清单见 [docs/COVERAGE.md](docs/COVERAGE.md)
 
 ---
@@ -74,8 +74,8 @@ python -m cdrx8_mcp              # 启动 MCP 服务器（stdio）
 | `cdr_align` | 对齐与分布（左中右 / 上下中 / 等间距；`to=selection/page`，**以及原生范围对齐 `to=page_center/grid/point/shape/range`**） |
 | `cdr_find` | 按名字或类型查找（跨图层） |
 | `cdr_style` | **对象样式**：列出 / 从对象创建（fill·outline·character·paragraph）/ **基于已有样式派生** / 按名套用 / 改名 / 删除 / **读可读属性·改属性** / 列派生样式 / **样式表 .cdst 导入导出** / **颜色样式与颜色协调** |
-| `cdr_path` | 曲线/子路径级：长度面积 / 偏移轮廓（刀模线）/ **折线采样** / **追加圆·椭圆·矩形·三点弧·贝塞尔** / **节点精简** / **自焊接** / **路径等分** / **加节点·断开·移动子路径** / **点在形状内·曲线求交·取点取切向** / **参数取点·切向量·法向量·速度·交点·按坐标找节点/线段·反转方向·焊接子路径·去重叠** |
-| `cdr_node` | **节点/线段级编辑（第五波打通）**：列节点·列线段 / 移动·选中·删除 / 圆角·倒角· scallop·平滑 / 拉伸·旋转·斜切·断开 / 加节点·断线 / 读写贝塞尔控制点 / 按坐标找节点与线段 |
+| `cdr_path` | 曲线/子路径级：长度面积 / 偏移轮廓（刀模线）/ **折线采样** / **追加圆·椭圆·矩形·三点弧·贝塞尔** / **节点精简** / **自焊接** / **路径等分** / **加节点·断开·移动子路径** / **点在形状内·曲线求交·取点取切向** / **参数取点·切向量·法向量·速度·交点·按坐标找节点/线段·反转方向·焊接子路径·去重叠** / **曲线合并（AppendCurve）·焊接（WeldWith）·命中判定·曲线副本·曲线结构信息** |
+| `cdr_node` | **节点/线段级编辑（第五波打通）**：列节点·列线段 / 移动·选中·删除 / 圆角·倒角· scallop·平滑 / 拉伸·旋转·斜切·断开 / 加节点·断线 / 读写贝塞尔控制点 / 按坐标找节点与线段 / **前后邻居（Next·Previous）·节点间距·平均位置·末端节点合并** |
 | `cdr_bitmap` | 位图：信息 / 转色彩模式（rgb·cmyk·gray·bw）/ **阈值二值化** / **调色板模式 0~9（9=自定义调色板）** / **双色调 0~3（可给 .cpd 预设）** / **取像素颜色** / 图像缓冲信息 / 重采样 / **扩边** / 裁剪 / **内容替换（SetImageData，支持色块/像素绘制）** / **位图特效命令串（ApplyBitmapEffect）** / **链接信息·重新加载·解析链接** |
 | `cdr_rect` | **矩形对象（IVGRect）**：读派生值 / 平移 / 四边外扩内缩 / 并 / 交 / 点包含 / 复制；**按矩形造形**（CreateRectangleRect 带四角圆角、CreateEllipseRect 带角度/扇形） |
 | `cdr_color` | **颜色运算**：解析成 HEX/RGB/CMYK/Gray/HLS/Lab、转换、两色混合（纯 Python）；**X8 颜色对象**：`object_info` / `object_name` / `object_compare`（IsSame·IsSimilar·距离）/ `object_blend`（原地混合）/ `object_copy` / `object_string_assign` / `object_convert`（8 种模型原地转换）/ `object_fixed`（USER·TRU·PAN_PROC）/ `object_assign`（分量直写，含套版色）/ **`object_model`（HSB·CMY·BW·YIQ·Fixed·CreateColorEx 工厂）/ `object_from_string`（颜色串造色）** |
@@ -186,7 +186,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ---
 
-## X8 特有问题（118 条，全部实测）
+## X8 特有问题（119 条，全部实测）
 
 这些是 **X8 与 2024+ 的差异**，也是本项目存在的主要理由。
 
@@ -310,6 +310,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 | 116 | **字体表会过期，建文本静默回退默认字体** | 长时间批量建文本后，`CreateArtisticText(font="Arial")` 得到的是宋体且 Bold/Italic 丢失；`Application.ForceUpdateFontTable()` 后恢复 | `cdr_doc(action="refresh_fonts")`；建文本时自动兜底刷一次 |
 | 117 | **中文默认字体文档改不动拉丁字体** | 文档默认字体=宋体时，`Story.Font="Arial"`、`Story.Bold=-1`、`TextRange.Font=…` 全部「不报错也不生效」，Size/Underline 仍生效 | X8 字体替换限制；`cdr_text` 如实返回 `applied`，需要 Arial 等拉丁字体时建议新文档先设默认字体 |
 | 118 | **`SaveSettings/RestoreSettings` 调用成功但看不到效果** | 把 `Resolution` 300→72 后`RestoreSettings(Tag)` 仍是 72（三方法都不报错）；`CreateProperties` 返回的 `IVGProperties` 也缺 `Name/Add/Value` 方法 | 设置快照标为实验性；可靠改设置走 `cdr_doc(action="set_settings")` |
+| 119 | **`Node.Next/Previous` 是方法不是属性** | 类型库里看着是 propget，实际必须 `node.Next()`；当属性用只拿到 bound method（`AttributeError: function object has no attribute Index`）。另外 `ConnectWith`/`ExtendSubPaths` 在两条不同曲线上仍报「指定的节点必须在另一条曲线上」 | 已封装 `cdr_node(action="neighbors")`；跨曲线接续暂不可用，同曲线合并用 `join_nodes` |
 
 改代码前请先读 [`src/cdrx8_mcp/constants.py`](src/cdrx8_mcp/constants.py) 里的注释。
 
@@ -358,8 +359,8 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 ## 测试
 
 ```powershell
-python -m pytest -q                # 83 项纯逻辑测试，任何平台可跑
-python scripts/live_smoke.py       # 369 项端到端，需要 CorelDRAW X8
+python -m pytest -q                # 86 项逻辑测试，任何平台可跑
+python scripts/live_smoke.py       # 380 项端到端，需要 CorelDRAW X8
 python scripts/live_smoke.py --keep   # 保留文档方便肉眼看效果
 python scripts/coverage_audit.py   # 覆盖率审计（复现 README/COVERAGE 里的数字）
 ```

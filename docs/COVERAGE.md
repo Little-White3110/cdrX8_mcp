@@ -2,7 +2,7 @@
 
 > 目的：证明"还有多少没探"。每一行要么有对应的工具，要么有实测失败证据。
 > 环境：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）/ Python 3.11.9 64 位
-> 最近更新：2026-10-26 第三十五波（COM 单位换算 / 颜色工厂 / 定尺寸加页 / 设置快照）
+> 最近更新：2026-10-26 第三十六波（节点拓扑 / 曲线合并与焊接）
 
 ## 怎么得出这份清单
 
@@ -29,9 +29,9 @@
 | `IVGOutline` | 15 | **第三十二波补齐（13/15）**：Width / Color / **Style（可赋自定义线型）** / StartArrow·EndArrow / LineCaps / LineJoin / BehindFill / ScaleWithShape / SetNoOutline / **NibStretch / NibAngle / MiterLimit / Justification**（可读写）/ **GetCopy / CopyAssign / CompareWith / ConvertToObject / SetProperties（14 参全实参可用）**；`PenWidth` 恒 0（派生）、`DashDotLength` 写入不生效、`ToString/StringAssign` 在 pywin32 包装类里不存在 |
 | `IVGOutlineStyle` / `IVGOutlineStyles` | 6 / 6 | **新打通（第十一波）**：`CreateOutlineStyle(dash,gap[,dash,gap,…])` 生成虚拟线型（Index=-1），`OutlineStyles.AddStyle(virtual)` 注册后得到可用 Index，赋给 `Outline.Style` 即生效；`Save()` 可持久化 |
 | `IVGDataFields` / `IVGDataField` / `IVGDataItems` | 8 / 18 / 4 | **新打通（第十一波）**：`DataFields.Add(Name,"0")`、`IsPresent/Item`、`Shape.ObjectData.Add(DataField, Value)`、`DataItem.Value/FormattedValue` 可读写（对象级持久化数据字段） |
-| `IVGCurve` | 37 | 已用：Length / Area / SubPaths / Contour / CreateSubPath / GetCopy / **Nodes / Segments / Selection / FindNodeAtPoint / FindSegmentAtPoint / ReverseDirection / JoinTouchingSubpaths / RemoveOverlaps / GetPolyline / IsOnCurve / IsClockwise / Closed / GetCurveInfo**；数组入参（AppendSubpathFromPoints / CreateSubPathFromArray）不可用；CreateCurveMappedToStroke 类型不匹配 |
-| `IVGSubPath` | 39 | 已用：CreateSubPath / AppendLineSegment / AppendCurveSegment2 / Closed / **Nodes / Segments / StartNode / EndNode / GetPointAt / GetPointPositionAt / GetTangentVectorAt / GetPerpendicularVectorAt / GetCurveSpeedAt / GetIntersections / ReverseDirection / Next / Previous / Extract / GetCopy**；求交/等分/切向已打通，点集数组仍取不回 |
-| `IVGNode` | 19 | **已覆盖（第五波纠正）**：`curve.Nodes` / `curve.SubPaths.Item(i).Nodes` 是**属性**；`GetPosition/SetPosition/Move/Type/Index/SubPathIndex/IsEnding/Selected/Delete/CreateSelection` 均可用；范围操作走 `curve.Nodes.Range(a,b)` → `IVGNodeRange`（Fillet/Chamfer/Scallop/Smoothen/SetType/Move/Rotate/Skew/Stretch/BreakApart/GetBoundingBox）；`app.CreateNodeRange()` 返回空集合 |
+| `IVGCurve` | 37 | 已用：Length / Area / SubPaths / Contour / CreateSubPath / GetCopy / **Nodes / Segments / Selection / FindNodeAtPoint / FindSegmentAtPoint / ReverseDirection / JoinTouchingSubpaths / RemoveOverlaps / GetPolyline / IsOnCurve / IsClockwise / Closed / GetCurveInfo**；数组入参（AppendSubpathFromPoints / CreateSubPathFromArray）不可用；CreateCurveMappedToStroke 类型不匹配；**第三十六波**：`AppendCurve`（把另一条曲线并成子路径）、`WeldWith`（返回新曲线）、`IsOnCurve(x,y,hot)`、`GetCopy`、`GetCurveInfo`（返回 com_struct 数组）|
+| `IVGSubPath` | 39 | 已用：CreateSubPath / AppendLineSegment / AppendCurveSegment2 / Closed / **Nodes / Segments / StartNode / EndNode / GetPointAt / GetPointPositionAt / GetTangentVectorAt / GetPerpendicularVectorAt / GetCurveSpeedAt / GetIntersections / ReverseDirection / Next / Previous / Extract / GetCopy**；求交/等分/切向已打通，点集数组仍取不回；`Next`·`Previous`·`GetCopy` 与曲线同名方法共享计数（审计按名字匹配，含跨接口误计）|
+| `IVGNode` | 19 | **已覆盖（第五波纠正）**：`curve.Nodes` / `curve.SubPaths.Item(i).Nodes` 是**属性**；`GetPosition/SetPosition/Move/Type/Index/SubPathIndex/IsEnding/Selected/Delete/CreateSelection` 均可用；范围操作走 `curve.Nodes.Range(a,b)` → `IVGNodeRange`（Fillet/Chamfer/Scallop/Smoothen/SetType/Move/Rotate/Skew/Stretch/BreakApart/GetBoundingBox）；`app.CreateNodeRange()` 返回空集合；**第三十六波**：`Next()` / `Previous()`（**是方法不是属性**，返回 IVGNode）、`GetDistanceFrom`、`AveragePositionWith`、`JoinWith`（末端节点合并）、`GetPoint`（返回 IVGPoint）；`ConnectWith` / `ExtendSubPaths` 实测报「指定的节点必须在另一条曲线上」/「无法连接曲线」 |
 | `IVGText` | 30 | 已用：Story（**Font / Size / Bold / Italic / Underline 读取**）/ GetSpaceProperties / SetSpaceProperties / GetAlignProperties / SetAlignProperties / FitToPath / FitTextToFrame / **GetContents / Range / ExportToFile / GetHyphenationSettings**；GetFontProperties 结构体返回默认值不可信 |
 | `IVGTextRange` | 35 | 已用：Text / Font / Size / Bold / Italic / Underline / ChangeCase / ApplyBulletEffect / ApplyDropCapEffect / ApplyNoEffect / InsertBefore / InsertAfter / **SetOpenTypeFeature / GetOpenTypeFeature / Delete / Copy / Paste / Straighten / FindRanges / EnumRanges / LeftIndent / RightIndent / FirstLineIndent / Tabs**；ApplyStyle 调用不报错但未观测到效果 |
 | `IVGTextTabPositions` | 9 | **新打通（第二十三波）**：`TextRange.Tabs` 的 Count/Item(i)/Add(Position,Alignment,Leadered)/AddEvery/Clear；`TextTabPosition` 的 Position/Alignment/Leadered 可读写 |
@@ -80,7 +80,7 @@
 | 样式 | `cdr_modify`（纯色/渐变/纹理/图案（画布）/专色/无色、描边含虚线箭头/自定义虚线线型、投影、轮廓图、封套、透明/图案透明、冻结/解冻透明度、**图案填充微调**） | ✅ |
 | 变换 | `cdr_modify`（移动/尺寸/旋转/翻转/斜切/矩阵/克隆/层级/**层级相对调整**/**清除变换**/**旋转中心**/复制/删除/锁定） | ✅ |
 | **对象样式** | `cdr_style`（列出/从对象创建/派生/套用/改名/删除/读定义/改属性/**样式表 .cdst 导入导出**/**颜色样式与颜色协调**） | ✅ 第六/七/九波 |
-| **节点/线段** | `cdr_node`（列节点/列线段/移动/选中/删除/圆角/倒角/scallop/平滑/拉伸/旋转/斜切/断开/加节点/断线/控制点/按坐标查找） | ✅ 第五波 |
+| **节点/线段** | `cdr_node`（列节点/列线段/移动/选中/删除/圆角/倒角/scallop/平滑/拉伸/旋转/斜切/断开/加节点/断线/控制点/按坐标查找/**前后邻居（Next·Previous）/节点间距/平均位置/末端节点合并**） | ✅ 第五/三十六波 |
 | 文字排版 | `cdr_text`（字体字号粗斜体下划线 / 对齐 / 大小写 / 项目符号 / 首字下沉 / 行距字距 / 段落缩进 / **制表位** / 前后插入 / 沿路径 / 自适应 / 转曲 / 读取全文·区间·导出纯文本 / 字体属性读取·断字设置读取·格式段列表 / 区间删除·复制·粘贴·拉直 / 按格式查询区间（@font/@bold…） / OpenType 特性） | ✅ |
 | 布尔与整形 | `cdr_shape_ops`（weld/trim/intersect/combine/group/ungroup/break_apart/to_curves/to_symbol/powerclip/fillet/chamfer/scallop/step_repeat/distribute/boundary/perspective/separate/parallel_curves/rasterize/batch_outline_to_curves/fill_mode/pixel_aligned/range_boundary/envelope_from_shape/compare/project/unproject/to_document/extrude/lens/extrude_set/lens_set/effect_info/clear_effects/**blend/blend_set**/**unlock_all/ungroup_all/break_apart_ex/clear_effect/range_info/range_add/range_remove**） | ✅ |
 | 对齐 | `cdr_align`（左中右/上下中/等间距；`to=selection/page` 走 AlignAndDistribute；**`to=page_center/grid/point/shape/range` 走原生 AlignRangeTo***）+ `cdr_modify(align_to_shape/align_to_page)` | ✅ 第三十三波 |
@@ -93,7 +93,7 @@
 | **矩形对象** | `cdr_rect`（info / offset / inflate / union / intersect / contains / copy / create_rectangle（四角圆角）/ create_ellipse（角度+扇形）） | ✅ 第三十四波 |
 | **描边对象** | `cdr_outline`（info / set（含 SetProperties 全参）/ convert_to_object / copy / compare） | ✅ 第三十二波 |
 | 位图 | `cdr_bitmap`（信息/转色彩模式/重采样/裁剪/取消裁剪/取像素色·图像缓冲信息·调色板模式 0~9·双色调/内容替换 SetImageData/位图特效命令串 ApplyBitmapEffect/**链接信息·重新加载·解析链接**） | ✅（Trace 除外） |
-| 路径 | `cdr_path`（长度面积/偏移轮廓/追加子路径/折线点/反转方向·焊子路径·去重叠·参数取点·切/法向量·速度·交点·找节点/线段） | ✅ |
+| 路径 | `cdr_path`（长度面积/偏移轮廓/追加子路径/折线点/反转方向·焊子路径·去重叠·参数取点·切/法向量·速度·交点·找节点/线段/**曲线合并（AppendCurve）/焊接（WeldWith）/命中判定（IsOnCurve）/曲线副本/曲线信息**） | ✅ |
 | 导入导出 | `cdr_import`（**可传 import_options：外链位图/重采样/保留图层**） `cdr_export`（png/jpg/svg/pdf，可指定 DPI，可只导选区，**可传 export_options 控制抗锯齿/透明/压缩/尺寸**） | ✅ |
 | 文档 | `cdr_doc`（概况/清选区/清撤销栈/调色板/箭头/箭头登记/单位换算·取色·显示隐藏·版式·重复操作/字体列表·调色板列表·调色板取色/固定调色板打开·颜色枚举·专色创建/图案画布创建（含区域变换）/纹理库列表/文档元数据读写/本地化元数据/自定义调色板创建/数据字段·对象数据·色彩管理·线型样式/文档设置读写/应用信息·文档回滚/色彩配置文件·文档颜色转换/用户偏好 KV/命名视图/网格设置/叠印读取/**应用+文档事件队列**） | ✅ |
 | **对象数据** | `cdr_modify(changes={"data":{...}})` + `cdr_doc(action="object_data"/"data_fields"/"add_data_field")` | ✅ 第十一波 |
@@ -115,6 +115,7 @@
 | 立体化 / 透镜 / 尺寸标注 / 连接线 / 符号插入 | `CreateExtrude` `CreateLens` `CreateLinearDimension` `CreateConnector` `CreateSymbol` | `TypeError: Python instance can not be converted to a COM object`（5 组参数组合均失败） | 需要 pywin32 无法构造的结构体/枚举参数 |
 | 描边整体设置 | `Outline.SetProperties(Width, Style, Color, …)`（14 参）/ `SetPropertiesEx`（15 参） | **第三十二波纠正**：早先「TypeError」是因为把 `None` 传给了 int 形参；**14 个实参全给对（可选对象位传 None、可选数值位传 0/0.0）即可用**，宽度/颜色/线帽/连接/斜接都生效 | 已封装 `cdr_outline(action="set", changes={"use_set_properties":true,…})` |
 | 文档设置快照 | `Document.SaveSettings(Tag)` / `RestoreSettings(Tag)` / `ResetSettings()` | 三个方法都**调用成功且不报错**，但实测把 `Resolution` 从 300 改成 72 再 `RestoreSettings` 并没有恢复（仍 72）—— Tag 语义未逆出，可见效果未确认 | 已封装为 `cdr_doc(action="save_settings"/"restore_settings"/"reset_settings")`，标注为实验性；需要可靠改设置请用 `cdr_doc(action="set_settings")` |
+| 节点连线 / 跨曲线接续 | `Node.ConnectWith(Target)` / `Node.ExtendSubPaths(Node2, JoinPaths)` | 两条**不同**开放曲线的末端节点互连，报「指定的节点必须在另一条曲线上」；`ExtendSubPaths` 报「无法连接曲线」—— 大概需要先在同一选择集里选中两条曲线 | 已提供同曲线内的 `cdr_node(action="join_nodes")`（实测 3→2 节点）|
 | 文字粗斜体 | `CreateArtisticText(..., Bold, Italic, …)` / `Text.Story.Bold` | **第三十四波纠正**：这两个形参是 `cdrTriState`（**true = -1**）。传 Python `True`（=1）不仅不生效，`Story.Bold = True` 还会把粗体**关掉**；下划线形参又是另一套枚举（1=有、0=无） | 已封装 `_tristate()` / `_underline()`；`cdr_create`、`cdr_modify`、`cdr_text` 全部改走这两个映射 |
 | 字体表 | `Application.ForceUpdateFontTable()` | 长时间批量建文本后，`CreateArtisticText` 传 `"Arial"` 会**静默回退默认字体**（中文机=宋体）且丢掉 Bold/Italic；调一次 FontTable 刷新后恢复 | `cdr_doc(action="refresh_fonts")`；建文本时也会自动兜底刷一次 |
 | 中文字体文档的字体改写 | `Story.Font` / `TextRange.Font` | 当文档默认字体是宋体时，把 Font 改成 `"Arial"`、或设 `Bold/Italic`，**不报错但不生效**（Size/Underline 仍然生效） | 属 X8 字体替换限制；`cdr_text` 会如实回 `applied`，需要拉丁字体时建议新建文档先设默认字体 |
@@ -224,6 +225,8 @@
 >   `CreateFreeConnector` 报「未实现」；本机无符号库。
 > * 混合 **可用（第十七波）**：`CreateBlend` 传全参数且 `Path=None` 时成功；
 >   效果经 `Effects.Item(i).Blend`（IVGEffectBlend）读写 Steps/Spacing/Angle 等。
+> * 节点拓扑 **可用（第三十六波）**：`Next()`/`Previous()`/`GetDistanceFrom`/`AveragePositionWith`/`JoinWith`；`ConnectWith`/`ExtendSubPaths` 需要选择集前置条件，暂不可用。
+> * 曲线合并/焊接 **可用（第三十六波）**：`AppendCurve`（原地并成子路径）、`WeldWith`（返回新曲线）、`IsOnCurve`、`GetCopy`、`GetCurveInfo`。
 > * COM 单位换算 **可用（第三十五波）**：`Application.ConvertUnits(value, cdrUnit, cdrUnit)`，inch=1 mm=3 cm=4 point=14；比 `Document.ToUnits/FromUnits` 更直接。
 > * 颜色工厂 **补齐（第三十五波）**：`CreateHSBColor/CMYColor/BWColor/YIQColor/FixedColor/CreateColor(串)/CreateColorEx(模型号,…)` 全部可用。
 > * 定尺寸加页/插页 **可用（第三十五波）**：`AddPagesEx(count,w,h)` / `InsertPagesEx(n,before,page,w,h)`。
@@ -268,8 +271,8 @@
 ## 五、复现方式
 
 ```powershell
-python -m pytest -q              # 83 项纯逻辑
-python scripts/live_smoke.py     # 369 项端到端（真实 CorelDRAW）
+python -m pytest -q              # 86 项纯逻辑
+python scripts/live_smoke.py     # 380 项端到端（真实 CorelDRAW）
 ```
 
 联调断言覆盖了上表所有 ✅ 项。反解脚本属于过程产物，已按要求放在 `tmp/` 并在完成时清理；
@@ -277,14 +280,14 @@ python scripts/live_smoke.py     # 369 项端到端（真实 CorelDRAW）
 
 ---
 
-## 六、量化覆盖率（2026-10-26 第三十五波实测）
+## 六、量化覆盖率（2026-10-26 第三十六波实测）
 
 方法：反解类型库拿到 196 个自动化类 / **1619** 个方法（已剔除 `QueryInterface` 等 COM 基础设施）；
 用 AST 扫描 `src/cdrx8_mcp/*.py`，收集所有 `.方法名(` 调用与 `setattr/getattr` 的属性名，
 与主干接口的方法名求交集。**注意：属性名（如 `curve.Nodes`）也会被计入**，所以本波数字含真实属性访问。
 
-**全局：848 / 1619 = 52.4%**（21.2% → … → 51.5% → 本轮 52.4%）
-**主干 20 接口：500 / 743 = 67.3%**
+**全局：862 / 1619 = 53.2%**（21.2% → … → 52.4% → 本轮 53.2%）
+**主干 20 接口：512 / 743 = 68.9%**
 
 复现命令：`python scripts/coverage_audit.py`（会临时展开类型库到 `tmp/gen_py`，跑完自动清理）
 
@@ -292,15 +295,15 @@ python scripts/live_smoke.py     # 369 项端到端（真实 CorelDRAW）
 |---|---:|---:|---:|
 | `IVGShape` | 123 | 83 | **67%** |
 | `IVGShapeRange` | 125 | 94 | **75%** |
-| `IVGSubPath` | 38 | 30 | **79%** |
+| `IVGSubPath` | 38 | 33 | **87%** |
 | `IVGDocument` | 74 | 46 | **62%** |
 | `IVGPage` | 21 | 20 | **95%** |
-| `IVGCurve` | 36 | 23 | 64% |
+| `IVGCurve` | 36 | 27 | **75%** |
 | `IVGLayer` | 49 | 27 | **55%** |
 | `IVGTextRange` | 31 | 23 | **74%** |
 | `IVGApplication` | 78 | 39 | **50%** |
 | `IVGText` | 29 | 16 | **55%** |
-| `IVGNode` | 18 | 9 | 50% |
+| `IVGNode` | 18 | 14 | **78%** |
 | `IVGBitmap` | 15 | 13 | **87%** |
 | `IVGFill` | 12 | 9 | **75%** |
 | `IVGWindow` | 8 | 7 | **88%** |
@@ -310,10 +313,10 @@ python scripts/live_smoke.py     # 369 项端到端（真实 CorelDRAW）
 | `IVGTransparency` | 8 | 6 | **75%** |
 | `IVGStyle` | 15 | 9 | **60%** |
 | `IVGColorContext` | 6 | 3 | 50% |
-| **合计** | **743** | **500** | **67.3%** |
+| **合计** | **743** | **512** | **68.9%** |
 
 > **怎么读这两个数**：
-> 1. 全局 52.4% 覆盖 1619 个方法（含变体与重复）；主干 20 接口 67.3%。
+> 1. 全局 53.2% 覆盖 1619 个方法（含变体与重复）；主干 20 接口 68.9%。
 > 2. 它是**方法/属性名匹配**的近似值，同名方法会跨接口误计。
 > 3. `IVGColor` 已到 74%：分量**读写**现在走 `*Assign`（RGBAssign/CMYKAssign/…），纯 Python 只用于无 COM 场景的换算。
 > 4. 未调用方法多为变体（Wide/Ex/2/3 后缀）与事件订阅、CorelScriptTools/MathUtils。
@@ -781,6 +784,27 @@ python scripts/live_smoke.py     # 369 项端到端（真实 CorelDRAW）
 > `Name/Add/Value` 在 pywin32 包装类里不存在（AttributeError），`IVGProperties` 的用法仍未打通；
 > `Document.CreateShapeRangeFromArray` / `CreateCurveFromArray` 需要对象数组指针，暂未尝试。
 
+## 七之三十四、第三十六波已接入（2026-10-26，节点拓扑与曲线合并）
+
+| 能力 | 落地位置 | 实测 |
+|---|---|---|
+| **节点前后邻居** | `cdr_node(action="neighbors", node=n)` | ✅ `Next()` / `Previous()` **是方法**（当属性用会 `AttributeError: 'function' object`）；开放曲线首节点的 previous 会绕到末节点 |
+| 节点间距 | `cdr_node(action="distance", node, end)` | ✅ `GetDistanceFrom`：(0,0)↔(40,20) = **44.721** |
+| **两节点取平均位置** | `cdr_node(action="average", node, end)` | ✅ `AveragePositionWith(other, False)`：两端点都落到 (20,10) |
+| **末端节点合并** | `cdr_node(action="join_nodes", node, end)` | ✅ `JoinWith`：3 节点 → 2 节点，曲线变闭合 |
+| **曲线命中判定** | `cdr_path(action="is_on_curve", x, y, hot_area)` | ✅ `IsOnCurve`：节点处返回 1，远处返回 0 |
+| 曲线副本 / 信息 | `cdr_path(action="curve_copy"/"curve_info")` | ✅ `GetCopy` 副本 2 节点 20mm；`GetCurveInfo` 返回 3 个 `com_struct(PositionX, PositionY, ElementType, NodeType, Flags)` |
+| **曲线合并** | `cdr_path(action="merge_curve", other=…)` | ✅ `Curve.AppendCurve`：2 节点 → **4 节点 / 2 子路径**（同一个对象里） |
+| **曲线焊接** | `cdr_path(action="weld_curve", other=…)` | ✅ `Curve.WeldWith` 返回**新曲线**（6 节点、长 60mm），不会自动替换原对象 |
+
+> **第三十六波纠正的坑**：
+> 1. **`IVGNode.Next/Previous` 是方法不是属性** —— 类型库里看着像属性（propget），
+>    实际必须 `node.Next()` 调用，否则拿到的是 bound method。
+> 2. `Node.ConnectWith` / `ExtendSubPaths` 在"两条不同曲线"的末端节点上仍然报
+>    「指定的节点必须在另一条曲线上」/「无法连接曲线」，大概需要先在 UI 选择集里同时选中两条曲线；
+>    同曲线内的 `JoinWith` 是可用的。
+> 3. `Curve.WeldWith` **返回新对象**，不会替换原对象；要"原地合并"用 `AppendCurve`。
+
 ## 七之二、仍未接入（第三轮候选）
 
 | 能力 | 接口 | 为什么还没做 |
@@ -802,16 +826,16 @@ python scripts/live_smoke.py     # 369 项端到端（真实 CorelDRAW）
 
 ## 八、一句话总结
 
-* **能力域覆盖**：61 个能力域 / 30 个工具，日常出图闭环完整；节点编辑、对象样式、专色、
+* **能力域覆盖**：62 个能力域 / 30 个工具，日常出图闭环完整；节点编辑、对象样式、专色、
   图案/纹理填充、跨文档复制、模板/样式表/颜色样式、文档元数据、本地化元数据、对象数据字段、
   自定义虚线、文档设置、文本区间编辑、自定义箭头、图案微调、文本格式查询、位图内容替换/链接、
   文档回滚、立体化/透镜/效果管理、位图特效命令串、混合、文档颜色转换、用户偏好 KV、OLE 嵌入、
   命名视图、网格设置、叠印、段落缩进、制表位、屏幕叠加层、应用/文档事件、导出/保存/导入选项、吸附点全家族、颜色对象分量、描边对象全量属性都已补上。
-* **方法级覆盖**：全局 52.4%（848/1619），主干 20 接口 67.3%（500/743）。
+* **方法级覆盖**：全局 53.2%（862/1619），主干 20 接口 68.9%（512/743）。
 * **明确不可用**：位图描摹、文本导入、点集数组建曲线、尺寸标注/连接线（MathUtils 点对象
   不可创建）、符号库、文件型图案/影线填充（本机无库）、曲线贴笔触、OpenDocumentAsCopy、
   HTML 兼容文本、断字写入、填充字符串、文本尺寸查询、灰度→RGB 转换、真实应用偏好读取、
   文本分栏（SetColumns 数组参数）。
-* **第三十五波新增**：COM 单位换算、颜色模型工厂（HSB/CMY/BW/YIQ/Fixed/CreateColorEx/颜色串）、定尺寸加页与插页、命名箭头、解析全部位图链接、文档设置快照（实验性）。
+* **第三十六波新增**：节点拓扑（邻居/间距/平均位置/末端节点合并）、曲线合并与焊接、命中判定、曲线副本与结构信息。
 
 
