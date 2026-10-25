@@ -565,7 +565,8 @@ def cdr_shape_ops(document_id: str, op: str, target: dict | None = None,
                   color_accel: int = 0, accel_size: bool = False,
                   expected_revision: int | None = None,
                   snapshot_token: str | None = None,
-                  page_index: int | None = None) -> dict:
+                  page_index: int | None = None,
+                  params: dict | None = None) -> dict:
     """布尔运算与整形。
 
     op 取值：
@@ -637,7 +638,7 @@ def cdr_shape_ops(document_id: str, op: str, target: dict | None = None,
             blend_mode=blend_mode, spacing=spacing, angle=angle, loop=loop,
             rotate_shapes=rotate_shapes, spacing_accel=spacing_accel,
             color_accel=color_accel, accel_size=accel_size,
-        ), label="cdr_shape_ops")
+            params=params), label="cdr_shape_ops")
         if str(op).lower() == "to_document" and result.get("document_name"):
             new_sess = registry().get_or_create(result["document_name"])
             result["document_id"] = new_sess.sid

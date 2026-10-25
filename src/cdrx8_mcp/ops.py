@@ -5056,6 +5056,9 @@ SHAPE_OPS = (
     "range_add", "range_remove",
     # 第三十八波：用 Document.CreateUniformFill + ShapeRange.ApplyFill 上色
     "apply_fill",
+    # 第三十九波：形状矩阵 / 扭曲 / 文字内嵌 / 范围复制 / 命中与层序
+    "matrix", "is_type", "in_front_of", "is_on_shape", "distort", "place_text",
+    "duplicate_range", "clone_range",
 )
 
 
@@ -5180,6 +5183,7 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
              spacing: float = 0.0, angle: float = 0.0, loop: bool = False,
              rotate_shapes: bool = False, spacing_accel: int = 0,
              color_accel: int = 0, accel_size: bool = False,
+             params: dict | None = None,
              label: str = "cdr_shape_ops") -> dict:
     op = (op or "").lower().replace("-", "_")
     if op not in SHAPE_OPS:
@@ -5275,6 +5279,108 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
                         "fill_type": _n(lambda: int(first.Fill.Type), 0)
                         if first is not None else None,
                         "color": _s(lambda: str(color.ToString()))}
+        if op in {"matrix", "is_type", "in_front_of", "is_on_shape", "distort",
+                  "place_text", "duplicate_range", "clone_range"}:
+            source = find_shape(doc, page, target or {})
+            spec = dict(params or {})
+            if op == "matrix":
+                mat = spec.get("matrix")
+                if mat:
+                    vals = [float(v) for v in list(mat)[:6]]
+                    if len(vals) != 6:
+                        raise CdrBadArgument(
+                            "matrix 需要 6 个数：[d11,d12,d21,d22,tx,ty]")
+                    with atomic(doc, label):
+                        source.SetMatrix(*vals)
+                    read = _s(lambda: source.GetMatrix())
+                    return {"op": op, "applied": vals,
+                            "matrix": [round(float(v), 4) for v in read]
+                            if isinstance(read, (tuple, list)) else None,
+                            "bbox": _bbox(source)}
+                read = _s(lambda: source.GetMatrix())
+                return {"op": op,
+                        "matrix": [round(float(v), 4) for v in read]
+                        if isinstance(read, (tuple, list)) else None,
+                        "note": "矩阵为 [d11,d12,d21,d22,tx,ty]；tx/ty 用 X8 内部单位"
+                                "（实测 5 → 约 5/100000 mm 的表达），读回是精确的",
+                        "bbox": _bbox(source)}
+            if op == "is_type":
+                types = [int(t) for t in (spec.get("types") or [])]
+                if not types:
+                    raise CdrBadArgument("is_type 需要 params.types=[类型号…]")
+                return {"op": op, "types": types,
+                        "type_id": _n(lambda: int(source.Type)),
+                        "matches": bool(_s(lambda: bool(source.IsTypeAnyOf(types)), False))}
+            if op == "in_front_of":
+                if not other:
+                    raise CdrBadArgument("in_front_of 需要 other（另一个对象）")
+                other_shape = find_shape(doc, page, other)
+                return {"op": op, "a": _s(lambda: str(source.Name)),
+                        "b": _s(lambda: str(other_source.Name)),
+                        "in_front": bool(_s(
+                            lambda: bool(source.OrderIsInFrontOf(other_shape)), False))}
+            if op == "is_on_shape":
+                if x is None or y is None:
+                    raise CdrBadArgument("is_on_shape 需要 x / y")
+                hot = float(spec.get("hot_area", 2.0))
+                state = _n(lambda: int(source.IsOnShape(float(x), float(y), hot)))
+                return {"op": op, "x": float(x), "y": float(y), "hit_state": state,
+                        "inside": state == 2, "on_edge": state == 1,
+                        "outside": state == 0,
+                        "note": "实测 IsOnShape 返回 2=内部、1=边界、0=外部"}
+            if op == "distort":
+                kind = str(spec.get("kind", "pushpull")).lower()
+                ox = float(spec.get("origin_x", x if x is not None else 0.0))
+                oy = float(spec.get("origin_y", y if y is not None else 0.0))
+                before = _bbox(source)
+                with atomic(doc, label):
+                    if kind in {"pushpull", "push_pull"}:
+                        source.CreatePushPullDistortion(
+                            ox, oy, int(spec.get("amplitude", 20)))
+                    elif kind == "twister":
+                        source.CreateTwisterDistortion(
+                            ox, oy, float(spec.get("angle", 30)))
+                    elif kind == "zipper":
+                        source.CreateZipperDistortion(
+                            ox, oy, int(spec.get("amplitude", 10)),
+                            int(spec.get("frequency", 10)),
+                            bool(spec.get("random", False)),
+                            bool(spec.get("smooth", True)),
+                            bool(spec.get("local", False)))
+                    else:
+                        raise CdrBadArgument(
+                            "distort 的 params.kind 可用 pushpull / twister / zipper")
+                return {"op": op, "kind": kind, "origin": [ox, oy],
+                        "bbox_before": before, "bbox_after": _bbox(source),
+                        "effects": _n(lambda: int(source.Effects.Count), 0)}
+            if op == "place_text":
+                if not other:
+                    raise CdrBadArgument("place_text 需要 other（要内嵌的文字对象）")
+                text_shape = find_shape(doc, page, other)
+                if int(_s(lambda: int(text_shape.Type), -1)) != TEXT_TYPE:
+                    raise CdrBadArgument("other 必须是文字对象（type_id=6）")
+                with atomic(doc, label):
+                    made = source.PlaceTextInside(text_shape)
+                if made is None:
+                    raise CdrComFailure("Shape.PlaceTextInside 返回空")
+                return {"op": op, "container": _s(lambda: str(source.Name)),
+                        "type_id": _n(lambda: int(made.Type)),
+                        "text": _s(lambda: str(made.Text.Story.Text)),
+                        "bbox": _bbox(made),
+                        "page_shapes": _n(lambda: int(page.Shapes.Count), 0)}
+            # duplicate_range / clone_range
+            offx = float(spec.get("offset_x", 5.0))
+            offy = float(spec.get("offset_y", 5.0))
+            with atomic(doc, label):
+                rng = (source.CloneAsRange(offx, offy) if op == "clone_range"
+                       else source.DuplicateAsRange(offx, offy))
+            if rng is None:
+                raise CdrComFailure(f"Shape.{op} 返回空")
+            count = _n(lambda: int(rng.Count), 0) or 0
+            return {"op": op, "count": count, "offset": [offx, offy],
+                    "names": [_s(lambda i=i: str(rng.Item(i).Name))
+                              for i in range(1, min(count, 20) + 1)],
+                    "page_shapes": _n(lambda: int(page.Shapes.Count), 0)}
         if op == "effect_info":
             src = find_shape(doc, page, target or {})
             return {"op": op, "target": _s(lambda: str(src.Name)),

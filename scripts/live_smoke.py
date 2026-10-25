@@ -3164,6 +3164,80 @@ def main() -> int:
                       f"name={ahn.get('name')} count={ahn.get('arrowheads')}")
         no_error("关闭结构体建文档测试", server.cdr_close(w38_id))
 
+    # ---------------- 15as. 第三十九波：形状矩阵 / 扭曲 / 文字内嵌 / 范围复制 ----------------
+    print("\n[15as] 第三十九波：形状矩阵、扭曲效果、文字内嵌、范围复制、命中判定")
+    m_doc = server.cdr_open(preset="A4")
+    if "document_id" in m_doc:
+        m_id = m_doc["document_id"]
+        mr = server.cdr_create(m_id, [
+            {"type": "rectangle", "x": 20, "y": 120, "width": 40, "height": 30},
+            {"type": "rectangle", "x": 80, "y": 120, "width": 20, "height": 20},
+            {"type": "text", "x": 20, "y": 200, "text": "内嵌文字", "size": 14},
+            {"type": "rectangle", "x": 20, "y": 40, "width": 15, "height": 15},
+        ])
+        if no_error("cdr_create(矩阵/扭曲测试)", mr):
+            ma, mb, mt, mm = [c["name"] for c in mr["created"]]
+            mA, mB, mT, mM = ({"name": ma}, {"name": mb}, {"name": mt},
+                              {"name": mm})
+            mtx = server.cdr_shape_ops(m_id, op="matrix", target=mA)
+            if no_error("cdr_shape_ops(matrix read)", mtx):
+                check("形状矩阵可读（6 元素）",
+                      len(mtx.get("matrix") or []) == 6, str(mtx.get("matrix")))
+            ins_shape = server.cdr_shape_ops(m_id, op="is_on_shape", target=mA,
+                                             x=30, y=130)
+            edge_shape = server.cdr_shape_ops(m_id, op="is_on_shape", target=mA,
+                                              x=20, y=135)
+            check("对象命中判定（2=内部 / 1=边界）",
+                  ins_shape.get("hit_state") == 2
+                  and edge_shape.get("hit_state") == 1,
+                  f"in={ins_shape.get('hit_state')} edge={edge_shape.get('hit_state')}")
+            mset = server.cdr_shape_ops(m_id, op="matrix", target=mM,
+                                        params={"matrix": [1, 0, 0, 1, 0, 0]})
+            if no_error("cdr_shape_ops(matrix set)", mset):
+                check("形状矩阵可写并精确回读",
+                      mset.get("matrix") == [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+                      str(mset.get("matrix")))
+            ity = server.cdr_shape_ops(m_id, op="is_type", target=mA,
+                                       params={"types": [1, 2]})
+            ity2 = server.cdr_shape_ops(m_id, op="is_type", target=mA,
+                                        params={"types": [2]})
+            check("类型集合判定可用（IsTypeAnyOf）",
+                  ity.get("matches") is True and ity2.get("matches") is False,
+                  f"{ity.get('matches')}/{ity2.get('matches')}")
+            front = server.cdr_shape_ops(m_id, op="in_front_of", target=mB, other=mA)
+            check("层序判定可用（OrderIsInFrontOf）", front.get("in_front") is True,
+                  str(front.get("in_front")))
+            ptx = server.cdr_shape_ops(m_id, op="place_text", target=mA, other=mT)
+            if no_error("cdr_shape_ops(place_text)", ptx):
+                check("文字可内嵌到形状（PlaceTextInside）",
+                      ptx.get("type_id") == 6 and ptx.get("text") == "内嵌文字",
+                      f"type={ptx.get('type_id')} text={ptx.get('text')}")
+            before_shapes = (server.cdr_inspect(m_id).get("state") or {}).get("shapes")
+            dup = server.cdr_shape_ops(m_id, op="duplicate_range", target=mB,
+                                       params={"offset_x": 8, "offset_y": 8})
+            if no_error("cdr_shape_ops(duplicate_range)", dup):
+                check("可复制成范围（DuplicateAsRange）",
+                      dup.get("count") == 1
+                      and (dup.get("page_shapes") or 0) > (before_shapes or 0),
+                      f"count={dup.get('count')} shapes={before_shapes}->{dup.get('page_shapes')}")
+            clo = server.cdr_shape_ops(m_id, op="clone_range", target=mB)
+            if no_error("cdr_shape_ops(clone_range)", clo):
+                check("可克隆成范围（CloneAsRange）", clo.get("count") == 1,
+                      str(clo.get("count")))
+            dst = server.cdr_shape_ops(m_id, op="distort", target=mB,
+                                       params={"kind": "twister", "origin_x": 90,
+                                               "origin_y": 130, "angle": 30})
+            if no_error("cdr_shape_ops(distort)", dst):
+                check("扭曲效果可创建（Twister）",
+                      dst.get("effects") == 1
+                      and (dst.get("bbox_before") != dst.get("bbox_after")),
+                      f"effects={dst.get('effects')}")
+            bad_dst = server.cdr_shape_ops(m_id, op="distort", target=mB,
+                                           params={"kind": "nope"})
+            check("非法扭曲类型被拒绝", bad_dst.get("error") == "bad_argument",
+                  str(bad_dst.get("error")))
+        no_error("关闭矩阵/扭曲测试文档", server.cdr_close(m_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,
