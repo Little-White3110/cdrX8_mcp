@@ -13,6 +13,7 @@ from __future__ import annotations
 import queue
 import threading
 import time
+from collections import deque
 from typing import Any, Callable
 
 from .constants import DEFAULT_TIMEOUT_S, PROGIDS
@@ -48,6 +49,10 @@ class ComBridge:
         self._ready = threading.Event()
         self._app: Any = None
         self._start_error: BaseException | None = None
+        self.events: deque = deque(maxlen=2000)
+        self._events_lock = threading.Lock()
+        self._event_sink: Any = None
+        self._event_error: str | None = None
 
     # ---------------- 生命周期 ----------------
     def start(self) -> None:
@@ -89,6 +94,12 @@ class ComBridge:
                 pass
 
     def shutdown(self) -> None:
+        try:
+            if self._event_sink is not None:
+                self._event_sink.close()
+        except Exception:
+            pass
+        self._event_sink = None
         if self._thread is None:
             return
         self._q.put(None)
@@ -155,6 +166,7 @@ class ComBridge:
                 except Exception:
                     pass
             bridge._app = app
+            bridge._install_events(app)
             return {
                 "launched": launched,
                 "version": _safe(lambda: str(app.Version)),
@@ -174,6 +186,76 @@ class ComBridge:
     def reset(self) -> None:
         """连接失效时清空缓存的 Application 对象。"""
         self._app = None
+
+    # ---------------- 应用事件 ----------------
+    def _record_event(self, name: str, args: tuple) -> None:
+        if name == "ApplicationEvent":
+            return
+        def summ(v: Any) -> Any:
+            if v is None or isinstance(v, (str, int, float, bool)):
+                return v
+            if isinstance(v, (list, tuple)) and len(v) <= 6:
+                return [summ(x) for x in v]
+            return f"<{type(v).__name__}>"
+        item = {"event": name, "args": [summ(a) for a in args],
+                "time": round(time.time(), 3)}
+        with self._events_lock:
+            self.events.append(item)
+
+    def _install_events(self, app: Any) -> None:  # pragma: no cover - STA 线程
+        """在 STA 线程安装 Application 事件 sink（连接点）。失败则静默跳过。"""
+        try:
+            import os
+            import win32com.client.gencache as gencache
+            base = str(app.Path)
+            candidates = [
+                os.path.join(base, "vgcoreauto.tlb"),
+                os.path.join(base, "..", "Programs64", "vgcoreauto.tlb"),
+                os.path.join(base, "Programs64", "vgcoreauto.tlb"),
+            ]
+            tlb = next((p for p in candidates if os.path.exists(p)), candidates[0])
+            tl = pythoncom.LoadTypeLib(tlb)
+            attr = tl.GetLibAttr()
+            gencache.is_readonly = False
+            module = gencache.EnsureModule(str(attr[0]), attr[1], attr[3], attr[4])
+            bridge = self
+            class Sink(module.DIVGApplicationEvents):  # type: ignore[misc]
+                def _rec(self, name, args):
+                    bridge._record_event(name, args)
+                def OnDocumentNew(self, *a): self._rec("DocumentNew", a)
+                def OnDocumentOpen(self, *a): self._rec("DocumentOpen", a)
+                def OnDocumentClose(self, *a): self._rec("DocumentClose", a)
+                def OnDocumentBeforeSave(self, *a): self._rec("DocumentBeforeSave", a)
+                def OnDocumentAfterSave(self, *a): self._rec("DocumentAfterSave", a)
+                def OnDocumentBeforeExport(self, *a): self._rec("DocumentBeforeExport", a)
+                def OnDocumentAfterExport(self, *a): self._rec("DocumentAfterExport", a)
+                def OnWindowActivate(self, *a): self._rec("WindowActivate", a)
+                def OnWindowDeactivate(self, *a): self._rec("WindowDeactivate", a)
+                def OnSelectionChange(self, *a): self._rec("SelectionChange", a)
+                def OnStart(self, *a): self._rec("Start", a)
+                def OnPluginCommand(self, *a): self._rec("PluginCommand", a)
+                def OnUpdatePluginCommand(self, *a): self._rec("UpdatePluginCommand", a)
+            try:
+                if self._event_sink is not None:
+                    self._event_sink.close()
+            except Exception:
+                pass
+            self._event_sink = Sink(app)
+            self._event_error = None
+        except BaseException as exc:
+            self._event_sink = None
+            self._event_error = f"{type(exc).__name__}: {exc}"
+
+    def events_snapshot(self, limit: int = 100) -> list:
+        with self._events_lock:
+            items = list(self.events)
+        return items[-max(1, min(int(limit), 500)):]
+
+    def clear_events(self) -> int:
+        with self._events_lock:
+            count = len(self.events)
+            self.events.clear()
+        return count
 
 
 def _safe(fn: Callable[[], Any], default: Any = None) -> Any:

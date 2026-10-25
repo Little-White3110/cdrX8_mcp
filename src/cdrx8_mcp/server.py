@@ -1096,8 +1096,19 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
       grid             读文档网格（类型/间距/显示/吸附）
       set_grid         写网格：grid_spacing_x/y + grid_visible + grid_snap + grid_type
       overprint        读对象的叠印设置（fill/outline/bitmap）
+      events           读取应用事件队列（DocumentNew/Open/Close/Save/Export/
+                       SelectionChange/WindowActivate…）
+      clear_events     清空事件队列
     """
     def _run():
+        act = (action or "info").lower()
+        if act in {"events", "clear_events"}:
+            bridge = _bridge()
+            if act == "clear_events":
+                return {"action": act, "cleared": bridge.clear_events()}
+            items = bridge.events_snapshot(limit or 100)
+            return {"action": "events", "count": len(items), "events": items,
+                    "note": "事件在 cdr_connect 后开始记录；ApplicationEvent 高频事件已忽略"}
         doc, sess = _with_doc(document_id)
         resolved_palette_path = str(resolve_write_path(palette_path, overwrite=overwrite)[0]) \
             if palette_path else None

@@ -7,9 +7,9 @@
 
 > **已在真机验证**：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）+ Python 3.11.9 64 位
 > - 单元测试 **55 项通过**
-> - 端到端联调（真实 CorelDRAW）**255/255 通过**
+> - 端到端联调（真实 CorelDRAW）**257/257 通过**
 > - 能力边界来自对 `vgcoreauto.tlb` 的反解（196 个自动化类 / 1619 个方法）+ 逐项实跑
-> - 方法级覆盖 **44.3%**（主干 20 接口 56.8%），可用 `python scripts/coverage_audit.py` 复现
+> - 方法级覆盖 **44.5%**（主干 20 接口 56.8%），可用 `python scripts/coverage_audit.py` 复现
 > - 完整清单见 [docs/COVERAGE.md](docs/COVERAGE.md)
 
 ---
@@ -78,7 +78,7 @@ python -m cdrx8_mcp              # 启动 MCP 服务器（stdio）
 | `cdr_node` | **节点/线段级编辑（第五波打通）**：列节点·列线段 / 移动·选中·删除 / 圆角·倒角· scallop·平滑 / 拉伸·旋转·斜切·断开 / 加节点·断线 / 读写贝塞尔控制点 / 按坐标找节点与线段 |
 | `cdr_bitmap` | 位图：信息 / 转色彩模式（rgb·cmyk·gray·bw）/ **阈值二值化** / **调色板模式 0~9（9=自定义调色板）** / **双色调 0~3（可给 .cpd 预设）** / **取像素颜色** / 图像缓冲信息 / 重采样 / **扩边** / 裁剪 / **内容替换（SetImageData，支持色块/像素绘制）** / **位图特效命令串（ApplyBitmapEffect）** |
 | `cdr_color` | **颜色运算（纯 Python）**：解析成 HEX/RGB/CMYK/Gray/HLS/Lab、转换、两色混合 |
-| `cdr_doc` | **文档级**：概况 / 清空选择集 / 清撤销栈 / **登记调色板** / **用曲线生成自定义箭头（可登记全局箭头库）** / **单位换算** / **取色（点/区域）** / **字体列表** / **调色板列表·取色·固定调色板打开·颜色枚举·专色创建·自定义调色板创建** / **图案画布创建（含区域变换）** / **纹理库列表** / **文档元数据读写·本地化元数据** / **数据字段·对象数据·色彩管理·线型样式·叠印读取** / **文档设置读写** / **应用信息·文档回滚** / **色彩配置文件·文档颜色转换** / **用户偏好 KV** / **命名视图** / **网格设置** / **显示隐藏对象** / **页面版式** / **重复上一操作** |
+| `cdr_doc` | **文档级**：概况 / 清空选择集 / 清撤销栈 / **登记调色板** / **用曲线生成自定义箭头（可登记全局箭头库）** / **单位换算** / **取色（点/区域）** / **字体列表** / **调色板列表·取色·固定调色板打开·颜色枚举·专色创建·自定义调色板创建** / **图案画布创建（含区域变换）** / **纹理库列表** / **文档元数据读写·本地化元数据** / **数据字段·对象数据·色彩管理·线型样式·叠印读取** / **文档设置读写** / **应用信息·文档回滚** / **色彩配置文件·文档颜色转换** / **用户偏好 KV** / **命名视图** / **网格设置** / **应用事件队列** / **显示隐藏对象** / **页面版式** / **重复上一操作** |
 | `cdr_view` | **视图**：刷新重绘 / 激活窗口 / 文档↔屏幕坐标换算 / **屏幕距离↔文档距离** / **屏幕叠加层（文字/矩形/直线/圆，不写入文档）** |
 
 ### 图层 / 页面 / 文件
@@ -183,7 +183,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ---
 
-## X8 特有问题（100 条，全部实测）
+## X8 特有问题（102 条，全部实测）
 
 这些是 **X8 与 2024+ 的差异**，也是本项目存在的主要理由。
 
@@ -289,6 +289,8 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 | 98 | **同一会话多次颜色转换可能让 CorelDRAW 无响应** | 连续 RGB→CMYK→RGB/gray 后进程可能卡死；单次 RGB→CMYK 稳定 | 需要多次转换时重启 CorelDRAW |
 | 99 | **本地化元数据按 LCID 读写** | `Metadata.LocalizableTitle` 等返回 `IVGLocalizableString`；`GetLanguages()` 是 tuple（含 "" 与 "2052"）；`SetLangString(2052,"中文")` 有效 | 默认值用 `DefaultLangString` |
 | 100 | **屏幕叠加层可即时显示** | `CreateOnScreenText/Curve/Handle` + SetTextAndPosition/SetPen/SetRectangle/SetLine/SetCircle/Show；坐标为屏幕像素，xor 绘制 | 不写入文档，窗口重绘/关闭后可能消失；用 cdr_view(overlay_*) |
+| 101 | **Application 事件连接点可用** | 生成的 `DIVGApplicationEvents(application)` 能收到 DocumentNew/WindowActivate/DocumentClose/SelectionChange 等；队列用 `cdr_doc(action="events")` 读 | `ApplicationEvent` 高频且无信息量，已忽略 |
+| 102 | **事件 sink 的 TLB 路径要猜** | `app.Path` 是 `...\Draw\`，TLB 实际在 `..\Programs64\vgcoreauto.tlb`；按候选路径查找 | 找不到 TLB 时静默降级，不影响主功能 |
 
 改代码前请先读 [`src/cdrx8_mcp/constants.py`](src/cdrx8_mcp/constants.py) 里的注释。
 
@@ -338,7 +340,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ```powershell
 python -m pytest -q                # 55 项纯逻辑测试，任何平台可跑
-python scripts/live_smoke.py       # 255 项端到端，需要 CorelDRAW X8
+python scripts/live_smoke.py       # 257 项端到端，需要 CorelDRAW X8
 python scripts/live_smoke.py --keep   # 保留文档方便肉眼看效果
 python scripts/coverage_audit.py   # 覆盖率审计（复现 README/COVERAGE 里的数字）
 ```
@@ -375,6 +377,7 @@ weld/fillet → 框选/组合/解组 → 对齐 → 图层 → 查找 → 分页
 **叠印 Fill/Outline 读写 → 段落左右/首行缩进 → 制表位** →
 **本地化元数据（默认 + 中文/英文）** →
 **屏幕叠加层（文字/矩形/直线/圆）→ 清除** →
+**应用事件队列（DocumentNew/WindowActivate）→ 清空** →
 过期 token 拒绝 → 关闭。
 
 完整能力矩阵见 [docs/COVERAGE.md](docs/COVERAGE.md)。

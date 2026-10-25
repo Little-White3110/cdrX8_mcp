@@ -2313,6 +2313,26 @@ def main() -> int:
     if no_error("cdr_view(overlay_clear)", ovc):
         check("叠加层可全部隐藏", (ovc.get("hidden") or 0) >= 4, str(ovc))
 
+    # ---------------- 15af. 第二十六波：应用事件队列 ----------------
+    print("\n[15af] 第二十六波：应用事件队列")
+    ce0 = server.cdr_doc(doc_id, "clear_events")
+    if no_error("cdr_doc(clear_events)", ce0):
+        pass
+    evdoc = server.cdr_open(preset="A4")
+    if "document_id" in evdoc:
+        ev2 = server.cdr_doc(doc_id, "events", limit=50)
+        if no_error("cdr_doc(events)", ev2):
+            names = [e.get("event") for e in (ev2.get("events") or [])]
+            check("应用事件可捕获", (ev2.get("count") or 0) > 0
+                  and any(n in {"DocumentNew", "WindowActivate",
+                                "DocumentOpen"} for n in names),
+                  f"count={ev2.get('count')} names={names}")
+        ce1 = server.cdr_doc(doc_id, "clear_events")
+        if no_error("cdr_doc(clear_events after open)", ce1):
+            check("事件队列可清空", (ce1.get("cleared") or 0) >= 1,
+                  f"cleared={ce1.get('cleared')}")
+        no_error("关闭事件测试文档", server.cdr_close(evdoc["document_id"]))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,
