@@ -3023,6 +3023,102 @@ def main() -> int:
                   str(nbad.get("error")))
         no_error("关闭节点拓扑测试文档", server.cdr_close(nd_id))
 
+    # ---------------- 15aq. 第三十七波：文字结构体 / 区间宽接口 / 样式继承 ----------------
+    print("\n[15aq] 第三十七波：文字结构体读取、TextRange 宽接口、样式继承")
+    tx_doc = server.cdr_open(preset="A4")
+    if "document_id" in tx_doc:
+        tx_id = tx_doc["document_id"]
+        txr = server.cdr_create(tx_id, [
+            {"type": "text", "x": 20, "y": 80, "text": "结构体测试", "size": 18},
+            {"type": "rectangle", "x": 20, "y": 20, "width": 30, "height": 20,
+             "fill": "#3366CC"},
+        ])
+        if no_error("cdr_create(文字结构体测试)", txr):
+            ta = txr["created"][0]["name"]
+            tb = txr["created"][1]["name"]
+            tA = {"name": ta}
+            sflat = server.cdr_text(tx_id, tA, struct_info=True)
+            st = sflat.get("structs") or {}
+            if no_error("cdr_text(struct_info)", sflat):
+                check("文字四个结构体可读",
+                      bool(st.get("font")) and bool(st.get("space"))
+                      and bool(st.get("align")) and bool(st.get("hyphenation")),
+                      f"keys={sorted(st)}")
+                check("结构体字段有真实值",
+                      (st.get("font") or {}).get("size") == 18.0
+                      and (st.get("space") or {}).get("line_spacing") is not None,
+                      f"size={(st.get('font') or {}).get('size')}")
+            r1 = server.cdr_text(tx_id, tA, range_action={
+                "op": "insert_before", "start": 0, "end": 0, "text": "前"})
+            if no_error("cdr_text(range insert_before)", r1):
+                check("区间前置插入（InsertBeforeWide）",
+                      "前" in str((r1.get("range_action") or {}).get("contents")),
+                      str((r1.get("range_action") or {}).get("contents"))[:20])
+            r2 = server.cdr_text(tx_id, tA, range_action={
+                "op": "replace", "start": 0, "end": 1, "text": "改"})
+            if no_error("cdr_text(range replace)", r2):
+                check("区间替换（ReplaceWide）",
+                      str((r2.get("range_action") or {}).get("contents")).startswith("改"),
+                      str((r2.get("range_action") or {}).get("contents"))[:20])
+            r3 = server.cdr_text(tx_id, tA, range_action={
+                "op": "collapse", "start": 0, "end": 3, "to_end": True})
+            if no_error("cdr_text(range collapse)", r3):
+                check("区间可折叠（Collapse）",
+                      (r3.get("range_action") or {}).get("range") == [3, 3],
+                      str((r3.get("range_action") or {}).get("range")))
+            r4 = server.cdr_text(tx_id, tA, range_action={
+                "op": "set_range", "start": 0, "end": 2, "new_start": 1, "new_end": 4})
+            if no_error("cdr_text(range set_range)", r4):
+                check("区间可重设（SetRange）",
+                      (r4.get("range_action") or {}).get("range") == [1, 4],
+                      str((r4.get("range_action") or {}).get("range")))
+            r5 = server.cdr_text(tx_id, tA, range_action={
+                "op": "is_same", "start": 0, "end": 2,
+                "other_start": 0, "other_end": 2})
+            check("区间可判等（IsSame）",
+                  (r5.get("range_action") or {}).get("same") is True,
+                  str((r5.get("range_action") or {}).get("same")))
+            r6 = server.cdr_text(tx_id, tA, range_action={
+                "op": "in_range", "start": 0, "end": 2,
+                "other_start": 0, "other_end": 5})
+            check("区间包含判定（InRange）",
+                  (r6.get("range_action") or {}).get("in_range") is True,
+                  str((r6.get("range_action") or {}).get("in_range")))
+            r7 = server.cdr_text(tx_id, tA, range_action={
+                "op": "set_line_spacing", "type": 1, "line_spacing": 150})
+            if no_error("cdr_text(range set_line_spacing)", r7):
+                check("行距可设（SetLineSpacing）",
+                      (r7.get("range_action") or {}).get("line_spacing") == 150.0,
+                      str((r7.get("range_action") or {}).get("line_spacing")))
+            rbad = server.cdr_text(tx_id, tA, range_action={"op": "nope"})
+            check("非法 range_action 被拒绝", rbad.get("error") == "bad_argument",
+                  str(rbad.get("error")))
+            sc = server.cdr_style(tx_id, action="create", target={"name": tb},
+                                  category="fill", style_name="smoke37")
+            if no_error("cdr_style(create fill)", sc):
+                ov = server.cdr_style(tx_id, action="override_props", style_name="smoke37")
+                if no_error("cdr_style(override_props)", ov):
+                    check("样式覆盖属性可读",
+                          bool(ov.get("override_properties"))
+                          and (ov.get("count") or 0) >= 1,
+                          f"props={ov.get('override_properties')}")
+                ih = server.cdr_style(tx_id, action="inherited", style_name="smoke37",
+                                      property="primaryColor")
+                if no_error("cdr_style(inherited)", ih):
+                    check("样式属性继承状态可读", ih.get("inherited") in (True, False),
+                          str(ih.get("inherited")))
+                gp = server.cdr_style(tx_id, action="get_property", style_name="smoke37",
+                                      property="primaryColor")
+                if no_error("cdr_style(get_property)", gp):
+                    check("样式属性可取值（GetProperty）", gp.get("value") is not None,
+                          str(gp.get("value"))[:40])
+                cp = server.cdr_style(tx_id, action="clear_property",
+                                      style_name="smoke37", property="primaryColor")
+                if no_error("cdr_style(clear_property)", cp):
+                    check("样式属性可清除（ClearProperty）",
+                          cp.get("cleared") in (True, False), str(cp.get("cleared")))
+        no_error("关闭文字结构体测试文档", server.cdr_close(tx_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

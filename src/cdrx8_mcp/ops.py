@@ -3100,7 +3100,7 @@ def node_ops(doc: Any, page_index: int | None, target: dict, action: str, *,
 # --------------------------------------------------------------------------- #
 STYLE_ACTIONS = ("list", "get", "create", "apply", "rename", "delete",
                  "set_property", "derived", "export_sheet", "import_sheet",
-                 "color_styles", "create_color_styles")
+                 "color_styles", "create_color_styles", "override_props", "inherited", "get_property", "clear_property")
 STYLE_MUTATIONS = {"create", "apply", "rename", "delete", "set_property",
                    "import_sheet", "create_color_styles"}
 STYLE_CATEGORIES = ("fill", "outline", "character", "paragraph")
@@ -3196,6 +3196,42 @@ def style_ops(doc: Any, page_index: int | None, action: str, *,
                     "readable_properties": _style_readable_props(style),
                     "derived": _style_derived(style),
                     "definition": (_s(lambda: str(style.ToString()), "") or "")[:1200]}
+        if act == "override_props":
+            # 实测 Style.GetOverridePropertyNames() 返回 ('primaryColor','secondaryColor')
+            style = _find_style(doc, name)
+            names = _s(lambda: list(style.GetOverridePropertyNames()), []) or []
+            return {"action": act, **_style_dict(style),
+                    "override_properties": [str(n) for n in names],
+                    "count": len(names)}
+        if act == "inherited":
+            style = _find_style(doc, name)
+            prop_name = str(property or "primaryColor")
+            flag = bool(_s(lambda: bool(style.IsPropertyInherited(prop_name)), False))
+            return {"action": act, **_style_dict(style), "property": prop_name,
+                    "inherited": flag}
+        if act == "get_property":
+            style = _find_style(doc, name)
+            prop_name = str(property or "primaryColor")
+            got = _s(lambda: style.GetProperty(prop_name))
+            if got is None:
+                avail = _s(lambda: [str(n) for n in style.GetOverridePropertyNames()], [])
+                raise CdrBadArgument(
+                    f"样式 {name!r} 取不到属性 {prop_name!r}；可用覆盖属性：{avail}")
+            value: Any = got
+            try:
+                if hasattr(got, "ToString"):
+                    value = str(got.ToString())
+            except Exception:  # noqa: BLE001
+                value = "COM"
+            return {"action": act, **_style_dict(style), "property": prop_name,
+                    "value": value,
+                    "type": _n(lambda: int(got.Type)) if hasattr(got, "Type") else None}
+        if act == "clear_property":
+            style = _find_style(doc, name)
+            prop_name = str(property or "primaryColor")
+            cleared = bool(_s(lambda: bool(style.ClearProperty(prop_name)), False))
+            return {"action": act, **_style_dict(style), "property": prop_name,
+                    "cleared": cleared}
         if act == "export_sheet":
             if not sheet_path:
                 raise CdrBadArgument("export_sheet 需要 sheet_path（.cdst）")
@@ -5609,6 +5645,120 @@ def _case_index(value: Any) -> int:
     return CASE_MODES[key]
 
 
+def _text_structs(shape: Any) -> dict:
+    """读 `Text.FontProperties / SpaceProperties / AlignProperties / HyphenationSettings`。
+
+    实测：这四个在 pywin32 里是**属性**（返回 IVGStruct* 对象），带 frames 的 propget
+    调不成方法（`TypeError: object is not callable`）；直接赋值 setter
+    （`text.FontProperties = struct`）会把字号写成 1.17e-38 之类的垃圾值 —— 所以**只读不写**。
+    """
+    text = _s(lambda: shape.Text)
+    if text is None:
+        return {}
+    out: dict = {}
+    fp = _s(lambda: text.FontProperties)
+    if fp is not None:
+        out["font"] = {
+            "name": _s(lambda: str(fp.Name)),
+            "size": _round(_s(lambda: float(fp.Size))),
+            "style": _n(lambda: int(fp.Style)),
+            "underline": _n(lambda: int(fp.Underline)),
+            "overscore": _n(lambda: int(fp.Overscore)),
+            "strikethru": _n(lambda: int(fp.Strikethru)),
+            "uppercase": _n(lambda: int(fp.Uppercase)),
+            "position": _n(lambda: int(fp.Position)),
+            "range_kerning": _round(_s(lambda: float(fp.RangeKerning))),
+        }
+    sp = _s(lambda: text.SpaceProperties)
+    if sp is not None:
+        out["space"] = {
+            "character_spacing": _round(_s(lambda: float(sp.CharacterSpacing))),
+            "word_spacing": _round(_s(lambda: float(sp.WordSpacing))),
+            "line_spacing": _round(_s(lambda: float(sp.LineSpacing))),
+            "line_spacing_type": _n(lambda: int(sp.LineSpacingType)),
+            "before_paragraph": _round(_s(lambda: float(sp.BeforeParagraphSpacing))),
+            "after_paragraph": _round(_s(lambda: float(sp.AfterParagraphSpacing))),
+        }
+    ap = _s(lambda: text.AlignProperties)
+    if ap is not None:
+        out["align"] = {
+            "alignment": _n(lambda: int(ap.Alignment)),
+            "left_indent": _round(_s(lambda: float(ap.LeftIndent))),
+            "right_indent": _round(_s(lambda: float(ap.RightIndent))),
+            "first_line_indent": _round(_s(lambda: float(ap.FirstLineIndent))),
+            "max_word_spacing": _round(_s(lambda: float(ap.MaxWordSpacing))),
+            "min_word_spacing": _round(_s(lambda: float(ap.MinWordSpacing))),
+            "max_char_spacing": _round(_s(lambda: float(ap.MaxCharacterSpacing))),
+            "char_rotation": _round(_s(lambda: float(ap.CharacterRotation))),
+        }
+    hp = _s(lambda: text.HyphenationSettings)
+    if hp is not None:
+        out["hyphenation"] = {
+            "use_automatic": bool(_s(lambda: bool(hp.UseAutomaticHyphenation), False)),
+            "break_capitalized": bool(_s(lambda: bool(hp.BreakCapitalized), False)),
+            "hot_zone": _round(_s(lambda: float(hp.HotZone))),
+            "min_word_length": _n(lambda: int(hp.MinWordLength)),
+            "min_before": _n(lambda: int(hp.MinCharactersBefore)),
+            "min_after": _n(lambda: int(hp.MinCharactersAfter)),
+            "break_all_cap_words": bool(_s(lambda: bool(hp.BreakAllCapWords), False)),
+        }
+    return out
+
+
+def _text_range_action(story: Any, spec: dict) -> dict:
+    """TextRange 的宽接口 / 游标操作（第三十七波实测）。
+
+    op: collapse / set_range / in_range / is_same / insert_before / insert_after /
+        replace / set_line_spacing
+    """
+    op = str(spec.get("op", "")).lower()
+    start = int(spec.get("start", 0))
+    count = int(spec.get("count", 0))
+    end = int(spec.get("end", start + max(count, 1)))
+    rng = story.Range(start, end)
+    if op == "collapse":
+        rng.Collapse(bool(spec.get("to_end", True)))
+        return {"range": [int(_s(lambda: int(rng.Start), 0)),
+                          int(_s(lambda: int(rng.End), 0))]}
+    if op == "set_range":
+        rng.SetRange(int(spec.get("new_start", start)), int(spec.get("new_end", end)))
+        return {"range": [int(_s(lambda: int(rng.Start), 0)),
+                          int(_s(lambda: int(rng.End), 0))]}
+    if op in ("in_range", "is_same"):
+        other = story.Range(int(spec.get("other_start", start)),
+                            int(spec.get("other_end", end)))
+        if op == "in_range":
+            inside = bool(_s(lambda: bool(rng.InRange(other)), False))
+            return {"in_range": inside}
+        same = bool(_s(lambda: bool(rng.IsSame(other)), False))
+        return {"same": same}
+    if op in ("insert_before", "insert_after", "replace"):
+        text = str(spec.get("text", ""))
+        lang = int(spec.get("language_id", 0))
+        charset = int(spec.get("charset", 0))
+        fnt = str(spec.get("font", ""))
+        if op == "insert_before":
+            made = rng.InsertBeforeWide(text, lang, charset, fnt)
+        elif op == "insert_after":
+            made = rng.InsertAfterWide(text, lang, charset, fnt)
+        else:
+            made = rng.ReplaceWide(text, lang, charset, fnt)
+        return {"op": op, "text": text,
+                "range": [_n(lambda: int(made.Start)) if made is not None else None,
+                          _n(lambda: int(made.End)) if made is not None else None],
+                "contents": _s(lambda: str(story.Text))}
+    if op == "set_line_spacing":
+        rng.SetLineSpacing(int(spec.get("type", 1)),
+                           float(spec.get("line_spacing", 100.0)),
+                           float(spec.get("before", 0.0)),
+                           float(spec.get("after", 0.0)))
+        return {"type": int(spec.get("type", 1)),
+                "line_spacing": float(spec.get("line_spacing", 100.0))}
+    raise CdrBadArgument(
+        "range_action.op 可用：collapse / set_range / in_range / is_same / "
+        "insert_before / insert_after / replace / set_line_spacing")
+
+
 def _text_font_info(shape: Any) -> dict | None:
     """读字体属性。
 
@@ -5693,6 +5843,8 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
              range_delete: bool = False, range_copy: bool = False,
              range_paste: bool = False, range_straighten: bool = False,
              find_query: str | None = None, runs: bool = False,
+             struct_info: bool = False,
+             range_action: dict | None = None,
              label: str = "cdr_text") -> dict:
     with mm_units(doc):
         page = _page(doc, page_index)
@@ -5752,6 +5904,17 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
                 info = _text_hyphenation_info(shape)
                 if info is not None:
                     result["hyphenation"] = info
+            if struct_info:
+                result["structs"] = _text_structs(shape)
+            if range_action:
+                try:
+                    result["range_action"] = _text_range_action(
+                        shape.Text.Story, dict(range_action))
+                    result["applied"].append("range_action")
+                except CdrBadArgument:
+                    raise
+                except Exception as exc:  # noqa: BLE001
+                    result["warnings"].append(f"range_action 失败：{exc}")
             story = _s(lambda: shape.Text.Story)
             if story is not None:
                 result["indent"] = {

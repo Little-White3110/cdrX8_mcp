@@ -395,6 +395,7 @@ def cdr_text(document_id: str, target: dict, text: str | None = None,
              range_delete: bool = False, range_copy: bool = False,
              range_paste: bool = False, range_straighten: bool = False,
              find_query: str | None = None, runs: bool = False,
+             struct_info: bool = False, range_action: dict | None = None,
              expected_revision: int | None = None, snapshot_token: str | None = None,
              page_index: int | None = None) -> dict:
     """文字的排版级操作。
@@ -433,7 +434,8 @@ def cdr_text(document_id: str, target: dict, text: str | None = None,
             opentype,
         )) or any((to_curves, fit_frame, no_effect, to_paragraph, to_artistic,
                    select_all, align_to_baseline, range_delete, range_copy,
-                   range_paste, range_straighten, clear_tabs)) or bool(tab_stops)
+                   range_paste, range_straighten, clear_tabs)) or bool(tab_stops) \
+            or range_action is not None
         warnings = _check_view(sess, expected_revision, snapshot_token, doc) \
             if mutating else []
         target_path = resolve_write_path(export_path, overwrite=export_overwrite)[0] \
@@ -460,6 +462,7 @@ def cdr_text(document_id: str, target: dict, text: str | None = None,
             range_delete=range_delete, range_copy=range_copy,
             range_paste=range_paste, range_straighten=range_straighten,
             find_query=find_query, runs=runs,
+            struct_info=struct_info, range_action=range_action,
         ), label="cdr_text")
         if not mutating:
             return result

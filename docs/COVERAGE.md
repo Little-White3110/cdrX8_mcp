@@ -2,7 +2,7 @@
 
 > 目的：证明"还有多少没探"。每一行要么有对应的工具，要么有实测失败证据。
 > 环境：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）/ Python 3.11.9 64 位
-> 最近更新：2026-10-26 第三十六波（节点拓扑 / 曲线合并与焊接）
+> 最近更新：2026-10-26 第三十七波（文字结构体 / 区间宽接口 / 样式继承）
 
 ## 怎么得出这份清单
 
@@ -32,14 +32,14 @@
 | `IVGCurve` | 37 | 已用：Length / Area / SubPaths / Contour / CreateSubPath / GetCopy / **Nodes / Segments / Selection / FindNodeAtPoint / FindSegmentAtPoint / ReverseDirection / JoinTouchingSubpaths / RemoveOverlaps / GetPolyline / IsOnCurve / IsClockwise / Closed / GetCurveInfo**；数组入参（AppendSubpathFromPoints / CreateSubPathFromArray）不可用；CreateCurveMappedToStroke 类型不匹配；**第三十六波**：`AppendCurve`（把另一条曲线并成子路径）、`WeldWith`（返回新曲线）、`IsOnCurve(x,y,hot)`、`GetCopy`、`GetCurveInfo`（返回 com_struct 数组）|
 | `IVGSubPath` | 39 | 已用：CreateSubPath / AppendLineSegment / AppendCurveSegment2 / Closed / **Nodes / Segments / StartNode / EndNode / GetPointAt / GetPointPositionAt / GetTangentVectorAt / GetPerpendicularVectorAt / GetCurveSpeedAt / GetIntersections / ReverseDirection / Next / Previous / Extract / GetCopy**；求交/等分/切向已打通，点集数组仍取不回；`Next`·`Previous`·`GetCopy` 与曲线同名方法共享计数（审计按名字匹配，含跨接口误计）|
 | `IVGNode` | 19 | **已覆盖（第五波纠正）**：`curve.Nodes` / `curve.SubPaths.Item(i).Nodes` 是**属性**；`GetPosition/SetPosition/Move/Type/Index/SubPathIndex/IsEnding/Selected/Delete/CreateSelection` 均可用；范围操作走 `curve.Nodes.Range(a,b)` → `IVGNodeRange`（Fillet/Chamfer/Scallop/Smoothen/SetType/Move/Rotate/Skew/Stretch/BreakApart/GetBoundingBox）；`app.CreateNodeRange()` 返回空集合；**第三十六波**：`Next()` / `Previous()`（**是方法不是属性**，返回 IVGNode）、`GetDistanceFrom`、`AveragePositionWith`、`JoinWith`（末端节点合并）、`GetPoint`（返回 IVGPoint）；`ConnectWith` / `ExtendSubPaths` 实测报「指定的节点必须在另一条曲线上」/「无法连接曲线」 |
-| `IVGText` | 30 | 已用：Story（**Font / Size / Bold / Italic / Underline 读取**）/ GetSpaceProperties / SetSpaceProperties / GetAlignProperties / SetAlignProperties / FitToPath / FitTextToFrame / **GetContents / Range / ExportToFile / GetHyphenationSettings**；GetFontProperties 结构体返回默认值不可信 |
-| `IVGTextRange` | 35 | 已用：Text / Font / Size / Bold / Italic / Underline / ChangeCase / ApplyBulletEffect / ApplyDropCapEffect / ApplyNoEffect / InsertBefore / InsertAfter / **SetOpenTypeFeature / GetOpenTypeFeature / Delete / Copy / Paste / Straighten / FindRanges / EnumRanges / LeftIndent / RightIndent / FirstLineIndent / Tabs**；ApplyStyle 调用不报错但未观测到效果 |
+| `IVGText` | 30 | 已用：Story（**Font / Size / Bold / Italic / Underline 读取**）/ GetSpaceProperties / SetSpaceProperties / GetAlignProperties / SetAlignProperties / FitToPath / FitTextToFrame / **GetContents / Range / ExportToFile / GetHyphenationSettings**；GetFontProperties 结构体返回默认值不可信；**第三十七波**：`FontProperties` / `SpaceProperties` / `AlignProperties` / `HyphenationSettings` 四个**属性**可读（返回 IVGStruct* 快照）；带下标/帧的 `*InRange` 版本返回的结构体字段是垃圾值（Size=1.17e-38），不可用；直接赋值 setter 会把字号写坏，**只读不写** |
+| `IVGTextRange` | 35 | 已用：Text / Font / Size / Bold / Italic / Underline / ChangeCase / ApplyBulletEffect / ApplyDropCapEffect / ApplyNoEffect / InsertBefore / InsertAfter / **SetOpenTypeFeature / GetOpenTypeFeature / Delete / Copy / Paste / Straighten / FindRanges / EnumRanges / LeftIndent / RightIndent / FirstLineIndent / Tabs**；ApplyStyle 调用不报错但未观测到效果；**第三十七波**：`InsertBeforeWide` / `InsertAfterWide` / `ReplaceWide`（带语言/字符集/字体）、`Collapse` / `SetRange` / `InRange` / `IsSame` / `SetLineSpacing`、`Start`·`End`；`Evaluate` 的表达式语法未逆出（`len` 报 Identifier is not a method of global）|
 | `IVGTextTabPositions` | 9 | **新打通（第二十三波）**：`TextRange.Tabs` 的 Count/Item(i)/Add(Position,Alignment,Leadered)/AddEvery/Clear；`TextTabPosition` 的 Position/Alignment/Leadered 可读写 |
 | `IVGColor` | 44 | **第三十二波补齐（32/43）**：仍不暴露分量属性，但对象级能力全通 —— ToString / GetName·SetName / StringAssign / IsSame·IsSimilar / GetColorDistanceFrom / BlendWith（原地）/ GetCopy / ConvertToRGB·CMYK·Gray·HLS·HSB·Lab·CMY·YIQ（原地）/ ConvertToFixed(0=USER,1=TRU,2=PAN_PROC) / RGBAssign·CMYKAssign·GrayAssign·HLSAssign·HSBAssign·LabAssign·CMYAssign·YIQAssign·BWAssign·RegistrationAssign；不可用：ConvertToPalette / SpotAssignByName / CopyAppearance / ModifyColorStyleColor / UserAssign(Ex)（参数是窗口句柄，会弹对话框）|
 | `IVGBitmap` | 16 | 已用：ConvertTo / ConvertToBW / **ConvertToPaletted（0~9） / ConvertToDuotone** / Resample / Crop / ResetCropEnvelope / Inflate / Mode / ResolutionX / Size / Image / Duotone / **SetImageData（Alpha 必须传 None） / ApplyBitmapEffect（命令串） / ExternallyLinked / LinkFileName / UpdateLink / ResolveLink**；Trace 禁用（见下） |
 | `IVGFountainFill` | 7 | 通过 ApplyFountainFill 设置，未做二次编辑 |
 | `IVGTransparency` | 9 | 已用：ApplyUniformTransparency / ApplyFountainTransparency / **ApplyPatternTransparency（PatternCanvas 可用）** / ApplyNoTransparency / **Freeze / Unfreeze / Frozen** |
-| `IVGStyle` / `IVGStyleSheet` | 16 / 16 | **已覆盖（第六/七/九波）**：`CreateStyleFromShape`、`CreateStyle(category, based_on, name)`、`Styles.Find/Item/Count`、`Style.Name/CategoryName/DisplayName/BasedOn`、`Rename / Delete / GetAllPropertyNames / GetPropertyAsString / SetPropertyAsString / SetProperty / DerivedStyles / ToString`、`Shape.ApplyStyle("样式名")`；**`Document.SaveStyleSheet/LoadStyleSheet` 可导出/恢复 .cdst**；**`Document.CreateColorStyles(harmony>0)` 会生成颜色样式（AllColorStyles）**；`fill`/`outline` 分组名不可直接读写 |
+| `IVGStyle` / `IVGStyleSheet` | 16 / 16 | **已覆盖（第六/七/九波）**：`CreateStyleFromShape`、`CreateStyle(category, based_on, name)`、`Styles.Find/Item/Count`、`Style.Name/CategoryName/DisplayName/BasedOn`、`Rename / Delete / GetAllPropertyNames / GetPropertyAsString / SetPropertyAsString / SetProperty / DerivedStyles / ToString`、`Shape.ApplyStyle("样式名")`；**`Document.SaveStyleSheet/LoadStyleSheet` 可导出/恢复 .cdst**；**`Document.CreateColorStyles(harmony>0)` 会生成颜色样式（AllColorStyles）**；`fill`/`outline` 分组名不可直接读写；**第三十七波**：`GetProperty`（返回 IVGColor）、`GetOverridePropertyNames`、`IsPropertyInherited`、`ClearProperty`；`SetBasedOn(None)` 报「未找到样式 None」、`Assign(shape)` 报类型不匹配 |
 | `IVGWindow` | 9 | 已用：Refresh / Activate / DocumentToScreen / ScreenToDocument / DocumentDistanceToScreenDistance / **ScreenDistanceToDocumentDistance**；缩放/新建窗口未封装 |
 | `IVGView` / `IVGViews` | 8 / 5 | **新打通（第二十波）**：`Document.CreateView(Name, OriginX, OriginY, Zoom, Page)` 创建命名视图；`Views.Count/Item(i)` 列出；`View.Activate/Delete`、Name/OriginX·Y/Zoom/Page/UsePage/UseZoom 可读写 |
 | `IVGOnScreenText` / `IVGOnScreenCurve` / `IVGOnScreenHandle` | 8 / 12 / 6 | **新打通（第二十五波）**：`Application.CreateOnScreenText/Curve/Handle` 创建屏幕叠加层；Text 的 SetTextAndPosition/SetTextColor/Show/Hide，Curve 的 SetPen/SetNoBrush/SetRectangle/SetLine/SetCircle/Show/Hide，Handle 的 SetPosition/SetHandleColor/IsHotTracked |
@@ -79,9 +79,9 @@
 | 绘图 | `cdr_create`（矩形含圆角 / 椭圆含圆弧扇形 / 多边形 / 星形 / 螺旋 / 网格 / 直线 / 贝塞尔 / 文字 / 段落文字 / 参考线 / 任意折线 / **内存位图（纯色 + 像素色块）** / **OLE 文件嵌入**） | ✅ |
 | 样式 | `cdr_modify`（纯色/渐变/纹理/图案（画布）/专色/无色、描边含虚线箭头/自定义虚线线型、投影、轮廓图、封套、透明/图案透明、冻结/解冻透明度、**图案填充微调**） | ✅ |
 | 变换 | `cdr_modify`（移动/尺寸/旋转/翻转/斜切/矩阵/克隆/层级/**层级相对调整**/**清除变换**/**旋转中心**/复制/删除/锁定） | ✅ |
-| **对象样式** | `cdr_style`（列出/从对象创建/派生/套用/改名/删除/读定义/改属性/**样式表 .cdst 导入导出**/**颜色样式与颜色协调**） | ✅ 第六/七/九波 |
+| **对象样式** | `cdr_style`（列出/从对象创建/派生/套用/改名/删除/读定义/改属性/**样式表 .cdst 导入导出**/**颜色样式与颜色协调**） | ✅ 第六/七/九波/**覆盖属性（override_props）·继承状态（inherited）·属性取值（get_property）·属性清除（clear_property）** | ✅ 第六/七/九/三十七波 |
 | **节点/线段** | `cdr_node`（列节点/列线段/移动/选中/删除/圆角/倒角/scallop/平滑/拉伸/旋转/斜切/断开/加节点/断线/控制点/按坐标查找/**前后邻居（Next·Previous）/节点间距/平均位置/末端节点合并**） | ✅ 第五/三十六波 |
-| 文字排版 | `cdr_text`（字体字号粗斜体下划线 / 对齐 / 大小写 / 项目符号 / 首字下沉 / 行距字距 / 段落缩进 / **制表位** / 前后插入 / 沿路径 / 自适应 / 转曲 / 读取全文·区间·导出纯文本 / 字体属性读取·断字设置读取·格式段列表 / 区间删除·复制·粘贴·拉直 / 按格式查询区间（@font/@bold…） / OpenType 特性） | ✅ |
+| 文字排版 | `cdr_text`（字体字号粗斜体下划线 / 对齐 / 大小写 / 项目符号 / 首字下沉 / 行距字距 / 段落缩进 / **制表位** / 前后插入 / 沿路径 / 自适应 / 转曲 / 读取全文·区间·导出纯文本 / 字体属性读取·断字设置读取·格式段列表 / 区间删除·复制·粘贴·拉直 / 按格式查询区间（@font/@bold…） / OpenType 特性） | ✅ / **结构体快照（Font·Space·Align·Hyphenation）** / **区间宽接口（InsertBeforeWide·AfterWide·ReplaceWide·Collapse·SetRange·InRange·IsSame·SetLineSpacing）** | ✅ |
 | 布尔与整形 | `cdr_shape_ops`（weld/trim/intersect/combine/group/ungroup/break_apart/to_curves/to_symbol/powerclip/fillet/chamfer/scallop/step_repeat/distribute/boundary/perspective/separate/parallel_curves/rasterize/batch_outline_to_curves/fill_mode/pixel_aligned/range_boundary/envelope_from_shape/compare/project/unproject/to_document/extrude/lens/extrude_set/lens_set/effect_info/clear_effects/**blend/blend_set**/**unlock_all/ungroup_all/break_apart_ex/clear_effect/range_info/range_add/range_remove**） | ✅ |
 | 对齐 | `cdr_align`（左中右/上下中/等间距；`to=selection/page` 走 AlignAndDistribute；**`to=page_center/grid/point/shape/range` 走原生 AlignRangeTo***）+ `cdr_modify(align_to_shape/align_to_page)` | ✅ 第三十三波 |
 | 选择与查找 | `cdr_select`（加入/**移除/清空**）`cdr_find` | ✅ |
@@ -115,7 +115,9 @@
 | 立体化 / 透镜 / 尺寸标注 / 连接线 / 符号插入 | `CreateExtrude` `CreateLens` `CreateLinearDimension` `CreateConnector` `CreateSymbol` | `TypeError: Python instance can not be converted to a COM object`（5 组参数组合均失败） | 需要 pywin32 无法构造的结构体/枚举参数 |
 | 描边整体设置 | `Outline.SetProperties(Width, Style, Color, …)`（14 参）/ `SetPropertiesEx`（15 参） | **第三十二波纠正**：早先「TypeError」是因为把 `None` 传给了 int 形参；**14 个实参全给对（可选对象位传 None、可选数值位传 0/0.0）即可用**，宽度/颜色/线帽/连接/斜接都生效 | 已封装 `cdr_outline(action="set", changes={"use_set_properties":true,…})` |
 | 文档设置快照 | `Document.SaveSettings(Tag)` / `RestoreSettings(Tag)` / `ResetSettings()` | 三个方法都**调用成功且不报错**，但实测把 `Resolution` 从 300 改成 72 再 `RestoreSettings` 并没有恢复（仍 72）—— Tag 语义未逆出，可见效果未确认 | 已封装为 `cdr_doc(action="save_settings"/"restore_settings"/"reset_settings")`，标注为实验性；需要可靠改设置请用 `cdr_doc(action="set_settings")` |
-| 节点连线 / 跨曲线接续 | `Node.ConnectWith(Target)` / `Node.ExtendSubPaths(Node2, JoinPaths)` | 两条**不同**开放曲线的末端节点互连，报「指定的节点必须在另一条曲线上」；`ExtendSubPaths` 报「无法连接曲线」—— 大概需要先在同一选择集里选中两条曲线 | 已提供同曲线内的 `cdr_node(action="join_nodes")`（实测 3→2 节点）|
+
+| 文字结构体写入 | `Text.FontProperties(frames, struct)` / `SpaceProperties(...)` 等 4 个 propget/putter | pywin32 里这些名字是**属性**：当方法调报 `TypeError: IVGStruct... object is not callable`；直接赋值（`text.FontProperties = struct`）不报错，但会把字号写成 1.17e-38 之类的垃圾值 | `Font/Space/Align/Hyphenation` 四个快照**只读**（`cdr_text(struct_info=true)`）；写字号/字体仍走 `cdr_text(font=…, size=…)` |
+| 文字区间下标版结构体 | `Text.FontPropertiesInRange(start,count,indexing)` | 能返回 IVGStruct*，但字段全是垃圾（Size=1.17e-38、Style=16），不可信 | 用不带下标的属性快照代替 || 节点连线 / 跨曲线接续 | `Node.ConnectWith(Target)` / `Node.ExtendSubPaths(Node2, JoinPaths)` | 两条**不同**开放曲线的末端节点互连，报「指定的节点必须在另一条曲线上」；`ExtendSubPaths` 报「无法连接曲线」—— 大概需要先在同一选择集里选中两条曲线 | 已提供同曲线内的 `cdr_node(action="join_nodes")`（实测 3→2 节点）|
 | 文字粗斜体 | `CreateArtisticText(..., Bold, Italic, …)` / `Text.Story.Bold` | **第三十四波纠正**：这两个形参是 `cdrTriState`（**true = -1**）。传 Python `True`（=1）不仅不生效，`Story.Bold = True` 还会把粗体**关掉**；下划线形参又是另一套枚举（1=有、0=无） | 已封装 `_tristate()` / `_underline()`；`cdr_create`、`cdr_modify`、`cdr_text` 全部改走这两个映射 |
 | 字体表 | `Application.ForceUpdateFontTable()` | 长时间批量建文本后，`CreateArtisticText` 传 `"Arial"` 会**静默回退默认字体**（中文机=宋体）且丢掉 Bold/Italic；调一次 FontTable 刷新后恢复 | `cdr_doc(action="refresh_fonts")`；建文本时也会自动兜底刷一次 |
 | 中文字体文档的字体改写 | `Story.Font` / `TextRange.Font` | 当文档默认字体是宋体时，把 Font 改成 `"Arial"`、或设 `Bold/Italic`，**不报错但不生效**（Size/Underline 仍然生效） | 属 X8 字体替换限制；`cdr_text` 会如实回 `applied`，需要拉丁字体时建议新建文档先设默认字体 |
@@ -225,6 +227,9 @@
 >   `CreateFreeConnector` 报「未实现」；本机无符号库。
 > * 混合 **可用（第十七波）**：`CreateBlend` 传全参数且 `Path=None` 时成功；
 >   效果经 `Effects.Item(i).Blend`（IVGEffectBlend）读写 Steps/Spacing/Angle 等。
+> * 文字结构体 **可读（第三十七波）**：`Text.FontProperties/SpaceProperties/AlignProperties/HyphenationSettings` 四个属性返回结构体快照（只读，setter 会写坏字号）。
+> * 区间宽接口 **可用（第三十七波）**：`InsertBeforeWide/InsertAfterWide/ReplaceWide/Collapse/SetRange/InRange/IsSame/SetLineSpacing`。
+> * 样式继承 **可读（第三十七波）**：`GetProperty/GetOverridePropertyNames/IsPropertyInherited/ClearProperty`。
 > * 节点拓扑 **可用（第三十六波）**：`Next()`/`Previous()`/`GetDistanceFrom`/`AveragePositionWith`/`JoinWith`；`ConnectWith`/`ExtendSubPaths` 需要选择集前置条件，暂不可用。
 > * 曲线合并/焊接 **可用（第三十六波）**：`AppendCurve`（原地并成子路径）、`WeldWith`（返回新曲线）、`IsOnCurve`、`GetCopy`、`GetCurveInfo`。
 > * COM 单位换算 **可用（第三十五波）**：`Application.ConvertUnits(value, cdrUnit, cdrUnit)`，inch=1 mm=3 cm=4 point=14；比 `Document.ToUnits/FromUnits` 更直接。
@@ -272,7 +277,7 @@
 
 ```powershell
 python -m pytest -q              # 86 项纯逻辑
-python scripts/live_smoke.py     # 380 项端到端（真实 CorelDRAW）
+python scripts/live_smoke.py     # 394 项端到端（真实 CorelDRAW）
 ```
 
 联调断言覆盖了上表所有 ✅ 项。反解脚本属于过程产物，已按要求放在 `tmp/` 并在完成时清理；
@@ -280,14 +285,14 @@ python scripts/live_smoke.py     # 380 项端到端（真实 CorelDRAW）
 
 ---
 
-## 六、量化覆盖率（2026-10-26 第三十六波实测）
+## 六、量化覆盖率（2026-10-26 第三十七波实测）
 
 方法：反解类型库拿到 196 个自动化类 / **1619** 个方法（已剔除 `QueryInterface` 等 COM 基础设施）；
 用 AST 扫描 `src/cdrx8_mcp/*.py`，收集所有 `.方法名(` 调用与 `setattr/getattr` 的属性名，
 与主干接口的方法名求交集。**注意：属性名（如 `curve.Nodes`）也会被计入**，所以本波数字含真实属性访问。
 
-**全局：862 / 1619 = 53.2%**（21.2% → … → 52.4% → 本轮 53.2%）
-**主干 20 接口：512 / 743 = 68.9%**
+**全局：874 / 1619 = 54.0%**（21.2% → … → 53.2% → 本轮 54.0%）
+**主干 20 接口：523 / 743 = 70.4%**
 
 复现命令：`python scripts/coverage_audit.py`（会临时展开类型库到 `tmp/gen_py`，跑完自动清理）
 
@@ -300,7 +305,7 @@ python scripts/live_smoke.py     # 380 项端到端（真实 CorelDRAW）
 | `IVGPage` | 21 | 20 | **95%** |
 | `IVGCurve` | 36 | 27 | **75%** |
 | `IVGLayer` | 49 | 27 | **55%** |
-| `IVGTextRange` | 31 | 23 | **74%** |
+| `IVGTextRange` | 31 | 30 | **97%** |
 | `IVGApplication` | 78 | 39 | **50%** |
 | `IVGText` | 29 | 16 | **55%** |
 | `IVGNode` | 18 | 14 | **78%** |
@@ -311,12 +316,12 @@ python scripts/live_smoke.py     # 380 项端到端（真实 CorelDRAW）
 | `IVGColor` | 43 | 32 | **74%**（分量运算仍走纯 Python，对象级全通） |
 | `IVGOutline` | 8 | 6 | **75%** |
 | `IVGTransparency` | 8 | 6 | **75%** |
-| `IVGStyle` | 15 | 9 | **60%** |
+| `IVGStyle` | 15 | 13 | **87%** |
 | `IVGColorContext` | 6 | 3 | 50% |
-| **合计** | **743** | **512** | **68.9%** |
+| **合计** | **743** | **523** | **70.4%** |
 
 > **怎么读这两个数**：
-> 1. 全局 53.2% 覆盖 1619 个方法（含变体与重复）；主干 20 接口 68.9%。
+> 1. 全局 54.0% 覆盖 1619 个方法（含变体与重复）；主干 20 接口 70.4%。
 > 2. 它是**方法/属性名匹配**的近似值，同名方法会跨接口误计。
 > 3. `IVGColor` 已到 74%：分量**读写**现在走 `*Assign`（RGBAssign/CMYKAssign/…），纯 Python 只用于无 COM 场景的换算。
 > 4. 未调用方法多为变体（Wide/Ex/2/3 后缀）与事件订阅、CorelScriptTools/MathUtils。
@@ -805,6 +810,29 @@ python scripts/live_smoke.py     # 380 项端到端（真实 CorelDRAW）
 >    同曲线内的 `JoinWith` 是可用的。
 > 3. `Curve.WeldWith` **返回新对象**，不会替换原对象；要"原地合并"用 `AppendCurve`。
 
+## 七之三十五、第三十七波已接入（2026-10-26，文字结构体 / 区间宽接口 / 样式继承）
+
+| 能力 | 落地位置 | 实测 |
+|---|---|---|
+| **文字结构体快照** | `cdr_text(struct_info=true)` | ✅ 一次读出 `FontProperties`（Name/Size/Style/Underline/Overscore/Strikethru/Uppercase/Position/RangeKerning）、`SpaceProperties`（字符/词/行距·段前段后）、`AlignProperties`（对齐/左右缩进/首行缩进/词距上下限）、`HyphenationSettings`（自动断字/断字区/最短词长） |
+| **区间前置/后置插入** | `cdr_text(range_action={"op":"insert_before"/"insert_after",…})` | ✅ `InsertBeforeWide(text, lang, charset, font)`：文本从「结构体测试」变「前结构体测试」 |
+| **区间替换** | `range_action={"op":"replace"}` | ✅ `ReplaceWide`：「前结构体测试」→「改结构体测试」 |
+| **区间折叠/重设** | `range_action={"op":"collapse"/"set_range"}` | ✅ `Collapse(true)` → [3,3]；`SetRange(1,4)` → [1,4] |
+| **区间判等/包含** | `range_action={"op":"is_same"/"in_range"}` | ✅ `IsSame` → true；`InRange` → true |
+| **区间行距** | `range_action={"op":"set_line_spacing"}` | ✅ `SetLineSpacing(1,150,0,0)` |
+| **样式覆盖属性** | `cdr_style(action="override_props")` | ✅ 实测 `('primaryColor','secondaryColor','type','overprint','screenSpec')` |
+| **样式属性取值** | `cdr_style(action="get_property", property=…)` | ✅ `GetProperty("primaryColor")` → `RGB255,USER,51,102,204,…` |
+| 样式继承状态 | `cdr_style(action="inherited", property=…)` | ✅ `IsPropertyInherited` → False |
+| 样式属性清除 | `cdr_style(action="clear_property", property=…)` | ✅ `ClearProperty` 返回布尔 |
+
+> **第三十七波纠正的坑**：
+> 1. `Text.FontProperties` 系列在 pywin32 里是**属性**：当方法调报
+>    `TypeError: IVGStruct… object is not callable`；而**直接赋值 setter 会把字号写成 1.17e-38**
+>    —— 所以结构体只做只读快照，写字号继续走 `font=/size=`。
+> 2. 带下标的 `FontPropertiesInRange(start,count,indexing)` 能返回结构体但字段是垃圾值，不可信。
+> 3. `TextRange.Evaluate(expr)` 的表达式语法未逆出（`len` 报 `Identifier 'len' is not a method of 'global'`）。
+> 4. `Style.SetBasedOn(None)` 报「未找到样式 None」（要传样式对象）；`Style.Assign(shape)` 报类型不匹配。
+
 ## 七之二、仍未接入（第三轮候选）
 
 | 能力 | 接口 | 为什么还没做 |
@@ -826,16 +854,16 @@ python scripts/live_smoke.py     # 380 项端到端（真实 CorelDRAW）
 
 ## 八、一句话总结
 
-* **能力域覆盖**：62 个能力域 / 30 个工具，日常出图闭环完整；节点编辑、对象样式、专色、
+* **能力域覆盖**：63 个能力域 / 30 个工具，日常出图闭环完整；节点编辑、对象样式、专色、
   图案/纹理填充、跨文档复制、模板/样式表/颜色样式、文档元数据、本地化元数据、对象数据字段、
   自定义虚线、文档设置、文本区间编辑、自定义箭头、图案微调、文本格式查询、位图内容替换/链接、
   文档回滚、立体化/透镜/效果管理、位图特效命令串、混合、文档颜色转换、用户偏好 KV、OLE 嵌入、
   命名视图、网格设置、叠印、段落缩进、制表位、屏幕叠加层、应用/文档事件、导出/保存/导入选项、吸附点全家族、颜色对象分量、描边对象全量属性都已补上。
-* **方法级覆盖**：全局 53.2%（862/1619），主干 20 接口 68.9%（512/743）。
+* **方法级覆盖**：全局 54.0%（874/1619），主干 20 接口 70.4%（523/743）。
 * **明确不可用**：位图描摹、文本导入、点集数组建曲线、尺寸标注/连接线（MathUtils 点对象
   不可创建）、符号库、文件型图案/影线填充（本机无库）、曲线贴笔触、OpenDocumentAsCopy、
   HTML 兼容文本、断字写入、填充字符串、文本尺寸查询、灰度→RGB 转换、真实应用偏好读取、
   文本分栏（SetColumns 数组参数）。
-* **第三十六波新增**：节点拓扑（邻居/间距/平均位置/末端节点合并）、曲线合并与焊接、命中判定、曲线副本与结构信息。
+* **第三十七波新增**：文字四个结构体快照、TextRange 宽接口（插入/替换/折叠/重设/判等/包含/行距）、样式覆盖属性与继承查询（IVGTextRange 已达 97%）。
 
 
