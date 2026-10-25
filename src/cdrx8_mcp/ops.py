@@ -381,7 +381,7 @@ def save_as_copy(doc: Any, path: str, *, options: dict | None = None) -> dict:
     }
 
 
-VIEW_ACTIONS = ("refresh", "activate", "to_screen", "to_document",
+VIEW_ACTIONS = ("refresh", "activate", "new_window", "to_screen", "to_document",
                 "distance_to_screen", "distance_to_document",
                 "overlay_text", "overlay_rect", "overlay_line",
                 "overlay_circle", "overlay_clear")
@@ -397,6 +397,13 @@ def view_ops(doc: Any, action: str, *, x: float | None = None, y: float | None =
     act = (action or "refresh").lower()
     if act not in VIEW_ACTIONS:
         raise CdrBadArgument(f"未知 action {action!r}；可用：{', '.join(VIEW_ACTIONS)}")
+    if act == "new_window":
+        # 实测：Application.ActiveWindow.NewWindow() 可开新窗口（Document 上没有这个方法）
+        win = _s(lambda: _app_of(doc).ActiveWindow.NewWindow())
+        if win is None:
+            raise CdrComFailure("ActiveWindow.NewWindow 返回空")
+        return {"action": act, "created": True,
+                "windows": _n(lambda: int(_app_of(doc).Windows.Count), 0)}
     if act == "overlay_clear":
         hidden = 0
         for obj in list(_ONSCREEN["items"]):
@@ -486,7 +493,10 @@ DOC_ACTIONS = ("info", "clear_selection", "clear_undo", "palette", "arrowhead",
                "convert_units", "save_settings", "restore_settings",
                "reset_settings", "resolve_links", "arrowhead_named",
                # 第四十二波：颜色上下文指派 / 样式表设为默认 / 箭头变体
-               "assign_color_context", "stylesheet_default", "arrowhead_ex")
+               "assign_color_context", "stylesheet_default", "arrowhead_ex",
+               # 第四十四波：颜色上下文深操作 / 渐变变换矩阵
+               "color_context_info", "color_context_copy", "color_context_merge",
+               "fountain_transform")
 
 
 def doc_ops(doc: Any, action: str, *, target: dict | None = None,
@@ -1305,6 +1315,60 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
                     "curve": _s(lambda: str(shape.Name)),
                     "registered": registered, "arrowheads": after,
                     "index": after if registered else None}
+    if act == "color_context_info":
+        ctx = _s(lambda: doc.ColorContext)
+        if ctx is None:
+            raise CdrComFailure("Document.ColorContext 返回空")
+        return {"action": act,
+                "rendering_intent": _n(lambda: int(ctx.RenderingIntent)),
+                "blending_model": _n(lambda: int(ctx.BlendingColorModel)),
+                "profiles": _n(lambda: int(ctx.ColorProfiles.Count), 0),
+                "profile_names": _s(lambda: str(ctx.ColorProfileNameList))[:400],
+                "read_only": bool(_s(lambda: bool(ctx.ReadOnly), False)),
+                "rgb_profile": _s(lambda: str(ctx.RGBColorProfile.Name))[:120],
+                "cmyk_profile": _s(lambda: str(ctx.CMYKColorProfile.Name))[:120],
+                "gray_profile": _s(lambda: str(ctx.GrayscaleColorProfile.Name))[:120]}
+    if act in {"color_context_copy", "color_context_merge"}:
+        ctx = _s(lambda: doc.ColorContext)
+        if ctx is None:
+            raise CdrComFailure("Document.ColorContext 返回空")
+        if act == "color_context_copy":
+            clone = _s(lambda: ctx.GetCopy())
+            if clone is None:
+                raise CdrComFailure("ColorContext.GetCopy 返回空")
+            return {"action": act,
+                    "same_as_source": bool(_s(lambda: bool(clone.IsSame(ctx)), False)),
+                    "rendering_intent": _n(lambda: int(clone.RenderingIntent)),
+                    "profiles": _n(lambda: int(clone.ColorProfiles.Count), 0)}
+        # merge：取指定配置文件建上下文再 Merge 进文档上下文
+        app = _app_of(doc)
+        idx = int(palette_index or 1)
+        count = _n(lambda: int(app.ColorManager.ColorProfiles.Count), 0) or 0
+        if not 1 <= idx <= count:
+            raise CdrBadArgument(f"profile_index 越界：{idx}（共 {count} 个）")
+        prof = app.ColorManager.ColorProfiles.Item(idx)
+        other = _s(lambda: prof.CreateColorContext())
+        if other is None:
+            raise CdrComFailure("CreateColorContext 返回空")
+        merged = bool(_s(lambda: bool(ctx.Merge(other)), False))
+        return {"action": act, "profile_index": idx,
+                "profile": _s(lambda: str(prof.Name))[:120],
+                "merged": merged,
+                "same_after": bool(_s(lambda: bool(ctx.IsSame(other)), False)),
+                "rendering_intent": _n(lambda: int(ctx.RenderingIntent)),
+                "profile_names": _s(lambda: str(ctx.ColorProfileNameList))[:400]}
+    if act == "fountain_transform":
+        with mm_units(doc):
+            page = _page(doc, page_index)
+            shape = find_shape(doc, page, target or {})
+            fountain = _s(lambda: shape.Fill.Fountain)
+            if fountain is None:
+                raise CdrBadArgument("目标不是渐变填充（先用 cdr_modify 应用渐变）")
+            mat = _s(lambda: fountain.GetTransformations())
+            return {"action": act, "fill_type": _n(lambda: int(shape.Fill.Type)),
+                    "transformations": ([_round(float(v)) for v in mat]
+                                        if isinstance(mat, (tuple, list)) else None),
+                    "note": "GetTransformations 用 4 个出参返回 [a, b, c, d] 变换矩阵"}
     if act == "assign_color_context":
         # 实测：ColorManager.ColorProfiles.Item(i).CreateColorContext() →
         # Document.AssignColorContext(ctx) 可把文档色彩上下文换成该配置文件
@@ -4455,6 +4519,14 @@ def _apply_transparency(doc: Any, shape: Any, spec: Any) -> str:
         shape.Transparency.ApplyUniformTransparency(int(spec))
         return "uniform"
     if isinstance(spec, dict):
+        if spec.get("type") == "texture":
+            # 实测：Transparency.ApplyTextureTransparency(名称, 库, ?, ?) 返回 IVGTextureFill，
+            # Transparency.Type 变 4
+            shape.Transparency.ApplyTextureTransparency(
+                str(spec.get("texture", "BARK")),
+                str(spec.get("library", "Textures")),
+                int(spec.get("texture_type", 0)), 0)
+            return "texture"
         if spec.get("type") == "pattern":
             shape.Transparency.ApplyPatternTransparency(
                 int(spec.get("pattern_type", 0)), str(spec.get("file", "") or ""),

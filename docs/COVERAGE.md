@@ -2,7 +2,7 @@
 
 > 目的：证明"还有多少没探"。每一行要么有对应的工具，要么有实测失败证据。
 > 环境：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）/ Python 3.11.9 64 位
-> 最近更新：2026-10-26 第四十三波（调色板选项转换 / 高级粘贴 / 两种导出 API）
+> 最近更新：2026-10-26 第四十四波（颜色上下文 / 新窗口 / 渐变变换 / 纹理透明）
 
 ## 怎么得出这份清单
 
@@ -37,10 +37,10 @@
 | `IVGTextTabPositions` | 9 | **新打通（第二十三波）**：`TextRange.Tabs` 的 Count/Item(i)/Add(Position,Alignment,Leadered)/AddEvery/Clear；`TextTabPosition` 的 Position/Alignment/Leadered 可读写 |
 | `IVGColor` | 44 | **第三十二波补齐（32/43）**：仍不暴露分量属性，但对象级能力全通 —— ToString / GetName·SetName / StringAssign / IsSame·IsSimilar / GetColorDistanceFrom / BlendWith（原地）/ GetCopy / ConvertToRGB·CMYK·Gray·HLS·HSB·Lab·CMY·YIQ（原地）/ ConvertToFixed(0=USER,1=TRU,2=PAN_PROC) / RGBAssign·CMYKAssign·GrayAssign·HLSAssign·HSBAssign·LabAssign·CMYAssign·YIQAssign·BWAssign·RegistrationAssign；不可用：ConvertToPalette / SpotAssignByName / CopyAppearance / ModifyColorStyleColor / UserAssign(Ex)（参数是窗口句柄，会弹对话框）|
 | `IVGBitmap` | 16 | 已用：ConvertTo / ConvertToBW / **ConvertToPaletted（0~9） / ConvertToDuotone** / Resample / Crop / ResetCropEnvelope / Inflate / Mode / ResolutionX / Size / Image / Duotone / **SetImageData（Alpha 必须传 None） / ApplyBitmapEffect（命令串） / ExternallyLinked / LinkFileName / UpdateLink / ResolveLink**；Trace 禁用（见下）；**第四十三波**：`ConvertToPaletted2(IVGStructPaletteOptions)`（Mode 4→3，可挂已打开的调色板）|
-| `IVGFountainFill` | 7 | 通过 ApplyFountainFill 设置，未做二次编辑 |
-| `IVGTransparency` | 9 | 已用：ApplyUniformTransparency / ApplyFountainTransparency / **ApplyPatternTransparency（PatternCanvas 可用）** / ApplyNoTransparency / **Freeze / Unfreeze / Frozen** |
+| `IVGFountainFill` | 7 | 通过 ApplyFountainFill 设置，未做二次编辑；**第四十四波**：`GetTransformations()` 用 4 个出参返回 `[a,b,c,d]` 变换矩阵 |
+| `IVGTransparency` | 9 | 已用：ApplyUniformTransparency / ApplyFountainTransparency / **ApplyPatternTransparency（PatternCanvas 可用）** / ApplyNoTransparency / **Freeze / Unfreeze / Frozen**；**第四十四波**：`ApplyTextureTransparency(名称, 库, ?, ?)` 返回 IVGTextureFill，`Transparency.Type` 变 4 |
 | `IVGStyle` / `IVGStyleSheet` | 16 / 16 | **已覆盖（第六/七/九波）**：`CreateStyleFromShape`、`CreateStyle(category, based_on, name)`、`Styles.Find/Item/Count`、`Style.Name/CategoryName/DisplayName/BasedOn`、`Rename / Delete / GetAllPropertyNames / GetPropertyAsString / SetPropertyAsString / SetProperty / DerivedStyles / ToString`、`Shape.ApplyStyle("样式名")`；**`Document.SaveStyleSheet/LoadStyleSheet` 可导出/恢复 .cdst**；**`Document.CreateColorStyles(harmony>0)` 会生成颜色样式（AllColorStyles）**；`fill`/`outline` 分组名不可直接读写；**第三十七波**：`GetProperty`（返回 IVGColor）、`GetOverridePropertyNames`、`IsPropertyInherited`、`ClearProperty`；`SetBasedOn(None)` 报「未找到样式 None」、`Assign(shape)` 报类型不匹配 |
-| `IVGWindow` | 9 | 已用：Refresh / Activate / DocumentToScreen / ScreenToDocument / DocumentDistanceToScreenDistance / **ScreenDistanceToDocumentDistance**；缩放/新建窗口未封装 |
+| `IVGWindow` | 9 | 已用：Refresh / Activate / DocumentToScreen / ScreenToDocument / DocumentDistanceToScreenDistance / **ScreenDistanceToDocumentDistance**；缩放/新建窗口未封装；**第四十四波**：`NewWindow()` 可开新窗口（`Application.ActiveWindow.NewWindow()`，文档上没有此方法）|
 | `IVGView` / `IVGViews` | 8 / 5 | **新打通（第二十波）**：`Document.CreateView(Name, OriginX, OriginY, Zoom, Page)` 创建命名视图；`Views.Count/Item(i)` 列出；`View.Activate/Delete`、Name/OriginX·Y/Zoom/Page/UsePage/UseZoom 可读写 |
 | `IVGOnScreenText` / `IVGOnScreenCurve` / `IVGOnScreenHandle` | 8 / 12 / 6 | **新打通（第二十五波）**：`Application.CreateOnScreenText/Curve/Handle` 创建屏幕叠加层；Text 的 SetTextAndPosition/SetTextColor/Show/Hide，Curve 的 SetPen/SetNoBrush/SetRectangle/SetLine/SetCircle/Show/Hide，Handle 的 SetPosition/SetHandleColor/IsHotTracked |
 | `IVGGrid` | 5 | **新打通（第二十一波）**：`Document.Grid` 的 Type / SpacingX / SpacingY / Visible / Snap 全部可读写（间距按文档单位，mm 上下文下为毫米） |
@@ -55,7 +55,7 @@
 | `IVGEffectLens` | 18 | **新打通（第十五波）**：Type/Rate/Magnification/Color/FillColor/OutlineColor/FromColor/ToColor/UseFillColor/UseOutlineColor/PaletteRotation/ColorMapPalette/RemoveFace/ViewPointX·Y/UseViewPoint/Frozen 可读写；`Freeze/Unfreeze/Ungroup` 未封装 |
 | `IVGEffectBlend` | 31 | **新打通（第十七波）**：Steps / Spacing / Angle / ColorBlendType / Mode / Loop / RotateShapes / MapNodes / FuseStart / FuseEnd / ColorAcceleration / SpacingAcceleration / LinkAcceleration / AccelerateSize / StartPoint / EndPoint / StartShape / EndShape / Path 可读写；`Split()` 可用 |
 | `IVGArrowHeads` | 7 | **新打通（第十二波）**：`Application.ArrowHeads.Add(自定义箭头)` 把 `CreateArrowHead(curve)` 的结果登记进全局箭头库（89→90），可赋给 `Outline.StartArrow/EndArrow` |
-| `IVGColorContext` | 7 | **已读（第十一波）**：`Document.ColorContext` 的 RenderingIntent / BlendingColorModel / ColorProfiles.Count / ColorProfileNameList；**第十八波**：`profile.CreateColorContext()` + `Document.ConvertToColorContext()` 可做文档颜色转换；直接 `Application.CreateColorContext()` 参数不可传 |
+| `IVGColorContext` | 7 | **已读（第十一波）**：`Document.ColorContext` 的 RenderingIntent / BlendingColorModel / ColorProfiles.Count / ColorProfileNameList；**第十八波**：`profile.CreateColorContext()` + `Document.ConvertToColorContext()` 可做文档颜色转换；直接 `Application.CreateColorContext()` 参数不可传；**第四十四波**：`GetCopy` / `CopyAssign` / `Merge` / `IsSame` / `ColorProfile(model)`（get/put）/ `RGBColorProfile`·`CMYKColorProfile`·`GrayscaleColorProfile` / `ColorProfileNameList` / `ReadOnly` 全部可用 |
 | `IVGColorManager` | 31 | **新打通（第十八波）**：`Application.ColorManager` 的 ColorProfiles（本机 64 个）/ GetProfilesByColorModel(0=RGB,1=CMYK,2=Gray,3=Lab) / DefaultColorContext；用于选配置文件并转文档颜色 |
 | `IVGColorProfile` | 10 | **新打通（第十八波）**：Name / ColorModel / FileName / Installed / Generic / Manufacturer 可读，`CreateColorContext()` 得到该配置文件的上下文 |
 | `IVGImage` | 5 | **新打通**：`Document.CreateImage` 返回像素缓冲区；`Width / Height / Type / ReadOnly / Pixel / FillArea / Blit` 可用（`cdr_create(type="bitmap")`、`cdr_bitmap(action="pixel")`） |
@@ -95,9 +95,9 @@
 | 位图 | `cdr_bitmap`（信息/转色彩模式/重采样/裁剪/取消裁剪/取像素色·图像缓冲信息·调色板模式 0~9·双色调/内容替换 SetImageData/位图特效命令串 ApplyBitmapEffect/**链接信息·重新加载·解析链接**） | ✅（Trace 除外） / **调色板选项转换 paletted_options（ConvertToPaletted2 + 可选已打开调色板）**）| ✅（Trace 除外）|
 | 路径 | `cdr_path`（长度面积/偏移轮廓/追加子路径/折线点/反转方向·焊子路径·去重叠·参数取点·切/法向量·速度·交点·找节点/线段/**曲线合并（AppendCurve）/焊接（WeldWith）/命中判定（IsOnCurve）/曲线副本/曲线信息**） | ✅/**任意线段集合（segment_range：CreateSegmentRange + Add，set_type/add_node/select/remove_all）** | ✅ |
 | 导入导出 | `cdr_import`（**可传 import_options：外链位图/重采样/保留图层**） `cdr_export`（png/jpg/svg/pdf，可指定 DPI，可只导选区，**可传 export_options 控制抗锯齿/透明/压缩/尺寸**） | ✅ / **`export_api="document"`（Document.Export）/ `"bitmap"`（Document.ExportBitmap）** | ✅ |
-| 文档 | `cdr_doc`（概况/清选区/清撤销栈/调色板/箭头/箭头登记/单位换算·取色·显示隐藏·版式·重复操作/字体列表·调色板列表·调色板取色/固定调色板打开·颜色枚举·专色创建/图案画布创建（含区域变换）/纹理库列表/文档元数据读写/本地化元数据/自定义调色板创建/数据字段·对象数据·色彩管理·线型样式/文档设置读写/应用信息·文档回滚/色彩配置文件·文档颜色转换/用户偏好 KV/命名视图/网格设置/叠印读取/**应用+文档事件队列**） | ✅ |
+| 文档 | `cdr_doc`（概况/清选区/清撤销栈/调色板/箭头/箭头登记/单位换算·取色·显示隐藏·版式·重复操作/字体列表·调色板列表·调色板取色/固定调色板打开·颜色枚举·专色创建/图案画布创建（含区域变换）/纹理库列表/文档元数据读写/本地化元数据/自定义调色板创建/数据字段·对象数据·色彩管理·线型样式/文档设置读写/应用信息·文档回滚/色彩配置文件·文档颜色转换/用户偏好 KV/命名视图/网格设置/叠印读取/**应用+文档事件队列**） | ✅ / **颜色上下文深操作（color_context_info/copy/merge）** / **渐变变换矩阵（fountain_transform）** | ✅ |
 | **对象数据** | `cdr_modify(changes={"data":{...}})` + `cdr_doc(action="object_data"/"data_fields"/"add_data_field")` | ✅ 第十一波 |
-| 视图 | `cdr_view`（刷新/激活/文档↔屏幕坐标/屏幕↔文档距离/**屏幕叠加层（文字/矩形/直线/圆）**） | ✅ |
+| 视图 | `cdr_view`（刷新/激活/文档↔屏幕坐标/屏幕↔文档距离/**屏幕叠加层（文字/矩形/直线/圆）**） | ✅ / **新窗口（new_window）**） | ✅ |
 | 历史 | `cdr_undo`（撤销/重做） | ✅ |
 | 全局替换 | `cdr_replace_text`（原生 Page.TextReplace） | ✅ |
 
@@ -234,6 +234,8 @@
 >   `CreateFreeConnector` 报「未实现」；本机无符号库。
 > * 混合 **可用（第十七波）**：`CreateBlend` 传全参数且 `Path=None` 时成功；
 >   效果经 `Effects.Item(i).Blend`（IVGEffectBlend）读写 Steps/Spacing/Angle 等。
+> * 颜色上下文深操作 **可用（第四十四波）**：`GetCopy/CopyAssign/Merge/IsSame`、`ColorProfile(model)`、`ColorProfileNameList`、`ReadOnly`。
+> * 新窗口 / 渐变变换 / 纹理透明 **可用（第四十四波）**：`ActiveWindow.NewWindow`、`FountainFill.GetTransformations`、`Transparency.ApplyTextureTransparency`。
 > * 调色板选项 **可用（第四十三波）**：`CreateStructPaletteOptions` + `Bitmap.ConvertToPaletted2`，可指定颜色数/抖动/调色板。
 > * 高级粘贴 / 两种导出 **可用（第四十三波）**：`Layer.PasteEx`、`Document.Export`、`Document.ExportBitmap`（记得 `Finish()`）。
 > * 对象列表建范围 **可用（第四十二波）**：`Document.CreateShapeRangeFromArray([shape,…])` 接受 Python list，可再整批 `RotateEx`/`ConvertToBitmapEx`。
@@ -296,7 +298,7 @@
 
 ```powershell
 python -m pytest -q              # 93 项纯逻辑
-python scripts/live_smoke.py     # 431 项端到端（真实 CorelDRAW）
+python scripts/live_smoke.py     # 437 项端到端（真实 CorelDRAW）
 ```
 
 联调断言覆盖了上表所有 ✅ 项。反解脚本属于过程产物，已按要求放在 `tmp/` 并在完成时清理；
@@ -304,14 +306,14 @@ python scripts/live_smoke.py     # 431 项端到端（真实 CorelDRAW）
 
 ---
 
-## 六、量化覆盖率（2026-10-26 第四十三波实测）
+## 六、量化覆盖率（2026-10-26 第四十四波实测）
 
 方法：反解类型库拿到 196 个自动化类 / **1619** 个方法（已剔除 `QueryInterface` 等 COM 基础设施）；
 用 AST 扫描 `src/cdrx8_mcp/*.py`，收集所有 `.方法名(` 调用与 `setattr/getattr` 的属性名，
 与主干接口的方法名求交集。**注意：属性名（如 `curve.Nodes`）也会被计入**，所以本波数字含真实属性访问。
 
-**全局：930 / 1619 = 57.4%**（21.2% → … → 57.0% → 本轮 57.4%）
-**主干 20 接口：575 / 743 = 77.4%**
+**全局：934 / 1619 = 57.7%**（21.2% → … → 57.4% → 本轮 57.7%）
+**主干 20 接口：579 / 743 = 77.9%**
 
 复现命令：`python scripts/coverage_audit.py`（会临时展开类型库到 `tmp/gen_py`，跑完自动清理）
 
@@ -330,17 +332,17 @@ python scripts/live_smoke.py     # 431 项端到端（真实 CorelDRAW）
 | `IVGNode` | 18 | 14 | **78%** |
 | `IVGBitmap` | 15 | 14 | **93%** |
 | `IVGFill` | 12 | 9 | **75%** |
-| `IVGWindow` | 8 | 7 | **88%** |
-| `IVGFountainFill` | 6 | 5 | 83% |
+| `IVGWindow` | 8 | 8 | **100%** |
+| `IVGFountainFill` | 6 | 6 | **100%** |
 | `IVGColor` | 43 | 32 | **74%**（分量运算仍走纯 Python，对象级全通） |
 | `IVGOutline` | 8 | 6 | **75%** |
-| `IVGTransparency` | 8 | 6 | **75%** |
+| `IVGTransparency` | 8 | 7 | **88%** |
 | `IVGStyle` | 15 | 13 | **87%** |
-| `IVGColorContext` | 6 | 3 | 50% |
-| **合计** | **743** | **575** | **77.4%** |
+| `IVGColorContext` | 6 | 4 | **67%** |
+| **合计** | **743** | **579** | **77.9%** |
 
 > **怎么读这两个数**：
-> 1. 全局 57.4% 覆盖 1619 个方法（含变体与重复）；主干 20 接口 77.4%。
+> 1. 全局 57.7% 覆盖 1619 个方法（含变体与重复）；主干 20 接口 77.9%。
 > 2. 它是**方法/属性名匹配**的近似值，同名方法会跨接口误计。
 > 3. `IVGColor` 已到 74%：分量**读写**现在走 `*Assign`（RGBAssign/CMYKAssign/…），纯 Python 只用于无 COM 场景的换算。
 > 4. 未调用方法多为变体（Wide/Ex/2/3 后缀）与事件订阅、CorelScriptTools/MathUtils。
@@ -955,6 +957,21 @@ python scripts/live_smoke.py     # 431 项端到端（真实 CorelDRAW）
 > 3. `CreateStructPaletteOptions` 的 `Palette` 可以直接赋已打开的调色板对象
 >    （`Palettes.OpenFixed(1)` = TRUMATCH，2092 色）。
 
+## 七之四十二、第四十四波已接入（2026-10-26，颜色上下文 / 新窗口 / 渐变变换）
+
+| 能力 | 落地位置 | 实测 |
+|---|---|---|
+| **颜色上下文读取** | `cdr_doc(action="color_context_info")` | ✅ RenderingIntent=3、BlendingColorModel=1、3 个配置文件、名称串 `sRGB IEC61966-2.1,Japan Color 2001 Coated,Dot Gain 15%`；RGB/CMYK/Gray 配置文件各自可读 |
+| **上下文复制** | `cdr_doc(action="color_context_copy")` | ✅ `GetCopy()` + `IsSame()` → True |
+| **上下文合并** | `cdr_doc(action="color_context_merge", palette_index=1)` | ✅ `ColorContext.Merge(other)` → True（合并后 `IsSame` 为 False，符合"合并≠相同"） |
+| **渐变变换矩阵** | `cdr_doc(action="fountain_transform", target=…)` | ✅ `FountainFill.GetTransformations()` 用 4 个出参返回 `[1.0, -0.0, 0.0, 1.0]` |
+| **新窗口** | `cdr_view(action="new_window")` | ✅ `Application.ActiveWindow.NewWindow()` → Windows.Count 1→2 |
+| **纹理透明** | `cdr_modify(changes={"transparency":{"type":"texture","texture":"BARK","library":"Textures"}})` | ✅ `ApplyTextureTransparency("BARK","Textures",0,0)` 返回 IVGTextureFill，`Transparency.Type` 变 4 |
+
+> **第四十四波记录**：`Document.NewWindow()` 不存在（`AttributeError`），新窗口必须走
+> `Application.ActiveWindow.NewWindow()`；`FountainFill.GetTransformations` 是 4 个出参
+> （pywin32 返回 tuple），不是返回矩阵对象。
+
 ## 七之二、仍未接入（第三轮候选）
 
 | 能力 | 接口 | 为什么还没做 |
@@ -976,16 +993,16 @@ python scripts/live_smoke.py     # 431 项端到端（真实 CorelDRAW）
 
 ## 八、一句话总结
 
-* **能力域覆盖**：69 个能力域 / 30 个工具，日常出图闭环完整；节点编辑、对象样式、专色、
+* **能力域覆盖**：70 个能力域 / 30 个工具，日常出图闭环完整；节点编辑、对象样式、专色、
   图案/纹理填充、跨文档复制、模板/样式表/颜色样式、文档元数据、本地化元数据、对象数据字段、
   自定义虚线、文档设置、文本区间编辑、自定义箭头、图案微调、文本格式查询、位图内容替换/链接、
   文档回滚、立体化/透镜/效果管理、位图特效命令串、混合、文档颜色转换、用户偏好 KV、OLE 嵌入、
   命名视图、网格设置、叠印、段落缩进、制表位、屏幕叠加层、应用/文档事件、导出/保存/导入选项、吸附点全家族、颜色对象分量、描边对象全量属性都已补上。
-* **方法级覆盖**：全局 57.4%（930/1619），主干 20 接口 77.4%（575/743）。
+* **方法级覆盖**：全局 57.7%（934/1619），主干 20 接口 77.9%（579/743）。
 * **明确不可用**：位图描摹、文本导入、点集数组建曲线、尺寸标注/连接线（MathUtils 点对象
   不可创建）、符号库、文件型图案/影线填充（本机无库）、曲线贴笔触、OpenDocumentAsCopy、
   HTML 兼容文本、断字写入、填充字符串、文本尺寸查询、灰度→RGB 转换、真实应用偏好读取、
   文本分栏（SetColumns 数组参数）。
-* **第四十三波新增**：调色板选项转换（ConvertToPaletted2）、高级粘贴（PasteEx）、以及 Document.Export / ExportBitmap 两条新导出通道。
+* **第四十四波新增**：颜色上下文复制/合并、新窗口、渐变变换矩阵、纹理透明；`IVGWindow` 与 `IVGFountainFill` 已达 100%。
 
 

@@ -1201,6 +1201,7 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
         if action == "info":
             return _com(lambda _b: ops.doc_ops(doc, "info", **kwargs), label="cdr_doc")
         if action in {"clear_selection", "units", "convert_units", "sample_color", "fonts",
+                      "color_context_info", "fountain_transform",
                       "refresh_fonts",
                       "palettes", "palette_color", "palette_open_fixed",
                       "palette_colors", "spot_color", "pattern_canvas",

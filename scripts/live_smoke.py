@@ -3430,13 +3430,15 @@ def main() -> int:
                 check("可高级粘贴（CreateStructPasteOptions + PasteEx）",
                       (pex.get("pasted") or 0) >= 1,
                       f"pasted={pex.get('pasted')}")
-            p_doc = os.path.join(os.getcwd(), "tmp", "live_smoke43_doc.png")
+            p_doc = os.path.join(os.getcwd(), "tmp",
+                                 f"live_smoke43_doc_{os.urandom(2).hex()}.png")
             ex_doc = server.cdr_export(e43_id, p_doc, "png", export_api="document")
             if no_error("cdr_export(api=document)", ex_doc):
                 check("Document.Export 可落盘",
                       (ex_doc.get("bytes") or 0) > 0 and os.path.exists(p_doc),
                       f"bytes={ex_doc.get('bytes')} api={ex_doc.get('export_api')}")
-            p_bmp = os.path.join(os.getcwd(), "tmp", "live_smoke43_bmp.png")
+            p_bmp = os.path.join(os.getcwd(), "tmp",
+                                 f"live_smoke43_bmp_{os.urandom(2).hex()}.png")
             ex_bmp = server.cdr_export(e43_id, p_bmp, "png", dpi=96,
                                        export_api="bitmap")
             if no_error("cdr_export(api=bitmap)", ex_bmp):
@@ -3444,6 +3446,52 @@ def main() -> int:
                       (ex_bmp.get("bytes") or 0) > 0 and os.path.exists(p_bmp),
                       f"bytes={ex_bmp.get('bytes')} api={ex_bmp.get('export_api')}")
         no_error("关闭调色板/导出测试文档", server.cdr_close(e43_id))
+
+    # ---------------- 15ax. 第四十四波：色彩上下文 / 新窗口 / 渐变变换 / 纹理透明 ----------------
+    print("\n[15ax] 第四十四波：颜色上下文深操作、新窗口、渐变变换矩阵、纹理透明")
+    c44_doc = server.cdr_open(preset="A4")
+    if "document_id" in c44_doc:
+        c44_id = c44_doc["document_id"]
+        c44r = server.cdr_create(c44_id, [
+            {"type": "rectangle", "x": 20, "y": 20, "width": 50, "height": 40,
+             "fill": {"type": "fountain", "start": "#FF0000", "end": "#0000FF"}},
+        ])
+        if no_error("cdr_create(色彩上下文测试)", c44r):
+            cA = {"name": c44r["created"][0]["name"]}
+            ctx41 = server.cdr_doc(c44_id, action="color_context_info")
+            if no_error("cdr_doc(color_context_info)", ctx41):
+                check("颜色上下文可读（3 个配置文件）",
+                      (ctx41.get("profiles") or 0) >= 3
+                      and "sRGB" in str(ctx41.get("profile_names")),
+                      f"profiles={ctx41.get('profiles')}")
+            ctx42 = server.cdr_doc(c44_id, action="color_context_copy")
+            if no_error("cdr_doc(color_context_copy)", ctx42):
+                check("颜色上下文可复制（GetCopy + IsSame）",
+                      ctx42.get("same_as_source") is True,
+                      str(ctx42.get("same_as_source")))
+            ctx43 = server.cdr_doc(c44_id, action="color_context_merge",
+                                   palette_index=1)
+            if no_error("cdr_doc(color_context_merge)", ctx43):
+                check("颜色上下文可合并（Merge）", ctx43.get("merged") is True,
+                      str(ctx43.get("merged")))
+            ft = server.cdr_doc(c44_id, action="fountain_transform", target=cA)
+            if no_error("cdr_doc(fountain_transform)", ft):
+                check("渐变变换矩阵可读（GetTransformations）",
+                      len(ft.get("transformations") or []) == 4,
+                      str(ft.get("transformations")))
+            nw = server.cdr_view(c44_id, action="new_window")
+            if no_error("cdr_view(new_window)", nw):
+                check("可开新窗口（IVGWindow.NewWindow）",
+                      nw.get("created") is True and (nw.get("windows") or 0) >= 2,
+                      f"windows={nw.get('windows')}")
+            tt = server.cdr_modify(c44_id, cA, {
+                "transparency": {"type": "texture", "texture": "BARK",
+                                 "library": "Textures"}})
+            if no_error("cdr_modify(纹理透明)", tt):
+                check("纹理透明可用（ApplyTextureTransparency）",
+                      "transparency:texture" in (tt.get("applied") or []),
+                      str(tt.get("applied")))
+        no_error("关闭色彩上下文测试文档", server.cdr_close(c44_id))
 
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
