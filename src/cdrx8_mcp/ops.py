@@ -1415,7 +1415,7 @@ def objects_bounds(doc: Any, page_index: int | None = None,
 BITMAP_MODES = {"rgb": 1, "cmyk": 2, "gray": 3, "grayscale": 3, "bw": 4, "blackwhite": 4}
 BITMAP_ACTIONS = ("info", "convert", "resample", "crop", "reset_crop", "bw", "inflate",
                   "pixel", "image_info", "duotone", "paletted", "replace_image",
-                  "effect")
+                  "effect", "link_info", "update_link", "resolve_link")
 
 
 def _bitmap_of(shape: Any) -> Any:
@@ -1501,7 +1501,22 @@ def bitmap_action(doc: Any, page_index: int | None, target: dict, action: str, *
                     "name": _s(lambda: str(color.GetName())) or None,
                     "image_size": [width_px, height_px], **info()}
 
+        if act == "link_info":
+            return {"action": act,
+                    "externally_linked": bool(_s(lambda: bool(bmp.ExternallyLinked), False)),
+                    "link_file_name": _s(lambda: str(bmp.LinkFileName)) or None,
+                    "embedded": bool(_s(lambda: bool(bmp.Embedded), False)),
+                    **info()}
+
         with atomic(doc, label):
+            if act == "update_link":
+                bmp.UpdateLink()
+                return {"action": act, "updated": True, "link_file_name":
+                        _s(lambda: str(bmp.LinkFileName)) or None}
+            if act == "resolve_link":
+                bmp.ResolveLink()
+                return {"action": act, "resolved": True, "link_file_name":
+                        _s(lambda: str(bmp.LinkFileName)) or None}
             if act == "convert":
                 key = str(mode or "").lower().replace("-", "").replace("_", "")
                 if key not in BITMAP_MODES:
@@ -4835,19 +4850,53 @@ def _page_text(page: Any) -> str:
 # 导入
 # --------------------------------------------------------------------------- #
 def import_file(doc: Any, path: str, page_index: int | None = None,
-                center: bool = True) -> dict:
+                center: bool = True, options: dict | None = None) -> dict:
     """导入位图/矢量文件（X8 必须传 3 个参数：文件名、过滤器、导入选项对象）。"""
     app = _app_of(doc)
+    applied_opts: list[str] = []
     with mm_units(doc):
         page = _page(doc, page_index)
         layer = _active_layer(page)
         opts = app.CreateStructImportOptions()
+        opt_map = {
+            "link_bitmap_externally": "LinkBitmapExternally",
+            "maintain_layers": "MaintainLayers",
+            "resample_dpi_x": "ResampleDpiX", "resample_dpi_y": "ResampleDpiY",
+            "resample_dpi": "ResampleDpiX",
+            "resample_width": "ResampleWidth", "resample_height": "ResampleHeight",
+            "crop_left": "CropLeft", "crop_top": "CropTop",
+            "crop_width": "CropWidth", "crop_height": "CropHeight",
+            "detect_watermark": "DetectWatermark",
+            "extract_icc_profile": "ExtractICCProfile",
+            "icc_file_name": "ICCFileName", "use_opi_links": "UseOPILinks",
+            "convert_tables_to_text": "ConvertTablesToText",
+            "force_cmyk_black_text": "ForceCMYKBlackText",
+            "text_formatting": "TextFormatting", "image_index": "ImageIndex",
+            "mode": "Mode", "code_page": "CodePage",
+            "combine_multilayer_bitmaps": "CombineMultilayerBitmaps",
+        }
+        for key, val in (options or {}).items():
+            attr = opt_map.get(str(key).lower())
+            if attr is None:
+                continue
+            try:
+                setattr(opts, attr, val)
+                applied_opts.append(str(key))
+                if str(key).lower() == "resample_dpi":
+                    opts.ResampleDpiY = val
+            except Exception:
+                continue
         before = _n(lambda: int(page.Shapes.Count), 0)
         layer.Import(path, 0, opts)
         after = _n(lambda: int(page.Shapes.Count), 0)
         shape = None
         if after > before:
             shape = _s(lambda: page.Shapes.Item(after))
+            if shape is not None:
+                try:
+                    _ensure_name(shape)
+                except Exception:
+                    pass
             if center and shape is not None:
                 try:
                     pw = float(page.SizeWidth)
@@ -4856,11 +4905,14 @@ def import_file(doc: Any, path: str, page_index: int | None = None,
                                       (ph - float(shape.SizeHeight)) / 2)
                 except Exception:
                     pass
-        return {
+        result = {
             "imported": True,
             "shapes_added": max(after - before, 0),
             "shape": shape_to_dict(shape, after) if shape is not None else None,
         }
+        if applied_opts:
+            result["import_options"] = applied_opts
+        return result
 
 
 # --------------------------------------------------------------------------- #

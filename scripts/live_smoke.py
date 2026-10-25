@@ -2386,6 +2386,32 @@ def main() -> int:
                   f"options={so.get('save_options')} bytes={so.get('bytes')}")
         no_error("关闭保存选项测试文档", server.cdr_close(so_id))
 
+    # ---------------- 15ai. 第三十波：导入选项 + 链接位图 ----------------
+    print("\n[15ai] 第三十波：导入选项 + 链接位图")
+    link_src = os.path.join(out, "smoke.png")
+    if os.path.exists(link_src):
+        li_doc = server.cdr_open(preset="A4")
+        if "document_id" in li_doc:
+            li_id = li_doc["document_id"]
+            li = server.cdr_import(li_id, link_src,
+                                   import_options={"link_bitmap_externally": True,
+                                                   "resample_dpi": 96,
+                                                   "maintain_layers": True})
+            if no_error("cdr_import(import_options)", li):
+                check("导入选项可应用", bool(li.get("import_options")),
+                      f"options={li.get('import_options')}")
+                li_name = (li.get("shape") or {}).get("name")
+                if li_name:
+                    lk = server.cdr_bitmap(li_id, {"name": li_name},
+                                           action="link_info")
+                    check("链接位图信息可读", lk.get("externally_linked") is True
+                          and bool(lk.get("link_file_name")),
+                          f"linked={lk.get('externally_linked')} path={lk.get('link_file_name')}")
+                    ul = server.cdr_bitmap(li_id, {"name": li_name},
+                                           action="update_link")
+                    check("链接位图可重新加载", ul.get("updated") is True, str(ul))
+            no_error("关闭链接位图测试文档", server.cdr_close(li_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

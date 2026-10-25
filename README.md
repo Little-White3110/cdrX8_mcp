@@ -7,9 +7,9 @@
 
 > **已在真机验证**：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）+ Python 3.11.9 64 位
 > - 单元测试 **55 项通过**
-> - 端到端联调（真实 CorelDRAW）**260/260 通过**
+> - 端到端联调（真实 CorelDRAW）**263/263 通过**
 > - 能力边界来自对 `vgcoreauto.tlb` 的反解（196 个自动化类 / 1619 个方法）+ 逐项实跑
-> - 方法级覆盖 **44.5%**（主干 20 接口 56.9%），可用 `python scripts/coverage_audit.py` 复现
+> - 方法级覆盖 **44.7%**（主干 20 接口 57.2%），可用 `python scripts/coverage_audit.py` 复现
 > - 完整清单见 [docs/COVERAGE.md](docs/COVERAGE.md)
 
 ---
@@ -76,7 +76,7 @@ python -m cdrx8_mcp              # 启动 MCP 服务器（stdio）
 | `cdr_style` | **对象样式**：列出 / 从对象创建（fill·outline·character·paragraph）/ **基于已有样式派生** / 按名套用 / 改名 / 删除 / **读可读属性·改属性** / 列派生样式 / **样式表 .cdst 导入导出** / **颜色样式与颜色协调** |
 | `cdr_path` | 曲线/子路径级：长度面积 / 偏移轮廓（刀模线）/ **折线采样** / **追加圆·椭圆·矩形·三点弧·贝塞尔** / **节点精简** / **自焊接** / **路径等分** / **加节点·断开·移动子路径** / **点在形状内·曲线求交·取点取切向** / **参数取点·切向量·法向量·速度·交点·按坐标找节点/线段·反转方向·焊接子路径·去重叠** |
 | `cdr_node` | **节点/线段级编辑（第五波打通）**：列节点·列线段 / 移动·选中·删除 / 圆角·倒角· scallop·平滑 / 拉伸·旋转·斜切·断开 / 加节点·断线 / 读写贝塞尔控制点 / 按坐标找节点与线段 |
-| `cdr_bitmap` | 位图：信息 / 转色彩模式（rgb·cmyk·gray·bw）/ **阈值二值化** / **调色板模式 0~9（9=自定义调色板）** / **双色调 0~3（可给 .cpd 预设）** / **取像素颜色** / 图像缓冲信息 / 重采样 / **扩边** / 裁剪 / **内容替换（SetImageData，支持色块/像素绘制）** / **位图特效命令串（ApplyBitmapEffect）** |
+| `cdr_bitmap` | 位图：信息 / 转色彩模式（rgb·cmyk·gray·bw）/ **阈值二值化** / **调色板模式 0~9（9=自定义调色板）** / **双色调 0~3（可给 .cpd 预设）** / **取像素颜色** / 图像缓冲信息 / 重采样 / **扩边** / 裁剪 / **内容替换（SetImageData，支持色块/像素绘制）** / **位图特效命令串（ApplyBitmapEffect）** / **链接信息·重新加载·解析链接** |
 | `cdr_color` | **颜色运算（纯 Python）**：解析成 HEX/RGB/CMYK/Gray/HLS/Lab、转换、两色混合 |
 | `cdr_doc` | **文档级**：概况 / 清空选择集 / 清撤销栈 / **登记调色板** / **用曲线生成自定义箭头（可登记全局箭头库）** / **单位换算** / **取色（点/区域）** / **字体列表** / **调色板列表·取色·固定调色板打开·颜色枚举·专色创建·自定义调色板创建** / **图案画布创建（含区域变换）** / **纹理库列表** / **文档元数据读写·本地化元数据** / **数据字段·对象数据·色彩管理·线型样式·叠印读取** / **文档设置读写** / **应用信息·文档回滚** / **色彩配置文件·文档颜色转换** / **用户偏好 KV** / **命名视图** / **网格设置** / **应用/文档事件队列** / **显示隐藏对象** / **页面版式** / **重复上一操作** |
 | `cdr_view` | **视图**：刷新重绘 / 激活窗口 / 文档↔屏幕坐标换算 / **屏幕距离↔文档距离** / **屏幕叠加层（文字/矩形/直线/圆，不写入文档）** |
@@ -87,7 +87,7 @@ python -m cdrx8_mcp              # 启动 MCP 服务器（stdio）
 |---|---|
 | `cdr_layers` | 图层列表 / 新建 / 激活 / 显隐 / 锁定 / 打印 / **上移·下移** / **读上下相邻图层** / **粘贴剪贴板（可跨文档）** / 删除 |
 | `cdr_pages` | 页面列表 / 新增 / **插入空白页** / 切页 / 删除 / 自定义尺寸 / **纸张预设** / **参考线列表** / **角度参考线** / **吸附点查询** / **解锁全部** / **对象总包围盒** |
-| `cdr_import` | 导入 png / jpg / svg / pdf / ai / eps / dxf 等 |
+| `cdr_import` | 导入 png / jpg / svg / pdf / ai / eps / dxf 等，**可传 import_options（外链位图/重采样/保留图层/水印检测/ICC）** |
 | `cdr_export` | 导出 **png / jpg / svg / pdf**，位图可指定 DPI，可只导选区，**可传 export_options（抗锯齿/透明/压缩/尺寸/分辨率等）** |
 
 ### 标准调用顺序
@@ -183,7 +183,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ---
 
-## X8 特有问题（105 条，全部实测）
+## X8 特有问题（106 条，全部实测）
 
 这些是 **X8 与 2024+ 的差异**，也是本项目存在的主要理由。
 
@@ -294,6 +294,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 | 103 | **文档级事件可用** | 每个文档挂 `DIVGDocumentEvents` sink，可捕获 `Doc:ShapeCreate/Delete/Move/Transform/Change`、图层/页面变化、SelectionChange；首次访问或新建时自动挂载 | 事件名带 `Doc:` 前缀，与 app 事件共用队列 |
 | 104 | **导出选项可配置** | `cdr_export(export_options={anti_aliasing_type,transparent,compression,...})` 会写入 `StructExportOptions`；实测 PNG 正常生成并返回已应用字段 | 复杂 CMYK 文档 + 透明选项可能失败，建议用干净 RGB 文档 |
 | 105 | **保存选项可配置** | `cdr_save(save_options={embed_icc_profile,keep_appearance,thumbnail_size,...})` 会写入 `StructSaveAsOptions`；实测 .cdr 正常保存 | Version 字段语义未单独验证 |
+| 106 | **导入选项可外链位图** | `cdr_import(import_options={link_bitmap_externally:true,resample_dpi:96})` 导入后 `Bitmap.ExternallyLinked=true`、`LinkFileName` 指向源图；`UpdateLink()` 可重新加载 | 导入后自动补对象名；`ResolveLink` 会清空 LinkFileName |
 
 改代码前请先读 [`src/cdrx8_mcp/constants.py`](src/cdrx8_mcp/constants.py) 里的注释。
 
@@ -343,7 +344,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ```powershell
 python -m pytest -q                # 55 项纯逻辑测试，任何平台可跑
-python scripts/live_smoke.py       # 260 项端到端，需要 CorelDRAW X8
+python scripts/live_smoke.py       # 263 项端到端，需要 CorelDRAW X8
 python scripts/live_smoke.py --keep   # 保留文档方便肉眼看效果
 python scripts/coverage_audit.py   # 覆盖率审计（复现 README/COVERAGE 里的数字）
 ```
@@ -384,6 +385,7 @@ weld/fillet → 框选/组合/解组 → 对齐 → 图层 → 查找 → 分页
 **文档事件（Doc:ShapeCreate/ShapeChange）** →
 **导出选项（抗锯齿/透明/分辨率）** →
 **保存选项（嵌入 ICC/缩略图）** →
+**外链位图导入（import_options）→ 链接信息/更新** →
 过期 token 拒绝 → 关闭。
 
 完整能力矩阵见 [docs/COVERAGE.md](docs/COVERAGE.md)。

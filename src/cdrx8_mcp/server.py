@@ -1198,6 +1198,7 @@ def cdr_view(document_id: str, action: str = "refresh",
 @mcp.tool()
 def cdr_import(document_id: str, path: str, center: bool = True,
                page_index: int | None = None,
+               import_options: dict | None = None,
                expected_revision: int | None = None,
                snapshot_token: str | None = None) -> dict:
     """导入图片或矢量文件（png / jpg / svg / pdf / ai / eps / dxf 等，取决于 X8 装了什么过滤器）。
@@ -1205,12 +1206,15 @@ def cdr_import(document_id: str, path: str, center: bool = True,
     Args:
         path: 源文件绝对路径。
         center: 是否把导入对象居中放到页面上。
+        import_options: 导入选项，如 {"link_bitmap_externally":true,
+            "resample_dpi":96,"maintain_layers":true}
     """
     def _run():
         src = resolve_read_path(path)
         doc, sess = _with_doc(document_id)
         warnings = _check_view(sess, expected_revision, snapshot_token, doc)
-        result = _com(lambda _b: ops.import_file(doc, str(src), page_index, center),
+        result = _com(lambda _b: ops.import_file(doc, str(src), page_index, center,
+                                                options=import_options),
                       timeout=DEFAULT_EXPORT_TIMEOUT_S, label="cdr_import")
         return _commit(doc, sess, result, warnings)
 
@@ -1350,6 +1354,9 @@ def cdr_bitmap(document_id: str, target: dict, action: str = "info",
                                        "WhirlpoolSmear=9,WhirlpoolTwist=70,"
                                        "WhirlpoolStreak=60,WhirpoolWarp=1,"
                                        "WhirlpoolRandomSeed=0"
+      link_info     读外部链接状态（externally_linked / link_file_name / embedded）
+      update_link   重新加载外部链接位图（仅链接位图有效）
+      resolve_link  解析外部链接路径（仅链接位图有效）
       resample      重采样，width/height 目标像素、dpi 目标分辨率
       inflate       四周扩边，inflate_x / inflate_y 毫米
       crop          执行裁剪
