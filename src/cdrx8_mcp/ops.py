@@ -4709,7 +4709,9 @@ COLOR_OBJECT_ACTIONS = ("object_info", "object_name", "object_compare", "object_
                         "object_copy", "object_string_assign", "object_convert",
                         "object_fixed", "object_assign",
                         # 第三十五波：其它色彩模型工厂 + 颜色串工厂
-                        "object_model", "object_from_string")
+                        "object_model", "object_from_string",
+                        # 第四十八波：固定调色板/脚本/调色板取色/失效
+                        "object_palette", "object_invalidate")
 # 显式写法（而不是 getattr 动态调用）：既方便 grep，也让覆盖率审计能统计到
 COLOR_CONVERT_CALLS = {
     "rgb": lambda c: c.ConvertToRGB(),
@@ -4722,7 +4724,8 @@ COLOR_CONVERT_CALLS = {
     "yiq": lambda c: c.ConvertToYIQ(),
 }
 COLOR_COMPONENT_ARITY = {"rgb": 3, "cmyk": 4, "gray": 1, "hls": 3, "hsb": 3,
-                         "lab": 3, "cmy": 3, "yiq": 3, "bw": 1, "registration": 0}
+                         "lab": 3, "cmy": 3, "yiq": 3, "bw": 1, "registration": 0,
+                         "fixed": 3, "script": 5}
 COLOR_ASSIGN_CALLS = {
     "rgb": lambda c, v: c.RGBAssign(int(v[0]), int(v[1]), int(v[2])),
     "cmyk": lambda c, v: c.CMYKAssign(int(v[0]), int(v[1]), int(v[2]), int(v[3])),
@@ -4734,6 +4737,10 @@ COLOR_ASSIGN_CALLS = {
     "yiq": lambda c, v: c.YIQAssign(int(v[0]), int(v[1]), int(v[2])),
     "bw": lambda c, v: c.BWAssign(int(v[0])),
     "registration": lambda c, v: c.RegistrationAssign(),
+    # 第四十八波：固定调色板（palette_id, index, tint）与脚本式分量
+    "fixed": lambda c, v: c.FixedAssign(int(v[0]), int(v[1]), int(v[2])),
+    "script": lambda c, v: c.CorelScriptAssign(int(v[0]), int(v[1]), int(v[2]),
+                                               int(v[3]), int(v[4]), 0, 0, 0),
 }
 
 
@@ -4882,6 +4889,45 @@ def color_object_ops(action: str, *, color: Any = None, color2: Any = None,
                 "type": _n(lambda: int(obj.Type)),
                 "to_string": _s(lambda: str(obj.ToString())),
                 "name": _s(lambda: str(obj.GetName()))}
+
+    if act == "object_palette":
+        # 实测：PaletteAssign(调色板 Identifier, 颜色序号) /
+        # SpotAssignByName(调色板 Identifier, 专色名, Tint) —— 第一个参数是**调色板 GUID 字符串**
+        token = color2
+        if token is None:
+            raise CdrBadArgument("object_palette 需要 color2 = 调色板 Identifier 或已打开调色板的序号")
+        app = _app_of(None)
+        pal_index = None
+        if isinstance(token, int) or (isinstance(token, str) and token.isdigit()):
+            idx = int(token)
+            count = _n(lambda: int(app.Palettes.Count), 0) or 0
+            if not 1 <= idx <= count:
+                raise CdrBadArgument(f"调色板序号越界：{idx}（已打开 {count} 个）")
+            pal = app.Palettes.Item(idx)
+            ident = _s(lambda: str(pal.Identifier))
+        else:
+            ident = str(token)
+        if not ident:
+            raise CdrComFailure("取不到调色板 Identifier")
+        obj = _color_object(color if color is not None else "#000000")
+        vals = list(values or [])
+        if name:
+            tint = int(vals[0]) if vals else 100
+            obj.SpotAssignByName(ident, str(name), tint)
+            return {"action": act, "mode": "spot", "palette": ident,
+                    "spot_name": str(name), "tint": tint,
+                    "to_string": _s(lambda: str(obj.ToString()))}
+        color_index = int(vals[0]) if vals else 1
+        obj.PaletteAssign(ident, color_index)
+        return {"action": act, "mode": "palette", "palette": ident,
+                "color_index": color_index,
+                "to_string": _s(lambda: str(obj.ToString()))}
+
+    if act == "object_invalidate":
+        obj = _color_object(color if color is not None else "#000000")
+        obj.Invalidate()
+        return {"action": act, "invalidated": True,
+                "to_string": _s(lambda: str(obj.ToString()))}
 
     if act == "object_assign":
         want = str(model or "rgb").lower()
@@ -5459,6 +5505,8 @@ SHAPE_OPS = (
     "range_from_list", "range_bitmap",
     # 第四十七波：整批描边设置（SetOutlineProperties / Ex）
     "range_outline",
+    # 第四十八波：复制到其它图层（AsRange）/ 对齐到形状范围
+    "copy_to_layer_range", "align_to_range",
 )
 
 
@@ -5719,6 +5767,37 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
                     "api": used,
                     "first_width": _round(_s(lambda: float(first.Outline.Width)))
                     if first is not None else None}
+        if op in {"copy_to_layer_range", "align_to_range"}:
+            spec = dict(params or {})
+            source = find_shape(doc, page, target or {})
+            if op == "copy_to_layer_range":
+                # 实测：Shape.CopyToLayerAsRange(Layer) 返回新图层上的 ShapeRange
+                layer_name = str(spec.get("layer", ""))
+                if not layer_name:
+                    raise CdrBadArgument("copy_to_layer_range 需要 params.layer（目标图层名）")
+                dest = _find_layer(page, layer_name, None)
+                with atomic(doc, label):
+                    rng = source.CopyToLayerAsRange(dest)
+                if rng is None:
+                    raise CdrComFailure("Shape.CopyToLayerAsRange 返回空")
+                count = _n(lambda: int(rng.Count), 0) or 0
+                first = _s(lambda: rng.Item(1))
+                return {"op": op, "count": count,
+                        "layer": _s(lambda: str(dest.Name)),
+                        "new_name": _s(lambda: str(first.Name)) if first is not None else None,
+                        "new_bbox": _bbox(first) if first is not None else None}
+            # align_to_range：把对象按 cdrAlignType 对齐到另一批对象组成的范围
+            if not other:
+                raise CdrBadArgument("align_to_range 需要 other（参照对象）")
+            align_type = int(spec.get("align_type", 1))
+            ref = find_shape(doc, page, other)
+            rng = _app_of(doc).CreateShapeRange()
+            rng.Add(ref)
+            with atomic(doc, label):
+                source.AlignToShapeRange(align_type, rng, int(spec.get("text_origin", 0)))
+            return {"op": op, "align_type": align_type,
+                    "reference": _s(lambda: str(ref.Name)),
+                    "bbox": _bbox(source)}
         if op in {"range_from_list", "range_bitmap"}:
             spec = dict(params or {})
             targets = list(spec.get("targets") or [])

@@ -3607,6 +3607,63 @@ def main() -> int:
                       f"added={im47b.get('shapes_added')}")
         no_error("关闭宽文本测试文档", server.cdr_close(w47_id))
 
+    # ---------------- 15bb. 第四十八波：颜色 Assign 家族 / 图层复制 / 对齐到范围 ----------------
+    print("\n[15bb] 第四十八波：FixedAssign·CorelScriptAssign·PaletteAssign·Invalidate·CopyToLayerAsRange")
+    c48_doc = server.cdr_open(preset="A4")
+    if "document_id" in c48_doc:
+        c48_id = c48_doc["document_id"]
+        cfix = server.cdr_color(action="object_assign", model="fixed",
+                                values=[2, 5, 100])
+        if no_error("cdr_color(model=fixed)", cfix):
+            check("固定调色板赋值可用（FixedAssign）",
+                  "PAN_PROC" in str(cfix.get("after")),
+                  str(cfix.get("after"))[:60])
+        cscr = server.cdr_color(action="object_assign", model="script",
+                                values=[2, 10, 20, 30, 40])
+        if no_error("cdr_color(model=script)", cscr):
+            check("脚本式分量赋值可用（CorelScriptAssign）",
+                  str(cscr.get("after", "")).startswith("CMYK,USER,10,20,30,40"),
+                  str(cscr.get("after"))[:60])
+        cinv = server.cdr_color(action="object_invalidate", color="#3366CC")
+        if no_error("cdr_color(object_invalidate)", cinv):
+            check("颜色可失效（Invalidate）",
+                  "CSINVALID" in str(cinv.get("to_string")),
+                  str(cinv.get("to_string"))[:40])
+        server.cdr_doc(c48_id, action="palette_open_fixed", palette_id=1)
+        pl48 = server.cdr_doc(c48_id, action="palettes")
+        pid48 = ((pl48.get("palettes") or [{}])[0] or {}).get("identifier")
+        if pid48:
+            cpal = server.cdr_color(action="object_palette", color="#000000",
+                                    color2=pid48, values=[5])
+            if no_error("cdr_color(object_palette)", cpal):
+                check("可按调色板取色（PaletteAssign）",
+                      str(cpal.get("to_string", "")).startswith("PANTONE"),
+                      str(cpal.get("to_string"))[:60])
+        c48r = server.cdr_create(c48_id, [
+            {"type": "rectangle", "x": 0, "y": 0, "width": 20, "height": 10},
+            {"type": "rectangle", "x": 40, "y": 0, "width": 20, "height": 10},
+        ])
+        if no_error("cdr_create(图层复制测试)", c48r):
+            c48a, c48b = [x["name"] for x in c48r["created"]]
+            server.cdr_layers(c48_id, action="create", name="目标层")
+            ctl = server.cdr_shape_ops(c48_id, op="copy_to_layer_range",
+                                       target={"name": c48a},
+                                       params={"layer": "目标层"})
+            if no_error("cdr_shape_ops(copy_to_layer_range)", ctl):
+                check("可复制到指定图层（CopyToLayerAsRange）",
+                      ctl.get("count") == 1 and ctl.get("layer") == "目标层"
+                      and bool(ctl.get("new_name")),
+                      f"layer={ctl.get('layer')} name={ctl.get('new_name')}")
+            atr = server.cdr_shape_ops(c48_id, op="align_to_range",
+                                       target={"name": c48a},
+                                       other={"name": c48b},
+                                       params={"align_type": 1})
+            if no_error("cdr_shape_ops(align_to_range)", atr):
+                bb48 = atr.get("bbox") or {}
+                check("可对齐到形状范围（AlignToShapeRange）",
+                      bb48.get("x") == 40.0, f"bbox={bb48}")
+        no_error("关闭颜色/图层测试文档", server.cdr_close(c48_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,
