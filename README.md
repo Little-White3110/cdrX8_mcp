@@ -7,9 +7,9 @@
 
 > **已在真机验证**：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）+ Python 3.11.9 64 位
 > - 单元测试 **55 项通过**
-> - 端到端联调（真实 CorelDRAW）**259/259 通过**
+> - 端到端联调（真实 CorelDRAW）**260/260 通过**
 > - 能力边界来自对 `vgcoreauto.tlb` 的反解（196 个自动化类 / 1619 个方法）+ 逐项实跑
-> - 方法级覆盖 **44.5%**（主干 20 接口 56.8%），可用 `python scripts/coverage_audit.py` 复现
+> - 方法级覆盖 **44.5%**（主干 20 接口 56.9%），可用 `python scripts/coverage_audit.py` 复现
 > - 完整清单见 [docs/COVERAGE.md](docs/COVERAGE.md)
 
 ---
@@ -57,7 +57,7 @@ python -m cdrx8_mcp              # 启动 MCP 服务器（stdio）
 | `cdr_documents` | 列出打开的文档，给出 `document_id` |
 | `cdr_open` | 打开 `.cdr`，按毫米尺寸 / 页面预设新建，或**从模板创建**（`template=路径`） |
 | `cdr_inspect` | 读视图：页面、图层、`revision`、`snapshot_token`、每个对象 |
-| `cdr_save` | 另存为 `.cdr`（默认不覆盖） |
+| `cdr_save` | 另存为 `.cdr`（默认不覆盖；**可传 save_options**：嵌入 ICC/VBA、缩略图、覆盖、版本等） |
 | `cdr_undo` | 撤销 / 重做最近 N 步 |
 | `cdr_close` | 关闭文档（默认丢弃未保存改动） |
 
@@ -183,7 +183,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ---
 
-## X8 特有问题（104 条，全部实测）
+## X8 特有问题（105 条，全部实测）
 
 这些是 **X8 与 2024+ 的差异**，也是本项目存在的主要理由。
 
@@ -293,6 +293,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 | 102 | **事件 sink 的 TLB 路径要猜** | `app.Path` 是 `...\Draw\`，TLB 实际在 `..\Programs64\vgcoreauto.tlb`；按候选路径查找 | 找不到 TLB 时静默降级，不影响主功能 |
 | 103 | **文档级事件可用** | 每个文档挂 `DIVGDocumentEvents` sink，可捕获 `Doc:ShapeCreate/Delete/Move/Transform/Change`、图层/页面变化、SelectionChange；首次访问或新建时自动挂载 | 事件名带 `Doc:` 前缀，与 app 事件共用队列 |
 | 104 | **导出选项可配置** | `cdr_export(export_options={anti_aliasing_type,transparent,compression,...})` 会写入 `StructExportOptions`；实测 PNG 正常生成并返回已应用字段 | 复杂 CMYK 文档 + 透明选项可能失败，建议用干净 RGB 文档 |
+| 105 | **保存选项可配置** | `cdr_save(save_options={embed_icc_profile,keep_appearance,thumbnail_size,...})` 会写入 `StructSaveAsOptions`；实测 .cdr 正常保存 | Version 字段语义未单独验证 |
 
 改代码前请先读 [`src/cdrx8_mcp/constants.py`](src/cdrx8_mcp/constants.py) 里的注释。
 
@@ -342,7 +343,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ```powershell
 python -m pytest -q                # 55 项纯逻辑测试，任何平台可跑
-python scripts/live_smoke.py       # 259 项端到端，需要 CorelDRAW X8
+python scripts/live_smoke.py       # 260 项端到端，需要 CorelDRAW X8
 python scripts/live_smoke.py --keep   # 保留文档方便肉眼看效果
 python scripts/coverage_audit.py   # 覆盖率审计（复现 README/COVERAGE 里的数字）
 ```
@@ -382,6 +383,7 @@ weld/fillet → 框选/组合/解组 → 对齐 → 图层 → 查找 → 分页
 **应用事件队列（DocumentNew/WindowActivate）→ 清空** →
 **文档事件（Doc:ShapeCreate/ShapeChange）** →
 **导出选项（抗锯齿/透明/分辨率）** →
+**保存选项（嵌入 ICC/缩略图）** →
 过期 token 拒绝 → 关闭。
 
 完整能力矩阵见 [docs/COVERAGE.md](docs/COVERAGE.md)。

@@ -2366,6 +2366,26 @@ def main() -> int:
                   f"options={eo.get('export_options')} bytes={eo.get('bytes')}")
         no_error("关闭导出选项测试文档", server.cdr_close(od_id))
 
+    # ---------------- 15ah. 第二十九波：保存选项 ----------------
+    print("\n[15ah] 第二十九波：保存选项")
+    so_doc = server.cdr_open(preset="A4")
+    if "document_id" in so_doc:
+        so_id = so_doc["document_id"]
+        server.cdr_create(so_id, [{"type": "rectangle", "x": 20, "y": 20,
+                                   "width": 40, "height": 30,
+                                   "fill": "#00AA00"}])
+        so_path = os.path.join(out, f"w29_opts_{os.urandom(2).hex()}.cdr")
+        so = server.cdr_save(so_id, so_path, overwrite=True,
+                             save_options={"embed_icc_profile": True,
+                                           "keep_appearance": True,
+                                           "overwrite": True,
+                                           "thumbnail_size": 1})
+        if no_error("cdr_save(save_options)", so):
+            check("保存选项可应用", bool(so.get("save_options"))
+                  and (so.get("bytes") or 0) > 0 and os.path.exists(so_path),
+                  f"options={so.get('save_options')} bytes={so.get('bytes')}")
+        no_error("关闭保存选项测试文档", server.cdr_close(so_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

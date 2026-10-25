@@ -177,15 +177,46 @@ def open_document(app: Any, path: str) -> Any:
     return app.OpenDocument(path)
 
 
-def save_as(doc: Any, path: str) -> dict:
+def _save_options(app: Any, spec: dict | None) -> tuple[Any, list]:
+    if not spec:
+        return None, []
+    opts = app.CreateStructSaveAsOptions()
+    if opts is None:
+        return None, []
+    mapping = {
+        "embed_icc_profile": "EmbedICCProfile",
+        "embed_vba_project": "EmbedVBAProject",
+        "include_cmx_data": "IncludeCMXData",
+        "keep_appearance": "KeepAppearance",
+        "overwrite": "Overwrite",
+        "thumbnail_size": "ThumbnailSize",
+        "version": "Version", "filter": "Filter", "range": "Range",
+    }
+    applied = []
+    for key, val in spec.items():
+        attr = mapping.get(str(key).lower())
+        if attr is None:
+            continue
+        try:
+            setattr(opts, attr, val)
+            applied.append(str(key))
+        except Exception:
+            continue
+    return opts, applied
+
+
+def save_as(doc: Any, path: str, *, options: dict | None = None) -> dict:
     """X8 的 SaveAs 必须传第二个参数（Options），只传路径会抛 TypeError。"""
     old_name = str(doc.Name)
-    doc.SaveAs(path, None)
+    app = _app_of(doc)
+    opts, applied = _save_options(app, options)
+    doc.SaveAs(path, opts)
     return {
         "name": _s(lambda: str(doc.Name), old_name),
         "file_name": _s(lambda: str(doc.FileName)),
         "old_name": old_name,
         "dirty": bool(_s(lambda: bool(doc.Dirty), False)),
+        "save_options": applied,
     }
 
 
@@ -215,19 +246,22 @@ def close_document(doc: Any, save: bool = False) -> dict:
     return {"closed": name, "saved": saved, "file_name": file_name or None}
 
 
-def save_as_copy(doc: Any, path: str) -> dict:
+def save_as_copy(doc: Any, path: str, *, options: dict | None = None) -> dict:
     """另存副本。
 
     ⚠️ 实测：X8 的 `SaveAsCopy` 会把**当前文档名也改成副本名**（a.cdr -> b.cdr，
     FileName 同步变），所以调用方必须用返回的 `name` 更新会话，否则后续按名查找会失败。
     """
     old_name = _s(lambda: str(doc.Name), "")
-    doc.SaveAsCopy(path, None)
+    app = _app_of(doc)
+    opts, applied = _save_options(app, options)
+    doc.SaveAsCopy(path, opts)
     return {
         "copied_to": path,
         "name": _s(lambda: str(doc.Name), old_name),
         "old_name": old_name,
         "file_name": _s(lambda: str(doc.FileName)) or None,
+        "save_options": applied,
     }
 
 

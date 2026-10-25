@@ -1254,12 +1254,14 @@ def cdr_export(document_id: str, path: str, format: str = "png",
 
 @mcp.tool()
 def cdr_save(document_id: str, path: str, overwrite: bool = False,
-             as_copy: bool = False) -> dict:
+             as_copy: bool = False, save_options: dict | None = None) -> dict:
     """另存为 .cdr（默认不覆盖已有文件，也不会改动源文档）。
 
     Args:
         as_copy: true 时用 SaveAsCopy —— 写副本但**保持当前文档的关联路径不变**
                  （适合"先存个中间版本再继续改"）。
+        save_options: 额外保存选项，如 {"embed_icc_profile":true,
+                      "keep_appearance":true,"overwrite":true,"thumbnail_size":1}
     """
     def _run():
         p, warn = resolve_write_path(path, overwrite=overwrite)
@@ -1267,17 +1269,23 @@ def cdr_save(document_id: str, path: str, overwrite: bool = False,
             return {"error": "bad_argument", "message": "保存路径必须以 .cdr 结尾"}
         doc, sess = _with_doc(document_id)
         if as_copy:
-            info = _com(lambda _b: ops.save_as_copy(doc, str(p)), label="cdr_save:copy")
+            info = _com(lambda _b: ops.save_as_copy(doc, str(p), options=save_options),
+                        label="cdr_save:copy")
             # 实测：SaveAsCopy 会把文档名改成副本名，必须同步会话
             registry().rename(sess.name, info["name"])
             result = {"saved": str(p), "bytes": ops._s(lambda: os.path.getsize(p)),
                       "as_copy": True, "document_name": info["name"]}
+            if info.get("save_options"):
+                result["save_options"] = info["save_options"]
             if warn:
                 result.setdefault("warnings", []).append(warn)
             return _commit(doc, sess, result)
-        info = _com(lambda _b: ops.save_as(doc, str(p)), label="cdr_save")
+        info = _com(lambda _b: ops.save_as(doc, str(p), options=save_options),
+                    label="cdr_save")
         registry().rename(sess.name, info["name"])
         result = {"saved": str(p), "bytes": ops._s(lambda: os.path.getsize(p))}
+        if info.get("save_options"):
+            result["save_options"] = info["save_options"]
         if warn:
             result.setdefault("warnings", []).append(warn)
         return _commit(doc, sess, result)
