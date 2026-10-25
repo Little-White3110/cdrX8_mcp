@@ -1220,7 +1220,7 @@ def cdr_import(document_id: str, path: str, center: bool = True,
 @mcp.tool()
 def cdr_export(document_id: str, path: str, format: str = "png",
                dpi: int | None = None, overwrite: bool = False,
-               selection: bool = False) -> dict:
+               selection: bool = False, export_options: dict | None = None) -> dict:
     """导出 png / jpg / svg / pdf。
 
     Args:
@@ -1229,6 +1229,9 @@ def cdr_export(document_id: str, path: str, format: str = "png",
         dpi: 位图导出分辨率（png/jpg 有效）。实测：resolution≈dpi，大页面误差 <1%。
         overwrite: 目标已存在时是否覆盖。
         selection: 只导出当前选中对象（png/jpg/svg）。
+        export_options: 额外导出选项（png/jpg/svg 有效），如
+            {"anti_aliasing_type":2,"dithered":false,"transparent":true,
+             "resolution_x":150,"resolution_y":150,"maintain_aspect":true}
     """
     def _run():
         fmt = (format or "").lower().lstrip(".")
@@ -1236,7 +1239,9 @@ def cdr_export(document_id: str, path: str, format: str = "png",
             return {"error": "bad_argument", "message": "format 只支持 png / jpg / svg / pdf"}
         p, warn = resolve_write_path(path, overwrite=overwrite)
         doc, _sess = _with_doc(document_id)
-        result = _com(lambda _b: ops.export(doc, fmt, str(p), dpi=dpi, selection=selection),
+        result = _com(lambda _b: ops.export(doc, fmt, str(p), dpi=dpi,
+                                            selection=selection,
+                                            options=export_options),
                       timeout=DEFAULT_EXPORT_TIMEOUT_S, label="cdr_export")
         if fmt in {"png", "jpg", "svg"}:
             result["scope"] = "selection" if selection else "current_page"

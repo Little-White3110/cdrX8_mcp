@@ -2,7 +2,7 @@
 
 > 目的：证明"还有多少没探"。每一行要么有对应的工具，要么有实测失败证据。
 > 环境：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）/ Python 3.11.9 64 位
-> 最近更新：2026-10-25 第二十七波（文档级事件：图形/图层/页面变化）
+> 最近更新：2026-10-25 第二十八波（导出选项）
 
 ## 怎么得出这份清单
 
@@ -46,6 +46,7 @@
 | `IVGGrid` | 5 | **新打通（第二十一波）**：`Document.Grid` 的 Type / SpacingX / SpacingY / Visible / Snap 全部可读写（间距按文档单位，mm 上下文下为毫米） |
 | `IVGColors`（颜色样式集合） | 8 | **新打通（第九波）**：`StyleSheet.AllColorStyles` 的 `Count / Item(i) / GetName / ToString`；配合 `Document.CreateColorStyles(harmonies=1..3)` 生成颜色协调 |
 | `IVGMetadata` | 21 | **新打通（第十波）**：`Document.Metadata` 的 Title / Author / LastAuthor / Subject / Keywords / Notes / Copyright / Revision / DocLanguage / DocID；前六项可写；Localizable* 是 `IVGLocalizableString` 对象 |
+| `IVGStructExportOptions` | 22 | **新打通（第二十八波）**：AntiAliasingType / Compression / Dithered / Transparent / MaintainAspect / MaintainLayers / Overwrite / Matted / MatteColor / ResolutionX·Y / SizeX·Y / UseColorProfile / AlwaysOverprintBlack 可写；`cdr_export(export_options={...})` 应用 |
 | `IVGLocalizableString` | 10 | **新打通（第二十四波）**：DefaultLangString / HasDefaultLangString / IsEmpty 可读写；GetLanguages / GetLangString(lang) / SetLangString(lang,text) 支持多语言；LocalizableTitle/Subject/Keywords/Notes/Copyright 各一份 |
 | `IVGEffects` / `IVGEffect` | 12 / 12 | **新打通（第十五波）**：`Shape.Effects.Count/Item(i)`、`ExtrudeEffect/LensEffect/DropShadowEffect/BlendEffects` 等；`Effect.Type/Extrude/Lens/Separate/Clear` 可用 |
 | `IVGEffectExtrude` | 18 | **新打通（第十五波）**：Type/Depth/AngleX·Y·Z/Shading/BaseColor/ShadingColor/UseBevel/BevelDepth/BevelAngle/ShowBevelOnly/UseExtrudeColorForBevel/UseFullColorRange/VanishingPoint 可读写；`Rotate/SetBevel/SetLight` 未封装 |
@@ -84,7 +85,7 @@
 | 页面 | `cdr_pages`（列表/增删/插入空白页/切页/自定义尺寸/纸张预设/参考线/角度参考线/**吸附点**/解锁/包围盒） | ✅ |
 | 位图 | `cdr_bitmap`（信息/转色彩模式/重采样/裁剪/取消裁剪/取像素色·图像缓冲信息·调色板模式 0~9·双色调/内容替换 SetImageData/**位图特效命令串 ApplyBitmapEffect**） | ✅（Trace 除外） |
 | 路径 | `cdr_path`（长度面积/偏移轮廓/追加子路径/折线点/反转方向·焊子路径·去重叠·参数取点·切/法向量·速度·交点·找节点/线段） | ✅ |
-| 导入导出 | `cdr_import` `cdr_export`（png/jpg/svg/pdf，可指定 DPI，可只导选区） | ✅ |
+| 导入导出 | `cdr_import` `cdr_export`（png/jpg/svg/pdf，可指定 DPI，可只导选区，**可传 export_options 控制抗锯齿/透明/压缩/尺寸**） | ✅ |
 | 文档 | `cdr_doc`（概况/清选区/清撤销栈/调色板/箭头/箭头登记/单位换算·取色·显示隐藏·版式·重复操作/字体列表·调色板列表·调色板取色/固定调色板打开·颜色枚举·专色创建/图案画布创建（含区域变换）/纹理库列表/文档元数据读写/本地化元数据/自定义调色板创建/数据字段·对象数据·色彩管理·线型样式/文档设置读写/应用信息·文档回滚/色彩配置文件·文档颜色转换/用户偏好 KV/命名视图/网格设置/叠印读取/**应用+文档事件队列**） | ✅ |
 | **对象数据** | `cdr_modify(changes={"data":{...}})` + `cdr_doc(action="object_data"/"data_fields"/"add_data_field")` | ✅ 第十一波 |
 | 视图 | `cdr_view`（刷新/激活/文档↔屏幕坐标/屏幕↔文档距离/**屏幕叠加层（文字/矩形/直线/圆）**） | ✅ |
@@ -144,6 +145,7 @@
 | 屏幕叠加层 | `Application.CreateOnScreenText/Curve/Handle` | SetTextAndPosition/SetTextColor、SetPen/SetRectangle/SetLine/SetCircle、Show/Hide 全部调用成功；坐标为**屏幕像素**，xor 绘制、不写入文档 | 已封装 `cdr_view(overlay_*)`；窗口重绘/关闭后叠加层可能消失 |
 | 应用事件 | `IVGApplicationEvents` 连接点 | 生成的 `DIVGApplicationEvents(application)` 可订阅；实测 DocumentNew/WindowActivate/DocumentClose 等都有回调 | 需正确的 `vgcoreauto.tlb` 路径（app.Path 指向 Draw，实际在 ../Programs64）；ApplicationEvent 高频已忽略 |
 | 文档事件 | `IVGDocumentEvents` 连接点 | 每个文档挂 sink 后，创建/移动/删除对象、图层/页面变化、SelectionChange 都有回调（事件名带 `Doc:` 前缀） | 文档在首次访问或 DocumentNew/Open 时自动挂载；关闭时卸载 |
+| 导出选项 | `Application.CreateStructExportOptions` | 可写 AntiAliasingType/Compression/Dithered/Transparent/MaintainAspect/MaintainLayers/Overwrite/Matte*/ResolutionX·Y/SizeX·Y/UseColorProfile/AlwaysOverprintBlack；`cdr_export(export_options={...})` 后文件正常导出 | 复杂 CMYK 文档+透明选项可能失败，建议用干净 RGB 文档；失败会回退默认选项 |
 
 > 已修正的历史结论：
 > * 折线取样 `Curve.GetPolyline` **可用**（返回 `IVGCurve`，遍历 `SubPaths/Nodes` 即可），
@@ -240,7 +242,7 @@
 
 ```powershell
 python -m pytest -q              # 55 项纯逻辑
-python scripts/live_smoke.py     # 258 项端到端（真实 CorelDRAW）
+python scripts/live_smoke.py     # 259 项端到端（真实 CorelDRAW）
 ```
 
 联调断言覆盖了上表所有 ✅ 项。反解脚本属于过程产物，已按要求放在 `tmp/` 并在完成时清理；
@@ -248,7 +250,7 @@ python scripts/live_smoke.py     # 258 项端到端（真实 CorelDRAW）
 
 ---
 
-## 六、量化覆盖率（2026-10-25 第二十六波实测）
+## 六、量化覆盖率（2026-10-25 第二十八波实测）
 
 方法：反解类型库拿到 196 个自动化类 / **1619** 个方法（已剔除 `QueryInterface` 等 COM 基础设施）；
 用 AST 扫描 `src/cdrx8_mcp/*.py`，收集所有 `.方法名(` 调用与 `setattr/getattr` 的属性名，
@@ -596,6 +598,15 @@ python scripts/live_smoke.py     # 258 项端到端（真实 CorelDRAW）
 | **事件队列** | 与应用事件共用 `cdr_doc(action="events")` 队列，文档事件带 `Doc:` 前缀 | ✅ 可通过前缀区分 app/doc 事件 |
 | 关闭清理 | DocumentClose 时卸载对应 sink | ✅ 避免重复订阅 |
 
+## 七之二十六、第二十八波已接入（2026-10-25，导出选项）
+
+| 能力 | 落地位置 | 实测 |
+|---|---|---|
+| **导出选项** | `cdr_export(..., export_options={...})` | ✅ `AntiAliasingType=2`、`Dithered=false`、`Transparent=true`、`ResolutionX/Y=120`、`MaintainAspect=true` 均被应用，PNG 正常生成 |
+| 支持字段 | AntiAliasingType / Compression / Dithered / Transparent / MaintainAspect / MaintainLayers / Overwrite / Matted / MatteMaskedOnly / AlwaysOverprintBlack / UseColorProfile / ResolutionX·Y / SizeX·Y | 未识别字段静默忽略 |
+| 结果 | 返回 `export_options` 已应用字段列表 | ✅ 便于确认 |
+| 注意 | 复杂 CMYK 文档 + 透明选项可能导出失败 | 建议用干净 RGB 文档；失败自动回退默认选项 |
+
 ## 七之二、仍未接入（第三轮候选）
 
 | 能力 | 接口 | 为什么还没做 |
@@ -617,16 +628,16 @@ python scripts/live_smoke.py     # 258 项端到端（真实 CorelDRAW）
 
 ## 八、一句话总结
 
-* **能力域覆盖**：51 个能力域 / 27 个工具，日常出图闭环完整；节点编辑、对象样式、专色、
+* **能力域覆盖**：52 个能力域 / 27 个工具，日常出图闭环完整；节点编辑、对象样式、专色、
   图案/纹理填充、跨文档复制、模板/样式表/颜色样式、文档元数据、本地化元数据、对象数据字段、
   自定义虚线、文档设置、文本区间编辑、自定义箭头、图案微调、文本格式查询、位图内容替换、
   文档回滚、立体化/透镜/效果管理、位图特效命令串、混合、文档颜色转换、用户偏好 KV、OLE 嵌入、
-  命名视图、网格设置、叠印、段落缩进、制表位、屏幕叠加层、应用/文档事件队列都已补上。
+  命名视图、网格设置、叠印、段落缩进、制表位、屏幕叠加层、应用/文档事件、导出选项都已补上。
 * **方法级覆盖**：全局 44.5%（720/1619），主干 20 接口 56.8%（422/743）。
 * **明确不可用**：位图描摹、文本导入、点集数组建曲线、尺寸标注/连接线（MathUtils 点对象
   不可创建）、符号库、文件型图案/影线填充（本机无库）、曲线贴笔触、OpenDocumentAsCopy、
   HTML 兼容文本、断字写入、填充字符串、文本尺寸查询、灰度→RGB 转换、真实应用偏好读取、
   文本分栏（SetColumns 数组参数）。
-* **第二十七波新增**：文档级事件（`Doc:ShapeCreate` 等）与应用事件共用队列，文档首次访问/新建时自动挂载。
+* **第二十八波新增**：导出选项（抗锯齿/透明/压缩/尺寸/分辨率等）可配置并返回已应用字段。
 
 

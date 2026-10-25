@@ -4833,7 +4833,7 @@ def import_file(doc: Any, path: str, page_index: int | None = None,
 # 导出
 # --------------------------------------------------------------------------- #
 def export(doc: Any, fmt: str, path: str, *, dpi: int | None = None,
-           selection: bool = False) -> dict:
+           selection: bool = False, options: dict | None = None) -> dict:
     fmt = (fmt or "").lower().strip().lstrip(".")
     if fmt == "pdf":
         doc.PublishToPDF(path)
@@ -4843,16 +4843,46 @@ def export(doc: Any, fmt: str, path: str, *, dpi: int | None = None,
         raise CdrBadArgument(f"不支持的格式 {fmt}；可用：png / jpg / svg / pdf")
 
     app = _app_of(doc)
-    opts = app.CreateStructExportOptions() if dpi else None
-    if opts is not None:
-        opts.ResolutionX = int(dpi)
-        opts.ResolutionY = int(dpi)
+    applied_opts: list[str] = []
+    opt_map = {
+        "anti_aliasing_type": "AntiAliasingType", "compression": "Compression",
+        "dithered": "Dithered", "transparent": "Transparent",
+        "maintain_aspect": "MaintainAspect", "maintain_layers": "MaintainLayers",
+        "overwrite": "Overwrite", "matted": "Matted",
+        "matte_masked_only": "MatteMaskedOnly",
+        "always_overprint_black": "AlwaysOverprintBlack",
+        "use_color_profile": "UseColorProfile",
+        "resolution_x": "ResolutionX", "resolution_y": "ResolutionY",
+        "size_x": "SizeX", "size_y": "SizeY",
+    }
+    opts = None
+    if dpi or options:
+        opts = app.CreateStructExportOptions()
+        if dpi:
+            opts.ResolutionX = int(dpi)
+            opts.ResolutionY = int(dpi)
+        for key, val in (options or {}).items():
+            attr = opt_map.get(str(key).lower())
+            if attr is None:
+                continue
+            try:
+                setattr(opts, attr, val)
+                applied_opts.append(str(key))
+            except Exception:
+                continue
 
     rng = EXPORT_RANGE_SELECTION if selection else EXPORT_RANGE_CURRENT_PAGE
     try:
         handle = doc.ExportEx(path, EXPORT_FILTERS[fmt], rng, opts, None)
         handle.Finish()
-        return _export_result(fmt, path, dpi=dpi)
+        for _ in range(40):
+            if os.path.exists(path) and os.path.getsize(path) > 0:
+                break
+            time.sleep(0.05)
+        result = _export_result(fmt, path, dpi=dpi)
+        if applied_opts:
+            result["export_options"] = applied_opts
+        return result
     except Exception:
         # 实测：**空页面上带 StructExportOptions 导出会失败**（com_error「发生意外」）。
         # 此时退回默认分辨率再试一次，并把情况如实告诉调用方。
@@ -4860,9 +4890,13 @@ def export(doc: Any, fmt: str, path: str, *, dpi: int | None = None,
             raise
         handle = doc.ExportEx(path, EXPORT_FILTERS[fmt], rng, None, None)
         handle.Finish()
+        for _ in range(40):
+            if os.path.exists(path) and os.path.getsize(path) > 0:
+                break
+            time.sleep(0.05)
         result = _export_result(fmt, path, dpi=None)
         result.setdefault("warnings", []).append(
-            f"指定 DPI({dpi}) 导出失败（页面可能为空）；已按 CorelDRAW 默认分辨率导出"
+            f"指定 DPI({dpi})/选项导出失败（页面可能为空）；已按 CorelDRAW 默认分辨率导出"
         )
         return result
 

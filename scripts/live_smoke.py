@@ -2341,6 +2341,31 @@ def main() -> int:
                   f"cleared={ce1.get('cleared')}")
         no_error("关闭事件测试文档", server.cdr_close(evdoc["document_id"]))
 
+    # ---------------- 15ag. 第二十八波：导出选项 ----------------
+    print("\n[15ag] 第二十八波：导出选项")
+    opt_doc = server.cdr_open(preset="A4")
+    if "document_id" in opt_doc:
+        od_id = opt_doc["document_id"]
+        server.cdr_create(od_id, [{"type": "rectangle", "x": 20, "y": 20,
+                                   "width": 60, "height": 40,
+                                   "fill": "#FF0000"}])
+        opt_path = os.path.join(out, "smoke_opts.png")
+        if os.path.exists(opt_path):
+            os.remove(opt_path)
+        eo = server.cdr_export(od_id, opt_path, format="png", dpi=120,
+                               overwrite=True,
+                               export_options={"anti_aliasing_type": 2,
+                                               "dithered": False,
+                                               "transparent": True,
+                                               "resolution_x": 120,
+                                               "resolution_y": 120,
+                                               "maintain_aspect": True})
+        if no_error("cdr_export(export_options)", eo):
+            check("导出选项可应用", bool(eo.get("export_options"))
+                  and os.path.exists(opt_path) and (eo.get("bytes") or 0) > 0,
+                  f"options={eo.get('export_options')} bytes={eo.get('bytes')}")
+        no_error("关闭导出选项测试文档", server.cdr_close(od_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,
