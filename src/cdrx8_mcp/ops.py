@@ -496,7 +496,9 @@ DOC_ACTIONS = ("info", "clear_selection", "clear_undo", "palette", "arrowhead",
                "assign_color_context", "stylesheet_default", "arrowhead_ex",
                # 第四十四波：颜色上下文深操作 / 渐变变换矩阵
                "color_context_info", "color_context_copy", "color_context_merge",
-               "fountain_transform")
+               "fountain_transform",
+               # 第四十六波：CorelScriptTools（VBA 辅助对象）单位/数学/日期
+               "script_tools")
 
 
 def doc_ops(doc: Any, action: str, *, target: dict | None = None,
@@ -1315,6 +1317,37 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
                     "curve": _s(lambda: str(shape.Name)),
                     "registered": registered, "arrowheads": after,
                     "index": after if registered else None}
+    if act == "script_tools":
+        # 实测：Application.CorelScriptTools() 返回 ICorelScriptTools（VBA 辅助对象），
+        # FromInches(1)=254000（1/10000 mm）、FromPoints(72)=254000 等可直接用
+        tools = _s(lambda: _app_of(doc).CorelScriptTools())
+        if tools is None:
+            raise CdrComFailure("Application.CorelScriptTools 返回空")
+        val = float(value if value is not None else 1.0)
+        # FromX 把英寸/磅转成内部单位（1/10000 mm）；ToX 把内部单位转回去
+        inches_internal = _s(lambda: tools.FromInches(val))
+        points_internal = _s(lambda: tools.FromPoints(val))
+        out = {"action": act, "value": val,
+               "from_inches": _round(_s(lambda: float(inches_internal))),
+               "from_points": _round(_s(lambda: float(points_internal))),
+               "to_inches_roundtrip": (_round(_s(lambda: float(
+                   tools.ToInches(inches_internal))))
+                   if inches_internal is not None else None),
+               "to_points_roundtrip": (_round(_s(lambda: float(
+                   tools.ToPoints(points_internal))))
+                   if points_internal is not None else None)}
+        if -1.0 <= val <= 1.0:
+            # 实测 ASin 返回**弧度**（ASin(1)=1.5708）
+            out["asin_rad"] = _round(_s(lambda: float(tools.ASin(val))))
+        stamp = _s(lambda: tools.BuildDate(2026, 10, 26, 12, 0, 0))
+        if stamp is None:
+            stamp = _s(lambda: tools.BuildDate(2026, 10, 26))
+        out["build_date"] = (_round(_s(lambda: float(stamp)))
+                             if isinstance(stamp, (int, float)) else
+                             (str(stamp) if stamp is not None else None))
+        out["note"] = ("CorelScriptTools 的值以 1/10000 mm 为单位：FromInches(1)=254000；"
+                       "ASin 返回弧度")
+        return out
     if act == "color_context_info":
         ctx = _s(lambda: doc.ColorContext)
         if ctx is None:

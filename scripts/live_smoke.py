@@ -3522,6 +3522,25 @@ def main() -> int:
                       str(be.get("applied")))
         no_error("关闭 SetPropertiesEx 测试文档", server.cdr_close(o45_id))
 
+    # ---------------- 15az. 第四十六波：CorelScriptTools 辅助对象 ----------------
+    print("\n[15az] 第四十六波：CorelScriptTools（VBA 辅助对象）单位换算/数学/日期")
+    st46_doc = server.cdr_open(preset="A4")
+    if "document_id" in st46_doc:
+        st46_id = st46_doc["document_id"]
+        st46 = server.cdr_doc(st46_id, action="script_tools", value=1.0)
+        if no_error("cdr_doc(script_tools)", st46):
+            check("CorelScriptTools 单位换算可用（FromInches/FromPoints）",
+                  st46.get("from_inches") == 254000.0
+                  and abs((st46.get("from_points") or 0) - 3527.778) < 0.01
+                  and st46.get("to_inches_roundtrip") == 1.0,
+                  f"inch={st46.get('from_inches')} pt={st46.get('from_points')} "
+                  f"rt={st46.get('to_inches_roundtrip')}")
+            check("CorelScriptTools 数学/日期可用（ASin/BuildDate）",
+                  st46.get("asin_rad") == 1.571
+                  and "2026-10-26" in str(st46.get("build_date")),
+                  f"asin={st46.get('asin_rad')} date={st46.get('build_date')}")
+        no_error("关闭 script_tools 测试文档", server.cdr_close(st46_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,
