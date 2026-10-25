@@ -3092,12 +3092,14 @@ NODE_ACTIONS = (
     "neighbors", "distance", "average", "join_nodes",
     # 第四十一波：任意节点集合（Application.CreateNodeRange + Add）
     "arbitrary",
+    # 第四十七波：节点坐标搬运（GetPoint / SetPoint）
+    "copy_point",
 )
 
 NODE_MUTATIONS = {
     "move", "select", "delete", "type", "fillet", "chamfer", "scallop",
     "smoothen", "stretch", "rotate", "skew", "break_apart",
-    "average", "join_nodes", "arbitrary",
+    "average", "join_nodes", "arbitrary", "copy_point",
     "add_node", "break_segment", "control_points",
 }
 
@@ -3312,6 +3314,22 @@ def node_ops(doc: Any, page_index: int | None, target: dict, action: str, *,
                                    else None),
                     "note": "CreateNodeRange 支持不连续节点；Move 的第三个参数是"
                             "范围内起始索引（实测 1 可用）"}
+        if act == "copy_point":
+            # 实测：Node.GetPoint() 返回 IVGPoint，Node.SetPoint(point) 可直接搬运坐标
+            if node is None or end is None:
+                raise CdrBadArgument("copy_point 需要 node（源）与 end（目标）节点序号")
+            src_node = curve.Nodes.Item(int(node))
+            dst_node = curve.Nodes.Item(int(end))
+            point = _s(lambda: src_node.GetPoint())
+            if point is None:
+                raise CdrComFailure("Node.GetPoint 返回空")
+            with atomic(doc, label):
+                dst_node.SetPoint(point)
+            return {"action": act, **base(), "from": int(node), "to": int(end),
+                    "source_pos": [_round(_s(lambda: float(src_node.PositionX))),
+                                   _round(_s(lambda: float(src_node.PositionY)))],
+                    "target_pos": [_round(_s(lambda: float(dst_node.PositionX))),
+                                   _round(_s(lambda: float(dst_node.PositionY)))]}
         if act == "neighbors":
             # Next/Previous 是**方法**（返回 IVGNode），不是属性
             if node is None:
@@ -4040,6 +4058,8 @@ CREATABLE = (
     "rect_ltrb", "ellipse_ltrb", "polygon_full",
     # 第四十一波：CreateBitmap2 / CreateBitmapRect（用 IVGImage 直接摆位图）
     "bitmap_at", "bitmap_rect",
+    # 第四十七波：宽文本（带语言/字符集）构造
+    "text_wide", "paragraph_wide",
 )
 
 
@@ -4199,6 +4219,32 @@ def _create_one(doc: Any, layer: Any, item: dict) -> Any:
             ensure_font_table(_app_of(doc))
         shape = layer.CreateArtisticText(
             float(g("x", 0)), float(g("y", 0)), str(g("text", "")),
+            int(g("language_id", 0)), int(g("charset", 0)),
+            str(g("font", "")), float(g("size", 0)),
+            _tristate(g("bold", False)), _tristate(g("italic", False)),
+            _underline(g("underline", False)),
+            int(_align(g("align", "left"))),
+        )
+        restate_text_format(shape, item)
+    elif kind in {"text_wide"}:
+        # 实测：CreateArtisticTextWide 与窄版参数一致，但语言/字符集是显式枚举
+        if g("font"):
+            ensure_font_table(_app_of(doc))
+        shape = layer.CreateArtisticTextWide(
+            float(g("x", 0)), float(g("y", 0)), str(g("text", "")),
+            int(g("language_id", 0)), int(g("charset", 0)),
+            str(g("font", "")), float(g("size", 0)),
+            _tristate(g("bold", False)), _tristate(g("italic", False)),
+            _underline(g("underline", False)),
+            int(_align(g("align", "left"))),
+        )
+        restate_text_format(shape, item)
+    elif kind in {"paragraph_wide"}:
+        if g("font"):
+            ensure_font_table(_app_of(doc))
+        shape = layer.CreateParagraphTextWide(
+            float(g("x", 0)), float(g("y", 0)), float(g("x2", 60)), float(g("y2", 20)),
+            str(g("text", "")),
             int(g("language_id", 0)), int(g("charset", 0)),
             str(g("font", "")), float(g("size", 0)),
             _tristate(g("bold", False)), _tristate(g("italic", False)),
@@ -5411,6 +5457,8 @@ SHAPE_OPS = (
     "position_ex", "find_snap", "linked", "rasterize_ex", "overprint_state",
     # 第四十二波：用对象列表直接建 ShapeRange 并整批操作
     "range_from_list", "range_bitmap",
+    # 第四十七波：整批描边设置（SetOutlineProperties / Ex）
+    "range_outline",
 )
 
 
@@ -5631,6 +5679,46 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
                         "fill_type": _n(lambda: int(first.Fill.Type), 0)
                         if first is not None else None,
                         "color": _s(lambda: str(color.ToString()))}
+        if op == "range_outline":
+            spec = dict(params or {})
+            with atomic(doc, label):
+                sr = selection_range(doc)
+                if target:
+                    try:
+                        doc.Selection().RemoveAll()
+                    except Exception:
+                        pass
+                    find_shape(doc, page, target).AddToSelection()
+                    sr = selection_range(doc)
+                if _n(lambda: int(sr.Count), 0) < 1:
+                    raise CdrBadArgument("range_outline 需要先选中对象，或用 target 指定")
+                width = float(spec.get("width", 1.0))
+                caps = int(spec.get("line_caps", 0))
+                join = int(spec.get("line_join", 0))
+                behind = int(bool(spec.get("behind_fill", False)))
+                scale = int(bool(spec.get("scale_with_shape", True)))
+                nib_angle = float(spec.get("nib_angle", 0.0))
+                nib_stretch = int(spec.get("nib_stretch", 100))
+                dashdot = float(spec.get("dashdot_length", 0.0))
+                pen_width = float(spec.get("pen_width", 1.0))
+                miter = float(spec.get("miter_limit", 5.0))
+                if spec.get("with_justification"):
+                    sr.SetOutlinePropertiesEx(width, None, None, None, None, behind,
+                                              scale, caps, join, nib_angle, nib_stretch,
+                                              dashdot, pen_width, miter,
+                                              int(spec.get("justification", 0)))
+                    used = "SetOutlinePropertiesEx"
+                else:
+                    sr.SetOutlineProperties(width, None, None, None, None, behind,
+                                            scale, caps, join, nib_angle, nib_stretch,
+                                            dashdot, pen_width, miter)
+                    used = "SetOutlineProperties"
+                sr2 = selection_range(doc)
+                first = _s(lambda: sr2.Item(1))
+            return {"op": op, "count": _n(lambda: int(sr2.Count), 0),
+                    "api": used,
+                    "first_width": _round(_s(lambda: float(first.Outline.Width)))
+                    if first is not None else None}
         if op in {"range_from_list", "range_bitmap"}:
             spec = dict(params or {})
             targets = list(spec.get("targets") or [])
@@ -6268,7 +6356,8 @@ def align_shapes(doc: Any, page_index: int | None = None, horizontal: str = "non
     if h == 0 and v == 0:
         raise CdrBadArgument("horizontal 与 vertical 不能同时为 none")
     native = str(to).lower()
-    if native not in {"selection", "page", "page_center", "grid", "point", "shape", "range"}:
+    if native not in {"selection", "page", "page_edge", "page_center", "grid", "point",
+                      "shape", "range"}:
         raise CdrBadArgument(
             "to 取值 selection/page/page_center/grid/point/shape/range")
     if native == "point" and (x is None or y is None):
@@ -6302,7 +6391,10 @@ def align_shapes(doc: Any, page_index: int | None = None, horizontal: str = "non
         ref_shape = find_shape(doc, page, target2) if target2 else None
         with atomic(doc, "cdr_align"):
             for axis in native_axis:
-                if native == "page_center":
+                if native == "page_edge":
+                    # 实测：ShapeRange.AlignRangeToPage(cdrAlignType) 直接对齐到页边
+                    sr.AlignRangeToPage(axis)
+                elif native == "page_center":
                     sr.AlignRangeToPageCenter(axis)
                 elif native == "grid":
                     sr.AlignRangeToGrid(axis)
@@ -6984,7 +7076,8 @@ def _page_text(page: Any) -> str:
 # 导入
 # --------------------------------------------------------------------------- #
 def import_file(doc: Any, path: str, page_index: int | None = None,
-                center: bool = True, options: dict | None = None) -> dict:
+                center: bool = True, options: dict | None = None,
+                filter_id: int | None = None) -> dict:
     """导入位图/矢量文件（X8 必须传 3 个参数：文件名、过滤器、导入选项对象）。"""
     app = _app_of(doc)
     applied_opts: list[str] = []
@@ -7021,7 +7114,11 @@ def import_file(doc: Any, path: str, page_index: int | None = None,
             except Exception:
                 continue
         before = _n(lambda: int(page.Shapes.Count), 0)
-        layer.Import(path, 0, opts)
+        if filter_id is not None:
+            # 实测：Layer.ImportEx(FileName, Filter, Options) 可显式指定过滤器
+            layer.ImportEx(path, int(filter_id), opts)
+        else:
+            layer.Import(path, 0, opts)
         after = _n(lambda: int(page.Shapes.Count), 0)
         shape = None
         if after > before:

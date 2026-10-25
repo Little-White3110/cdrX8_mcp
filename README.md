@@ -7,9 +7,9 @@
 
 > **已在真机验证**：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）+ Python 3.11.9 64 位
 > - 单元测试 **93 项通过**
-> - 端到端联调（真实 CorelDRAW）**441/441 通过**
+> - 端到端联调（真实 CorelDRAW）**448/448 通过**
 > - 能力边界来自对 `vgcoreauto.tlb` 的反解（196 个自动化类 / 1619 个方法）+ 逐项实跑
-> - 方法级覆盖 **58.2%**（主干 20 接口 78.3%），可用 `python scripts/coverage_audit.py` 复现
+> - 方法级覆盖 **58.9%**（主干 20 接口 79.4%），可用 `python scripts/coverage_audit.py` 复现
 > - 完整清单见 [docs/COVERAGE.md](docs/COVERAGE.md)
 
 ---
@@ -65,17 +65,17 @@ python -m cdrx8_mcp              # 启动 MCP 服务器（stdio）
 
 | 工具 | 作用 |
 |---|---|
-| `cdr_create` | 批量创建：矩形（含圆角）/ 椭圆（含圆弧、扇形）/ 多边形 / 星形 / 螺旋 / 网格 / 直线 / 贝塞尔 / **曲线段（curve_segment：端点+两端控制柄）** / **边界版矩形·椭圆·完整多边形（rect_ltrb / ellipse_ltrb / polygon_full）** / **位图构造器（bitmap_at / bitmap_rect）** / 文字 / 段落文字 / 参考线 / **内存位图（纯色 + 像素色块）** / **OLE 文件嵌入（ole_file）** |
+| `cdr_create` | 批量创建：矩形（含圆角）/ 椭圆（含圆弧、扇形）/ 多边形 / 星形 / 螺旋 / 网格 / 直线 / 贝塞尔 / **曲线段（curve_segment：端点+两端控制柄）** / **边界版矩形·椭圆·完整多边形（rect_ltrb / ellipse_ltrb / polygon_full）** / **位图构造器（bitmap_at / bitmap_rect）** / **宽文本（text_wide / paragraph_wide：显式语言/字符集）** / 文字 / 段落文字 / 参考线 / **内存位图（纯色 + 像素色块）** / **OLE 文件嵌入（ole_file）** |
 | `cdr_modify` | 单个或**批量**修改：移动、缩放、旋转、翻转、斜切、矩阵/仿射变换、清除变换、旋转中心、克隆、锁定；填充（纯色/渐变/纹理/图案/专色/无色/复制）；**图案填充微调（旋转/平铺/镜像/前景色）**；描边（虚线、箭头、专色、自定义虚线线型）；透明度/图案透明、冻结/解冻；投影、轮廓图、封套；渐变微调；色彩滤镜；层级调整、复制/剪切到剪贴板、移动到/复制到图层、对象数据字段、**叠印（填充/描边/位图）**、复制、删除 |
 | `cdr_text` | 排版级：内容 / 字体 / 字号 / 粗斜体 / 下划线 / 对齐 / 大小写 / 项目符号 / 首字下沉 / 行距字距 / 段落缩进 / **制表位** / 前后插入 / 沿路径 / 自适应 / 转曲 / 艺术字↔段落字互转 / 段落内容读写与替换 / 文本区间 / 区间删除·复制·粘贴·拉直 / 读取全文·指定区间·导出纯文本 / **字体属性读取·断字设置读取·格式段列表·按格式查询区间（@font/@bold）** / OpenType 特性 / **四个结构体快照（struct_info：字体·间距·对齐·断字）** / **区间宽接口（range_action：插入·替换·折叠·重设·判等·包含·行距）** / **进入编辑态（begin_edit）** |
 | `cdr_replace_text` | 全文档文字替换（底层用 X8 原生 `Page.TextReplace`） |
 | `cdr_select` | 按名字 / 类型 / 矩形框选，加入选择集；**可移除或清空选择集** |
-| `cdr_shape_ops` | **布尔与整形**：weld / trim / intersect / combine / group / ungroup / break_apart / to_curves / **outline_to_curves** / to_symbol / powerclip / fillet / chamfer / scallop / **step_repeat / distribute / boundary / perspective / separate / parallel_curves / rasterize / batch_outline_to_curves / fill_mode / pixel_aligned / range_boundary / envelope_from_shape / compare / project / unproject / to_document / extrude / lens / extrude_set / lens_set / effect_info / clear_effects / blend / blend_set / **unlock_all / ungroup_all / break_apart_ex / clear_effect / range_info / range_add / range_remove / apply_fill（Fill 工厂批量上色）/ **matrix（矩阵读写）/ is_type / in_front_of / is_on_shape / distort（pushpull·twister·zipper）/ place_text（文字内嵌）/ duplicate_range · clone_range / **position_ex（9 个参考点）/ find_snap（按引用反查吸附点）/ linked（链接对象）/ rasterize_ex（带参位图化）/ overprint_state / **range_from_list（对象列表建范围）/ range_bitmap（整批位图化）** |
-| `cdr_align` | 对齐与分布（左中右 / 上下中 / 等间距；`to=selection/page`，**以及原生范围对齐 `to=page_center/grid/point/shape/range`**） |
+| `cdr_shape_ops` | **布尔与整形**：weld / trim / intersect / combine / group / ungroup / break_apart / to_curves / **outline_to_curves** / to_symbol / powerclip / fillet / chamfer / scallop / **step_repeat / distribute / boundary / perspective / separate / parallel_curves / rasterize / batch_outline_to_curves / fill_mode / pixel_aligned / range_boundary / envelope_from_shape / compare / project / unproject / to_document / extrude / lens / extrude_set / lens_set / effect_info / clear_effects / blend / blend_set / **unlock_all / ungroup_all / break_apart_ex / clear_effect / range_info / range_add / range_remove / apply_fill（Fill 工厂批量上色）/ **matrix（矩阵读写）/ is_type / in_front_of / is_on_shape / distort（pushpull·twister·zipper）/ place_text（文字内嵌）/ duplicate_range · clone_range / **position_ex（9 个参考点）/ find_snap（按引用反查吸附点）/ linked（链接对象）/ rasterize_ex（带参位图化）/ overprint_state / **range_from_list（对象列表建范围）/ range_bitmap（整批位图化）/ range_outline（整批描边 14/15 参）** |
+| `cdr_align` | 对齐与分布（左中右 / 上下中 / 等间距；`to=selection/page`，**以及原生范围对齐 `to=page_edge/page_center/grid/point/shape/range`**） |
 | `cdr_find` | 按名字或类型查找（跨图层） |
 | `cdr_style` | **对象样式**：列出 / 从对象创建（fill·outline·character·paragraph）/ **基于已有样式派生** / 按名套用 / 改名 / 删除 / **读可读属性·改属性** / 列派生样式 / **样式表 .cdst 导入导出** / **颜色样式与颜色协调** / **覆盖属性（override_props）·继承状态（inherited）·属性取值（get_property）·属性清除** |
 | `cdr_path` | 曲线/子路径级：长度面积 / 偏移轮廓（刀模线）/ **折线采样** / **追加圆·椭圆·矩形·三点弧·贝塞尔** / **节点精简** / **自焊接** / **路径等分** / **加节点·断开·移动子路径** / **点在形状内·曲线求交·取点取切向** / **参数取点·切向量·法向量·速度·交点·按坐标找节点/线段·反转方向·焊接子路径·去重叠** / **曲线合并（AppendCurve）·焊接（WeldWith）·命中判定·曲线副本·曲线结构信息·任意线段集合（segment_range：set_type/add_node/select/remove_all）** |
-| `cdr_node` | **节点/线段级编辑（第五波打通）**：列节点·列线段 / 移动·选中·删除 / 圆角·倒角· scallop·平滑 / 拉伸·旋转·斜切·断开 / 加节点·断线 / 读写贝塞尔控制点 / 按坐标找节点与线段 / **前后邻居（Next·Previous）·节点间距·平均位置·末端节点合并·任意不连续节点集合（arbitrary：move/rotate/skew/stretch/autoreduce/smoothen/set_type/delete/fillet/chamfer/scallop）** |
+| `cdr_node` | **节点/线段级编辑（第五波打通）**：列节点·列线段 / 移动·选中·删除 / 圆角·倒角· scallop·平滑 / 拉伸·旋转·斜切·断开 / 加节点·断线 / 读写贝塞尔控制点 / 按坐标找节点与线段 / **前后邻居（Next·Previous）·节点间距·平均位置·末端节点合并·任意不连续节点集合（arbitrary：move/rotate/skew/stretch/autoreduce/smoothen/set_type/delete/fillet/chamfer/scallop）·**节点坐标搬运（copy_point：GetPoint/SetPoint）** |
 | `cdr_bitmap` | 位图：信息 / 转色彩模式（rgb·cmyk·gray·bw）/ **阈值二值化** / **调色板模式 0~9（9=自定义调色板）** / **双色调 0~3（可给 .cpd 预设）** / **取像素颜色** / 图像缓冲信息 / 重采样 / **扩边** / 裁剪 / **内容替换（SetImageData，支持色块/像素绘制）** / **位图特效命令串（ApplyBitmapEffect）** / **链接信息·重新加载·解析链接** / **调色板选项转换（paletted_options：颜色数·抖动·指定调色板）** |
 | `cdr_rect` | **矩形对象（IVGRect）**：读派生值 / 平移 / 四边外扩内缩 / 并 / 交 / 点包含 / 复制；**按矩形造形**（CreateRectangleRect 带四角圆角、CreateEllipseRect 带角度/扇形） |
 | `cdr_color` | **颜色运算**：解析成 HEX/RGB/CMYK/Gray/HLS/Lab、转换、两色混合（纯 Python）；**X8 颜色对象**：`object_info` / `object_name` / `object_compare`（IsSame·IsSimilar·距离）/ `object_blend`（原地混合）/ `object_copy` / `object_string_assign` / `object_convert`（8 种模型原地转换）/ `object_fixed`（USER·TRU·PAN_PROC）/ `object_assign`（分量直写，含套版色）/ **`object_model`（HSB·CMY·BW·YIQ·Fixed·CreateColorEx 工厂）/ `object_from_string`（颜色串造色）** |
@@ -186,7 +186,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ---
 
-## X8 特有问题（130 条，全部实测）
+## X8 特有问题（131 条，全部实测）
 
 这些是 **X8 与 2024+ 的差异**，也是本项目存在的主要理由。
 
@@ -322,6 +322,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 | 128 | **文档级字符串填充工厂是空对象** | `Document.CreateFill("CMYK,…")` 返回 `Type=0` 的空填充、`CreateOutline("…")` 宽度 0 —— 字符串格式无效；`Page.CustomCommand` 报「未装载此命令」；`CreateStyleFromShape` 连续建两个样式后 `Styles.Find` 找不到（列表只剩一个 name=null） | 填充/描边用 `cdr_modify` 或 `CreateUniformFill`；派生样式用 `create(based_on=…)` |
 | 129 | **四个 API 会把 CorelDRAW 卡死** | `AddPluginCommand`/`RemovePluginCommand` 300 s 未返回；`Document.GetUserArea`/`GetUserClick` 20 s 挂起；`Document.CreateCurveFromArray` 无返回。COM 调用无法中断，一旦被调到整个进程就废了 | **全部列入禁用清单**，工具面永不暴露 |
 | 130 | **文字结构体写入端在 pywin32 下彻底不可用** | `Text.FontProperties` 等属性赋值把字号写成 1.17e-38；改用 `_oleobj_.Invoke(memid, DISPATCH_PROPERTYPUT, …)` 配 `VARIANT(VT_I4/VT_VARIANT)` 仍报「类型不匹配」（`VT_USERDEFINED` 参数无法 marshaling） | 结构体只做只读快照；写字号/字体走 `font=/size=` 与 `_tristate()` 映射 |
+| 131 | **导入/导出过滤器号不通用** | PNG 导出过滤器号 802 传给 `Layer.ImportEx(path, 802, opts)` 时调用成功但 `shapes_added=0`（静默不导入）；传 0 自动判断才正常。另外 `ShapeRange.DeleteItem(1)` 会把**文档里的对象一起删掉**（范围与页面都 2→1） | `cdr_import(filter_id=…)` 只做透传并标注；想只移除范围成员用 `range_remove` |
 
 改代码前请先读 [`src/cdrx8_mcp/constants.py`](src/cdrx8_mcp/constants.py) 里的注释。
 
@@ -371,7 +372,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ```powershell
 python -m pytest -q                # 93 项逻辑测试，任何平台可跑
-python scripts/live_smoke.py       # 441 项端到端，需要 CorelDRAW X8
+python scripts/live_smoke.py       # 448 项端到端，需要 CorelDRAW X8
 python scripts/live_smoke.py --keep   # 保留文档方便肉眼看效果
 python scripts/coverage_audit.py   # 覆盖率审计（复现 README/COVERAGE 里的数字）
 ```

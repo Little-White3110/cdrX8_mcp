@@ -1401,7 +1401,8 @@ def cdr_import(document_id: str, path: str, center: bool = True,
                page_index: int | None = None,
                import_options: dict | None = None,
                expected_revision: int | None = None,
-               snapshot_token: str | None = None) -> dict:
+               snapshot_token: str | None = None,
+               filter_id: int | None = None) -> dict:
     """导入图片或矢量文件（png / jpg / svg / pdf / ai / eps / dxf 等，取决于 X8 装了什么过滤器）。
 
     Args:
@@ -1409,13 +1410,15 @@ def cdr_import(document_id: str, path: str, center: bool = True,
         center: 是否把导入对象居中放到页面上。
         import_options: 导入选项，如 {"link_bitmap_externally":true,
             "resample_dpi":96,"maintain_layers":true}
+        filter_id: 显式指定导入过滤器编号（走 Layer.ImportEx；默认 0 让 X8 自己判断）
     """
     def _run():
         src = resolve_read_path(path)
         doc, sess = _with_doc(document_id)
         warnings = _check_view(sess, expected_revision, snapshot_token, doc)
         result = _com(lambda _b: ops.import_file(doc, str(src), page_index, center,
-                                                options=import_options),
+                                                options=import_options,
+                                                filter_id=filter_id),
                       timeout=DEFAULT_EXPORT_TIMEOUT_S, label="cdr_import")
         return _commit(doc, sess, result, warnings)
 

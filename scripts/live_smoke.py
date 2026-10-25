@@ -3541,6 +3541,72 @@ def main() -> int:
                   f"asin={st46.get('asin_rad')} date={st46.get('build_date')}")
         no_error("关闭 script_tools 测试文档", server.cdr_close(st46_id))
 
+    # ---------------- 15ba. 第四十七波：宽文本 / 节点坐标搬运 / 整批描边 / 页边对齐 / ImportEx ----------------
+    print("\n[15ba] 第四十七波：CreateArtisticTextWide·Node.SetPoint·SetOutlineProperties·AlignRangeToPage·ImportEx")
+    w47_doc = server.cdr_open(preset="A4")
+    if "document_id" in w47_doc:
+        w47_id = w47_doc["document_id"]
+        w47r = server.cdr_create(w47_id, [
+            {"type": "polyline", "points": [[0, 0], [20, 0], [40, 20]], "closed": False},
+            {"type": "rectangle", "x": 20, "y": 40, "width": 30, "height": 20,
+             "outline": {"width": 1.0}},
+            {"type": "text_wide", "x": 20, "y": 90, "text": "宽文本", "size": 16,
+             "charset": 134},
+            {"type": "paragraph_wide", "x": 20, "y": 120, "x2": 120, "y2": 160,
+             "text": "段落宽文本", "size": 12},
+        ])
+        if no_error("cdr_create(宽文本/描边测试)", w47r):
+            w47 = w47r.get("created") or []
+            check("宽文本构造可用（CreateArtisticTextWide/ParagraphTextWide）",
+                  (w47[2] or {}).get("type") == "text"
+                  and (w47[3] or {}).get("type") == "text",
+                  f"types={[(w.get('type')) for w in w47[2:]]}")
+            w47c = {"name": w47[0]["name"]}
+            cp = server.cdr_node(w47_id, w47c, action="copy_point", node=1, end=3)
+            if no_error("cdr_node(copy_point)", cp):
+                check("节点坐标可搬运（GetPoint/SetPoint）",
+                      cp.get("source_pos") == cp.get("target_pos"),
+                      f"{cp.get('source_pos')} → {cp.get('target_pos')}")
+            server.cdr_select(w47_id, name=w47[1]["name"])
+            ro = server.cdr_shape_ops(w47_id, op="range_outline",
+                                      params={"width": 3.0, "line_caps": 1})
+            if no_error("cdr_shape_ops(range_outline)", ro):
+                check("整批描边可用（SetOutlineProperties）",
+                      ro.get("first_width") == 3.0
+                      and ro.get("api") == "SetOutlineProperties",
+                      f"width={ro.get('first_width')} api={ro.get('api')}")
+            roe = server.cdr_shape_ops(w47_id, op="range_outline",
+                                       params={"width": 2.0,
+                                               "with_justification": True,
+                                               "justification": 1})
+            if no_error("cdr_shape_ops(range_outline ex)", roe):
+                check("整批描边 15 参可用（SetOutlinePropertiesEx）",
+                      roe.get("api") == "SetOutlinePropertiesEx"
+                      and roe.get("first_width") == 2.0,
+                      f"api={roe.get('api')} width={roe.get('first_width')}")
+            ape = server.cdr_align(w47_id, horizontal="left", to="page_edge")
+            if no_error("cdr_align(to=page_edge)", ape):
+                check("可对齐到页边（AlignRangeToPage）",
+                      ape.get("to") == "page_edge" and ape.get("axes") == [1],
+                      f"axes={ape.get('axes')}")
+            p47 = os.path.join(os.getcwd(), "tmp",
+                               f"w47_src_{os.urandom(2).hex()}.png")
+            ex47 = server.cdr_export(w47_id, p47, "png", dpi=96)
+            if no_error("cdr_export(导入源)", ex47) and os.path.exists(p47):
+                im47 = server.cdr_import(w47_id, p47, filter_id=802)
+                if no_error("cdr_import(filter_id)", im47):
+                    # 802 是**导出**过滤器号；ImportEx 要的是**导入**过滤器号，
+                    # 所以这里能调通但不会真的导入 —— 正好把这个坑固化成断言
+                    check("ImportEx 可调用（导出过滤器号不生效，已在文档记录）",
+                          im47.get("imported") is True
+                          and (im47.get("shapes_added") or 0) == 0,
+                          f"added={im47.get('shapes_added')}")
+                im47b = server.cdr_import(w47_id, p47)
+                check("默认导入（过滤器 0 自动判断）可加入对象",
+                      (im47b.get("shapes_added") or 0) >= 1,
+                      f"added={im47b.get('shapes_added')}")
+        no_error("关闭宽文本测试文档", server.cdr_close(w47_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,
