@@ -288,7 +288,8 @@ DOC_ACTIONS = ("info", "clear_selection", "clear_undo", "palette", "arrowhead",
                "revert", "app_info", "color_profiles", "convert_color",
                "pref_register", "pref_get", "pref_set",
                "views", "create_view", "activate_view", "delete_view",
-               "grid", "set_grid", "overprint")
+               "grid", "set_grid", "overprint",
+               "metadata_localized", "set_metadata_localized")
 
 
 def doc_ops(doc: Any, action: str, *, target: dict | None = None,
@@ -620,6 +621,62 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
         values = {f: _s(lambda f=f: str(getattr(md, f))) for f in read_fields}
         result = {"action": act, "metadata": values, "writable": sorted(writable)}
         if act == "set_metadata":
+            result["applied"] = applied
+            result["warnings"] = warnings
+        return result
+    if act in {"metadata_localized", "set_metadata_localized"}:
+        md = _s(lambda: doc.Metadata)
+        if md is None:
+            raise CdrBadArgument("该文档没有 Metadata 对象")
+        fields = {"Title": "LocalizableTitle", "Subject": "LocalizableSubject",
+                  "Keywords": "LocalizableKeywords", "Notes": "LocalizableNotes",
+                  "Copyright": "LocalizableCopyright"}
+        applied: list[str] = []
+        warnings: list[str] = []
+        if act == "set_metadata_localized":
+            if not isinstance(metadata, dict) or not metadata:
+                raise CdrBadArgument("set_metadata_localized 需要 metadata 对象")
+            for key, val in metadata.items():
+                attr = fields.get(key)
+                if attr is None:
+                    warnings.append(f"{key} 不可写（可用：{', '.join(fields)}）")
+                    continue
+                ls = _s(lambda attr=attr: getattr(md, attr))
+                if ls is None:
+                    warnings.append(f"{key} 没有本地化字符串对象")
+                    continue
+                try:
+                    if isinstance(val, dict):
+                        for lang, txt in val.items():
+                            if str(lang).lower() in {"default", "0", ""}:
+                                ls.DefaultLangString = str(txt)
+                            else:
+                                ls.SetLangString(int(lang), str(txt))
+                    else:
+                        ls.DefaultLangString = str(val)
+                    applied.append(key)
+                except Exception as exc:  # noqa: BLE001
+                    warnings.append(f"{key} 写入失败：{exc}")
+        values = {}
+        for key, attr in fields.items():
+            ls = _s(lambda attr=attr: getattr(md, attr))
+            if ls is None:
+                values[key] = None
+                continue
+            langs = _s(lambda ls=ls: list(ls.GetLanguages()), []) or []
+            lang_map = {}
+            for lang in langs:
+                name = str(lang)
+                if name in {"", "0"}:
+                    continue
+                lang_map[name] = _s(lambda ls=ls, lang=lang: str(ls.GetLangString(int(lang))))
+            values[key] = {
+                "default": _s(lambda ls=ls: str(ls.DefaultLangString)),
+                "has_default": bool(_s(lambda ls=ls: bool(ls.HasDefaultLangString), False)),
+                "languages": lang_map,
+            }
+        result = {"action": act, "localizable": values}
+        if act == "set_metadata_localized":
             result["applied"] = applied
             result["warnings"] = warnings
         return result

@@ -2,7 +2,7 @@
 
 > 目的：证明"还有多少没探"。每一行要么有对应的工具，要么有实测失败证据。
 > 环境：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）/ Python 3.11.9 64 位
-> 最近更新：2026-10-25 第二十三波（制表位）
+> 最近更新：2026-10-25 第二十四波（本地化元数据）
 
 ## 怎么得出这份清单
 
@@ -42,7 +42,8 @@
 | `IVGView` / `IVGViews` | 8 / 5 | **新打通（第二十波）**：`Document.CreateView(Name, OriginX, OriginY, Zoom, Page)` 创建命名视图；`Views.Count/Item(i)` 列出；`View.Activate/Delete`、Name/OriginX·Y/Zoom/Page/UsePage/UseZoom 可读写 |
 | `IVGGrid` | 5 | **新打通（第二十一波）**：`Document.Grid` 的 Type / SpacingX / SpacingY / Visible / Snap 全部可读写（间距按文档单位，mm 上下文下为毫米） |
 | `IVGColors`（颜色样式集合） | 8 | **新打通（第九波）**：`StyleSheet.AllColorStyles` 的 `Count / Item(i) / GetName / ToString`；配合 `Document.CreateColorStyles(harmonies=1..3)` 生成颜色协调 |
-| `IVGMetadata` | 21 | **新打通（第十波）**：`Document.Metadata` 的 Title / Author / LastAuthor / Subject / Keywords / Notes / Copyright / Revision / DocLanguage / DocID；前六项可写；Localizable* 是 `IVGLocalizableString` 对象，未纳入读取 |
+| `IVGMetadata` | 21 | **新打通（第十波）**：`Document.Metadata` 的 Title / Author / LastAuthor / Subject / Keywords / Notes / Copyright / Revision / DocLanguage / DocID；前六项可写；Localizable* 是 `IVGLocalizableString` 对象 |
+| `IVGLocalizableString` | 10 | **新打通（第二十四波）**：DefaultLangString / HasDefaultLangString / IsEmpty 可读写；GetLanguages / GetLangString(lang) / SetLangString(lang,text) 支持多语言；LocalizableTitle/Subject/Keywords/Notes/Copyright 各一份 |
 | `IVGEffects` / `IVGEffect` | 12 / 12 | **新打通（第十五波）**：`Shape.Effects.Count/Item(i)`、`ExtrudeEffect/LensEffect/DropShadowEffect/BlendEffects` 等；`Effect.Type/Extrude/Lens/Separate/Clear` 可用 |
 | `IVGEffectExtrude` | 18 | **新打通（第十五波）**：Type/Depth/AngleX·Y·Z/Shading/BaseColor/ShadingColor/UseBevel/BevelDepth/BevelAngle/ShowBevelOnly/UseExtrudeColorForBevel/UseFullColorRange/VanishingPoint 可读写；`Rotate/SetBevel/SetLight` 未封装 |
 | `IVGEffectLens` | 18 | **新打通（第十五波）**：Type/Rate/Magnification/Color/FillColor/OutlineColor/FromColor/ToColor/UseFillColor/UseOutlineColor/PaletteRotation/ColorMapPalette/RemoveFace/ViewPointX·Y/UseViewPoint/Frozen 可读写；`Freeze/Unfreeze/Ungroup` 未封装 |
@@ -81,7 +82,7 @@
 | 位图 | `cdr_bitmap`（信息/转色彩模式/重采样/裁剪/取消裁剪/取像素色·图像缓冲信息·调色板模式 0~9·双色调/内容替换 SetImageData/**位图特效命令串 ApplyBitmapEffect**） | ✅（Trace 除外） |
 | 路径 | `cdr_path`（长度面积/偏移轮廓/追加子路径/折线点/反转方向·焊子路径·去重叠·参数取点·切/法向量·速度·交点·找节点/线段） | ✅ |
 | 导入导出 | `cdr_import` `cdr_export`（png/jpg/svg/pdf，可指定 DPI，可只导选区） | ✅ |
-| 文档 | `cdr_doc`（概况/清选区/清撤销栈/调色板/箭头/箭头登记/单位换算·取色·显示隐藏·版式·重复操作/字体列表·调色板列表·调色板取色/固定调色板打开·颜色枚举·专色创建/图案画布创建（含区域变换）/纹理库列表/文档元数据读写/自定义调色板创建/数据字段·对象数据·色彩管理·线型样式/文档设置读写/应用信息·文档回滚/色彩配置文件·文档颜色转换/用户偏好 KV/命名视图/网格设置/**叠印读取**） | ✅ |
+| 文档 | `cdr_doc`（概况/清选区/清撤销栈/调色板/箭头/箭头登记/单位换算·取色·显示隐藏·版式·重复操作/字体列表·调色板列表·调色板取色/固定调色板打开·颜色枚举·专色创建/图案画布创建（含区域变换）/纹理库列表/文档元数据读写/**本地化元数据**/自定义调色板创建/数据字段·对象数据·色彩管理·线型样式/文档设置读写/应用信息·文档回滚/色彩配置文件·文档颜色转换/用户偏好 KV/命名视图/网格设置/叠印读取） | ✅ |
 | **对象数据** | `cdr_modify(changes={"data":{...}})` + `cdr_doc(action="object_data"/"data_fields"/"add_data_field")` | ✅ 第十一波 |
 | 视图 | `cdr_view`（刷新/激活/文档↔屏幕坐标/屏幕↔文档距离） | ✅ 第五波 |
 | 历史 | `cdr_undo`（撤销/重做） | ✅ |
@@ -136,6 +137,7 @@
 | PowerClip 提取 | `Shape.PowerClip` | 对象存在但无 `Extract` | 只能"放入"不能"取出" |
 | 页面背景 | `Page.Background` | 不存在 | — |
 | 文档元数据（直接属性） | `Document.Keywords/Notes` | 直接**读**会 AttributeError，但**可以赋值**（write-only，写入后 Metadata 能读到） | 读元数据请走 `Document.Metadata` |
+| 本地化元数据 | `Metadata.LocalizableTitle/...` | `IVGLocalizableString` 的 DefaultLangString 可读写；GetLanguages 返回 tuple（含 "" 与已设置语言如 "2052"），GetLangString/SetLangString 按 LCID 读写 | 已封装 `metadata_localized/set_metadata_localized` |
 
 > 已修正的历史结论：
 > * 折线取样 `Curve.GetPolyline` **可用**（返回 `IVGCurve`，遍历 `SubPaths/Nodes` 即可），
@@ -232,7 +234,7 @@
 
 ```powershell
 python -m pytest -q              # 55 项纯逻辑
-python scripts/live_smoke.py     # 247 项端到端（真实 CorelDRAW）
+python scripts/live_smoke.py     # 250 项端到端（真实 CorelDRAW）
 ```
 
 联调断言覆盖了上表所有 ✅ 项。反解脚本属于过程产物，已按要求放在 `tmp/` 并在完成时清理；
@@ -240,13 +242,13 @@ python scripts/live_smoke.py     # 247 项端到端（真实 CorelDRAW）
 
 ---
 
-## 六、量化覆盖率（2026-10-25 第二十三波实测）
+## 六、量化覆盖率（2026-10-25 第二十四波实测）
 
 方法：反解类型库拿到 196 个自动化类 / **1619** 个方法（已剔除 `QueryInterface` 等 COM 基础设施）；
 用 AST 扫描 `src/cdrx8_mcp/*.py`，收集所有 `.方法名(` 调用与 `setattr/getattr` 的属性名，
 与主干接口的方法名求交集。**注意：属性名（如 `curve.Nodes`）也会被计入**，所以本波数字含真实属性访问。
 
-**全局：698 / 1619 = 43.1%**（21.2% → … → 43.0% → 本轮 43.1%）
+**全局：701 / 1619 = 43.3%**（21.2% → … → 43.1% → 本轮 43.3%）
 **主干 20 接口：418 / 743 = 56.3%**
 
 复现命令：`python scripts/coverage_audit.py`（会临时展开类型库到 `tmp/gen_py`，跑完自动清理）
@@ -276,7 +278,7 @@ python scripts/live_smoke.py     # 247 项端到端（真实 CorelDRAW）
 | **合计** | **743** | **418** | **56.3%** |
 
 > **怎么读这两个数**：
-> 1. 全局 43.1% 覆盖 1619 个方法（含变体与重复）；主干 20 接口 56.3%。
+> 1. 全局 43.3% 覆盖 1619 个方法（含变体与重复）；主干 20 接口 56.3%。
 > 2. 它是**方法/属性名匹配**的近似值，同名方法会跨接口误计。
 > 3. `IVGColor` 的 21% 是**故意的**：实测不暴露分量属性，色彩运算在纯 Python 完成。
 > 4. 未调用方法多为变体（Wide/Ex/2/3 后缀）与事件订阅、CorelScriptTools/MathUtils。
@@ -549,6 +551,15 @@ python scripts/live_smoke.py     # 247 项端到端（真实 CorelDRAW）
 | 文本分栏 | `Text.Frame.SetColumns` | ❌ 第二参数需数组，list/tuple/VARIANT 均失败，暂不可用 |
 | 颜色转换稳定性 | `ConvertToColorContext` | 同一会话多次转换可能令 CorelDRAW 无响应；联调只保留单次 RGB→CMYK |
 
+## 七之二十二、第二十四波已接入（2026-10-25，本地化元数据）
+
+| 能力 | 落地位置 | 实测 |
+|---|---|---|
+| **本地化元数据读取** | `cdr_doc(action="metadata_localized")` | ✅ 返回 Title/Subject/Keywords/Notes/Copyright 的 default 与 languages 映射 |
+| **本地化元数据写入** | `cdr_doc(action="set_metadata_localized", metadata={"Title":{"default":"…","2052":"…","1033":"…"}})` | ✅ 写入 Default Title / 中文标题 / English Title 后回读一致；Keywords 直接字符串写默认值 |
+| 语言标识 | `IVGLocalizableString.GetLanguages()` | 返回 tuple，已设置语言为字符串（"2052"/"1033"），另有 "" 项 |
+| 未封装 | `HasNonDefaultLangStrings` 等只读状态 | 已在读取结果中给出 has_default，其余未单独暴露 |
+
 ## 七之二、仍未接入（第三轮候选）
 
 | 能力 | 接口 | 为什么还没做 |
@@ -570,16 +581,16 @@ python scripts/live_smoke.py     # 247 项端到端（真实 CorelDRAW）
 
 ## 八、一句话总结
 
-* **能力域覆盖**：47 个能力域 / 27 个工具，日常出图闭环完整；节点编辑、对象样式、专色、
-  图案/纹理填充、跨文档复制、模板/样式表/颜色样式、文档元数据、对象数据字段、自定义虚线、
-  文档设置、文本区间编辑、自定义箭头、图案微调、文本格式查询、位图内容替换、文档回滚、
-  立体化/透镜/效果管理、位图特效命令串、混合、文档颜色转换、用户偏好 KV、OLE 嵌入、
+* **能力域覆盖**：48 个能力域 / 27 个工具，日常出图闭环完整；节点编辑、对象样式、专色、
+  图案/纹理填充、跨文档复制、模板/样式表/颜色样式、文档元数据、**本地化元数据**、对象数据字段、
+  自定义虚线、文档设置、文本区间编辑、自定义箭头、图案微调、文本格式查询、位图内容替换、
+  文档回滚、立体化/透镜/效果管理、位图特效命令串、混合、文档颜色转换、用户偏好 KV、OLE 嵌入、
   命名视图、网格设置、叠印、段落缩进、制表位都已补上。
-* **方法级覆盖**：全局 43.1%（698/1619），主干 20 接口 56.3%（418/743）。
+* **方法级覆盖**：全局 43.3%（701/1619），主干 20 接口 56.3%（418/743）。
 * **明确不可用**：位图描摹、文本导入、点集数组建曲线、尺寸标注/连接线（MathUtils 点对象
   不可创建）、符号库、文件型图案/影线填充（本机无库）、曲线贴笔触、OpenDocumentAsCopy、
   HTML 兼容文本、断字写入、填充字符串、文本尺寸查询、灰度→RGB 转换、真实应用偏好读取、
   文本分栏（SetColumns 数组参数）。
-* **第二十三波新增**：制表位可清空/添加/读取（位置、对齐、前导符）。
+* **第二十四波新增**：本地化元数据（Title/Subject/Keywords/Notes/Copyright）按语言读写。
 
 

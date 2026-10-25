@@ -2262,6 +2262,35 @@ def main() -> int:
                   and tabs2[1].get("position") == 25
                   and tabs2[1].get("leadered") is True, str(tabs2))
 
+    # ---------------- 15ad. 第二十四波：本地化元数据 ----------------
+    print("\n[15ad] 第二十四波：本地化元数据")
+    fresh24 = server.cdr_inspect(doc_id)
+    if "state" in fresh24:
+        state = fresh24["state"]
+    lm0 = server.cdr_doc(doc_id, "metadata_localized")
+    if no_error("cdr_doc(metadata_localized)", lm0):
+        loc0 = lm0.get("localizable") or {}
+        check("本地化元数据可读", isinstance(loc0.get("Title"), dict),
+              f"Title={loc0.get('Title')}")
+    lm1 = server.cdr_doc(doc_id, "set_metadata_localized", metadata={
+        "Title": {"default": "Default Title", "2052": "中文标题",
+                  "1033": "English Title"},
+        "Keywords": "localized keywords",
+    }, expected_revision=state["revision"],
+        snapshot_token=state["snapshot_token"])
+    if no_error("cdr_doc(set_metadata_localized)", lm1):
+        loc = (lm1.get("localizable") or {}).get("Title") or {}
+        check("本地化元数据可写", loc.get("default") == "Default Title"
+              and (loc.get("languages") or {}).get("2052") == "中文标题"
+              and (loc.get("languages") or {}).get("1033") == "English Title",
+              str(loc))
+        state = lm1["state"]
+        lm2 = server.cdr_doc(doc_id, "metadata_localized")
+        loc2 = (lm2.get("localizable") or {}).get("Title") or {}
+        check("本地化元数据写入后回读", loc2.get("default") == "Default Title"
+              and (loc2.get("languages") or {}).get("2052") == "中文标题",
+              str(loc2))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

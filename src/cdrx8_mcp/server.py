@@ -1067,6 +1067,8 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
       textures         列出 Corel 纹理库名称（供 fill={"type":"texture","name":...}）
       metadata         读文档元数据（Title/Author/Subject/Keywords/Notes/Copyright…）
       set_metadata     写文档元数据（metadata={...}，只写白名单字段）
+      metadata_localized       读本地化元数据（各语言 Title/Subject/Keywords/Notes/Copyright）
+      set_metadata_localized   写本地化元数据：metadata={"Title":{"default":"…","2052":"…"}}
       palette_create   新建自定义调色板并落盘：palette_name + palette_path +
                        palette_colors=[...]；返回 palette_index（可用于位图 9 号调色板模式）
       data_fields      列出文档数据字段（数据合并用）
@@ -1132,6 +1134,7 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
                       "textures", "metadata", "palette_create", "data_fields",
                       "object_data", "color_context", "outline_styles",
                       "settings", "app_info", "color_profiles",
+                      "metadata_localized",
                       "pref_register", "pref_get", "pref_set",
                       "views", "create_view", "activate_view", "delete_view",
                       "grid", "set_grid", "overprint"}:
