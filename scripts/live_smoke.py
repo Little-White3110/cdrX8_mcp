@@ -3664,6 +3664,52 @@ def main() -> int:
                       bb48.get("x") == 40.0, f"bbox={bb48}")
         no_error("关闭颜色/图层测试文档", server.cdr_close(c48_id))
 
+    # ---------------- 15bc. 第四十九波：颜色分量读取 / 转调色板 / 按掩码复制属性 ----------------
+    print("\n[15bc] 第四十九波：CorelScriptGetComponent 分量读取、ConvertToPalette、CopyPropertiesFrom")
+    k49_doc = server.cdr_open(preset="A4")
+    if "document_id" in k49_doc:
+        k49_id = k49_doc["document_id"]
+        kc = server.cdr_color(action="object_components",
+                              color={"c": 10, "m": 20, "y": 30, "k": 40}, model=2)
+        if no_error("cdr_color(object_components cmyk)", kc):
+            check("颜色分量可读（CorelScriptGetComponent / CMYK）",
+                  kc.get("status") == 5002
+                  and (kc.get("values") or [])[:4] == [10.0, 20.0, 30.0, 40.0],
+                  f"status={kc.get('status')} values={kc.get('values')}")
+        kr = server.cdr_color(action="object_components", color="#0B1621", model=5)
+        if no_error("cdr_color(object_components rgb)", kr):
+            check("颜色分量可读（RGB）",
+                  (kr.get("values") or [])[:3] == [11.0, 22.0, 33.0],
+                  f"values={kr.get('values')}")
+        server.cdr_doc(k49_id, action="palette_open_fixed", palette_id=1)
+        kpid = (((server.cdr_doc(k49_id, action="palettes").get("palettes")
+                  or [{}])[0]) or {}).get("identifier")
+        if kpid:
+            kcp = server.cdr_color(action="object_convert_palette", color="#783C1E",
+                                   color2=kpid)
+            if no_error("cdr_color(object_convert_palette)", kcp):
+                check("颜色可转指定调色板（ConvertToPalette）",
+                      "PAN_SPOT" in str(kcp.get("after"))
+                      or "PANTONE" in str(kcp.get("after")),
+                      str(kcp.get("after"))[:60])
+        k49r = server.cdr_create(k49_id, [
+            {"type": "rectangle", "x": 0, "y": 0, "width": 20, "height": 10,
+             "fill": "#C80A0A"},
+            {"type": "rectangle", "x": 40, "y": 0, "width": 20, "height": 10,
+             "fill": "#0AC80A"},
+        ])
+        if no_error("cdr_create(属性复制测试)", k49r):
+            k49a, k49b = [x["name"] for x in k49r["created"]]
+            kcpy = server.cdr_shape_ops(k49_id, op="copy_props",
+                                        target={"name": k49a},
+                                        other={"name": k49b},
+                                        params={"mask": 4})
+            if no_error("cdr_shape_ops(copy_props)", kcpy):
+                check("可按掩码复制属性（CopyPropertiesFrom）",
+                      kcpy.get("applied") is True and kcpy.get("mask") == 4,
+                      f"applied={kcpy.get('applied')} mask={kcpy.get('mask')}")
+        no_error("关闭分量/属性测试文档", server.cdr_close(k49_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

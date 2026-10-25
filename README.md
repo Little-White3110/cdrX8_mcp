@@ -7,9 +7,9 @@
 
 > **已在真机验证**：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）+ Python 3.11.9 64 位
 > - 单元测试 **93 项通过**
-> - 端到端联调（真实 CorelDRAW）**454/454 通过**
+> - 端到端联调（真实 CorelDRAW）**458/458 通过**
 > - 能力边界来自对 `vgcoreauto.tlb` 的反解（196 个自动化类 / 1619 个方法）+ 逐项实跑
-> - 方法级覆盖 **59.4%**（主干 20 接口 80.5%），可用 `python scripts/coverage_audit.py` 复现
+> - 方法级覆盖 **59.6%**（主干 20 接口 81.0%），可用 `python scripts/coverage_audit.py` 复现
 > - 完整清单见 [docs/COVERAGE.md](docs/COVERAGE.md)
 
 ---
@@ -70,7 +70,7 @@ python -m cdrx8_mcp              # 启动 MCP 服务器（stdio）
 | `cdr_text` | 排版级：内容 / 字体 / 字号 / 粗斜体 / 下划线 / 对齐 / 大小写 / 项目符号 / 首字下沉 / 行距字距 / 段落缩进 / **制表位** / 前后插入 / 沿路径 / 自适应 / 转曲 / 艺术字↔段落字互转 / 段落内容读写与替换 / 文本区间 / 区间删除·复制·粘贴·拉直 / 读取全文·指定区间·导出纯文本 / **字体属性读取·断字设置读取·格式段列表·按格式查询区间（@font/@bold）** / OpenType 特性 / **四个结构体快照（struct_info：字体·间距·对齐·断字）** / **区间宽接口（range_action：插入·替换·折叠·重设·判等·包含·行距）** / **进入编辑态（begin_edit）** |
 | `cdr_replace_text` | 全文档文字替换（底层用 X8 原生 `Page.TextReplace`） |
 | `cdr_select` | 按名字 / 类型 / 矩形框选，加入选择集；**可移除或清空选择集** |
-| `cdr_shape_ops` | **布尔与整形**：weld / trim / intersect / combine / group / ungroup / break_apart / to_curves / **outline_to_curves** / to_symbol / powerclip / fillet / chamfer / scallop / **step_repeat / distribute / boundary / perspective / separate / parallel_curves / rasterize / batch_outline_to_curves / fill_mode / pixel_aligned / range_boundary / envelope_from_shape / compare / project / unproject / to_document / extrude / lens / extrude_set / lens_set / effect_info / clear_effects / blend / blend_set / **unlock_all / ungroup_all / break_apart_ex / clear_effect / range_info / range_add / range_remove / apply_fill（Fill 工厂批量上色）/ **matrix（矩阵读写）/ is_type / in_front_of / is_on_shape / distort（pushpull·twister·zipper）/ place_text（文字内嵌）/ duplicate_range · clone_range / **position_ex（9 个参考点）/ find_snap（按引用反查吸附点）/ linked（链接对象）/ rasterize_ex（带参位图化）/ overprint_state / **range_from_list（对象列表建范围）/ range_bitmap（整批位图化）/ range_outline（整批描边 14/15 参）/ copy_to_layer_range（复制到其它图层）/ align_to_range（对齐到形状范围）** |
+| `cdr_shape_ops` | **布尔与整形**：weld / trim / intersect / combine / group / ungroup / break_apart / to_curves / **outline_to_curves** / to_symbol / powerclip / fillet / chamfer / scallop / **step_repeat / distribute / boundary / perspective / separate / parallel_curves / rasterize / batch_outline_to_curves / fill_mode / pixel_aligned / range_boundary / envelope_from_shape / compare / project / unproject / to_document / extrude / lens / extrude_set / lens_set / effect_info / clear_effects / blend / blend_set / **unlock_all / ungroup_all / break_apart_ex / clear_effect / range_info / range_add / range_remove / apply_fill（Fill 工厂批量上色）/ **matrix（矩阵读写）/ is_type / in_front_of / is_on_shape / distort（pushpull·twister·zipper）/ place_text（文字内嵌）/ duplicate_range · clone_range / **position_ex（9 个参考点）/ find_snap（按引用反查吸附点）/ linked（链接对象）/ rasterize_ex（带参位图化）/ overprint_state / **range_from_list（对象列表建范围）/ range_bitmap（整批位图化）/ range_outline（整批描边 14/15 参）/ copy_to_layer_range（复制到其它图层）/ align_to_range（对齐到形状范围）/ copy_props（按掩码复制属性）** |
 | `cdr_align` | 对齐与分布（左中右 / 上下中 / 等间距；`to=selection/page`，**以及原生范围对齐 `to=page_edge/page_center/grid/point/shape/range`**） |
 | `cdr_find` | 按名字或类型查找（跨图层） |
 | `cdr_style` | **对象样式**：列出 / 从对象创建（fill·outline·character·paragraph）/ **基于已有样式派生** / 按名套用 / 改名 / 删除 / **读可读属性·改属性** / 列派生样式 / **样式表 .cdst 导入导出** / **颜色样式与颜色协调** / **覆盖属性（override_props）·继承状态（inherited）·属性取值（get_property）·属性清除** |
@@ -78,7 +78,7 @@ python -m cdrx8_mcp              # 启动 MCP 服务器（stdio）
 | `cdr_node` | **节点/线段级编辑（第五波打通）**：列节点·列线段 / 移动·选中·删除 / 圆角·倒角· scallop·平滑 / 拉伸·旋转·斜切·断开 / 加节点·断线 / 读写贝塞尔控制点 / 按坐标找节点与线段 / **前后邻居（Next·Previous）·节点间距·平均位置·末端节点合并·任意不连续节点集合（arbitrary：move/rotate/skew/stretch/autoreduce/smoothen/set_type/delete/fillet/chamfer/scallop）·**节点坐标搬运（copy_point：GetPoint/SetPoint）** |
 | `cdr_bitmap` | 位图：信息 / 转色彩模式（rgb·cmyk·gray·bw）/ **阈值二值化** / **调色板模式 0~9（9=自定义调色板）** / **双色调 0~3（可给 .cpd 预设）** / **取像素颜色** / 图像缓冲信息 / 重采样 / **扩边** / 裁剪 / **内容替换（SetImageData，支持色块/像素绘制）** / **位图特效命令串（ApplyBitmapEffect）** / **链接信息·重新加载·解析链接** / **调色板选项转换（paletted_options：颜色数·抖动·指定调色板）** |
 | `cdr_rect` | **矩形对象（IVGRect）**：读派生值 / 平移 / 四边外扩内缩 / 并 / 交 / 点包含 / 复制；**按矩形造形**（CreateRectangleRect 带四角圆角、CreateEllipseRect 带角度/扇形） |
-| `cdr_color` | **颜色运算**：解析成 HEX/RGB/CMYK/Gray/HLS/Lab、转换、两色混合（纯 Python）；**X8 颜色对象**：`object_info` / `object_name` / `object_compare`（IsSame·IsSimilar·距离）/ `object_blend`（原地混合）/ `object_copy` / `object_string_assign` / `object_convert`（8 种模型原地转换）/ `object_fixed`（USER·TRU·PAN_PROC）/ `object_assign`（分量直写，含套版色·固定调色板 fixed·脚本式 script）/ **`object_model`（HSB·CMY·BW·YIQ·Fixed·CreateColorEx 工厂）/ `object_from_string`（颜色串造色）/ `object_palette`（按调色板 GUID 取专色）/ `object_invalidate`** |
+| `cdr_color` | **颜色运算**：解析成 HEX/RGB/CMYK/Gray/HLS/Lab、转换、两色混合（纯 Python）；**X8 颜色对象**：`object_info` / `object_name` / `object_compare`（IsSame·IsSimilar·距离）/ `object_blend`（原地混合）/ `object_copy` / `object_string_assign` / `object_convert`（8 种模型原地转换）/ `object_fixed`（USER·TRU·PAN_PROC）/ `object_assign`（分量直写，含套版色·固定调色板 fixed·脚本式 script）/ **`object_model`（HSB·CMY·BW·YIQ·Fixed·CreateColorEx 工厂）/ `object_from_string`（颜色串造色）/ `object_palette`（按调色板 GUID 取专色）/ `object_invalidate` / **`object_components`（CorelScriptGetComponent 读分量）/ `object_convert_palette`（转指定调色板）** |
 | `cdr_doc` | **文档级**：概况 / 清空选择集 / 清撤销栈 / **登记调色板** / **用曲线生成自定义箭头（可登记全局箭头库）/ 命名箭头（CreateArrowHead2）** / **单位换算** / **取色（点/区域）** / **字体列表** / **调色板列表·取色·固定调色板打开·颜色枚举·专色创建·自定义调色板创建** / **图案画布创建（含区域变换）** / **纹理库列表** / **文档元数据读写·本地化元数据** / **数据字段·对象数据·色彩管理·线型样式·叠印读取** / **文档设置读写** / **应用信息·文档回滚** / **色彩配置文件·文档颜色转换** / **用户偏好 KV** / **命名视图** / **网格设置** / **应用/文档事件队列** / **显示隐藏对象** / **页面版式** / **重复上一操作**  / **COM 单位换算（convert_units）** / **文档设置快照（save_settings·restore_settings·reset_settings，实验性）** / **解析全部位图链接（resolve_links）** / **指派色彩上下文（assign_color_context）** / **样式表设为默认（stylesheet_default）** / **命名箭头变体（arrowhead_ex）** / **颜色上下文深操作（color_context_info/copy/merge）** / **渐变变换矩阵（fountain_transform）** / **CorelScriptTools 辅助对象（script_tools）** |
 | `cdr_view` | **视图**：刷新重绘 / 激活窗口 / **新窗口（new_window）** / 文档↔屏幕坐标换算 / **屏幕距离↔文档距离** / **屏幕叠加层（文字/矩形/直线/圆，不写入文档）** |
 | `cdr_snap` | **吸附点**：对象吸附点枚举（类型掩码过滤）/ **自动点·包围盒点·对象点·边上点定址** / **新增用户吸附点（GUID）** / **文档·应用级自由点** / 最近吸附点查询（页面级与集合级）/ 移动（相对+绝对）/ 删除 / 方向 / 选择 / **SnapPointRange 批量（Move·Delete·Add·Remove·Find·ChangeDirection·SetAutoSnap）** |
@@ -186,7 +186,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ---
 
-## X8 特有问题（132 条，全部实测）
+## X8 特有问题（133 条，全部实测）
 
 这些是 **X8 与 2024+ 的差异**，也是本项目存在的主要理由。
 
@@ -324,6 +324,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 | 130 | **文字结构体写入端在 pywin32 下彻底不可用** | `Text.FontProperties` 等属性赋值把字号写成 1.17e-38；改用 `_oleobj_.Invoke(memid, DISPATCH_PROPERTYPUT, …)` 配 `VARIANT(VT_I4/VT_VARIANT)` 仍报「类型不匹配」（`VT_USERDEFINED` 参数无法 marshaling） | 结构体只做只读快照；写字号/字体走 `font=/size=` 与 `_tristate()` 映射 |
 | 131 | **导入/导出过滤器号不通用** | PNG 导出过滤器号 802 传给 `Layer.ImportEx(path, 802, opts)` 时调用成功但 `shapes_added=0`（静默不导入）；传 0 自动判断才正常。另外 `ShapeRange.DeleteItem(1)` 会把**文档里的对象一起删掉**（范围与页面都 2→1） | `cdr_import(filter_id=…)` 只做透传并标注；想只移除范围成员用 `range_remove` |
 | 132 | **`PaletteAssign`/`SpotAssignByName` 的第一参是调色板 GUID** | `PaletteAssign(调色板名, 序号)` 会失败；正确姿势是 `Palette.Identifier`（GUID 字符串）。在**不含专色**的调色板（如默认调色板）上取专色报「未找到指定的对象」 | `cdr_color(action="object_palette", color2=<GUID>, values=[序号])`；专色要先 `palette_open_fixed` 打开 PANTONE 等专色调色板 |
+| 133 | **分量其实读得到：入口是 `CorelScriptGetComponent`** | 以前一直写「`IVGColor` 不暴露分量」，其实 `Color.CorelScriptGetComponent(模型号, 0,0,0,0,0,0,0)` 返回 `(5000+模型号, v1..v7)`：CMYK `(5002,10,20,30,40,…)`、RGB `(5005,11,22,33,…)`、Gray `(5009,50,…)`。`ConvertToPalette` 的参数也是**调色板 GUID**，传序号报「找不到调色板 N」 | 已封装 `cdr_color(object_components/object_convert_palette)`；至此颜色分量读写都通了 |
 
 改代码前请先读 [`src/cdrx8_mcp/constants.py`](src/cdrx8_mcp/constants.py) 里的注释。
 
@@ -373,7 +374,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ```powershell
 python -m pytest -q                # 93 项逻辑测试，任何平台可跑
-python scripts/live_smoke.py       # 454 项端到端，需要 CorelDRAW X8
+python scripts/live_smoke.py       # 458 项端到端，需要 CorelDRAW X8
 python scripts/live_smoke.py --keep   # 保留文档方便肉眼看效果
 python scripts/coverage_audit.py   # 覆盖率审计（复现 README/COVERAGE 里的数字）
 ```

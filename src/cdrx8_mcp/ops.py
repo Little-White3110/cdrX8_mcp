@@ -4711,7 +4711,9 @@ COLOR_OBJECT_ACTIONS = ("object_info", "object_name", "object_compare", "object_
                         # 第三十五波：其它色彩模型工厂 + 颜色串工厂
                         "object_model", "object_from_string",
                         # 第四十八波：固定调色板/脚本/调色板取色/失效
-                        "object_palette", "object_invalidate")
+                        "object_palette", "object_invalidate",
+                        # 第四十九波：分量读取（CorelScriptGetComponent）/ 转指定调色板
+                        "object_components", "object_convert_palette")
 # 显式写法（而不是 getattr 动态调用）：既方便 grep，也让覆盖率审计能统计到
 COLOR_CONVERT_CALLS = {
     "rgb": lambda c: c.ConvertToRGB(),
@@ -4889,6 +4891,37 @@ def color_object_ops(action: str, *, color: Any = None, color2: Any = None,
                 "type": _n(lambda: int(obj.Type)),
                 "to_string": _s(lambda: str(obj.ToString())),
                 "name": _s(lambda: str(obj.GetName()))}
+
+    if act == "object_convert_palette":
+        # 实测：Color.ConvertToPalette(调色板 **GUID**)：RGB(120,60,30) + TRUMATCH
+        # → CMYK255,TRU,166,230,255,15,<guid>；传数字序号会报「找不到调色板 N」
+        if not isinstance(color2, str) or not color2:
+            raise CdrBadArgument("object_convert_palette 需要 color2 = 调色板 Identifier（GUID）")
+        obj = _color_object(color if color is not None else "#000000")
+        before = _s(lambda: str(obj.ToString()))
+        obj.ConvertToPalette(color2)
+        return {"action": act, "palette": color2, "before": before,
+                "after": _s(lambda: str(obj.ToString())),
+                "type_after": _n(lambda: int(obj.Type))}
+
+    if act == "object_components":
+        # 实测：Color.CorelScriptGetComponent(模型号, 0×7) 返回
+        # (状态码, v1..v7)：CMYK(2) → (5002,10,20,30,40,0,0,0)；
+        # RGB(5) → (5005,11,22,33,0,0,0,0)。这是**唯一能读到颜色分量**的路径。
+        want = int(model) if model is not None else 2
+        obj = _color_object(color if color is not None else "#000000")
+        raw = _s(lambda: obj.CorelScriptGetComponent(want, 0, 0, 0, 0, 0, 0, 0))
+        if raw is None:
+            raise CdrComFailure("CorelScriptGetComponent 返回空")
+        vals = list(raw) if isinstance(raw, (tuple, list)) else [raw]
+        return {"action": act, "model": want,
+                "raw": [(_round(float(v)) if isinstance(v, (int, float)) else str(v))
+                        for v in vals],
+                "values": [(_round(float(v)) if isinstance(v, (int, float)) else str(v))
+                           for v in vals[1:]],
+                "status": int(vals[0]) if vals else None,
+                "to_string": _s(lambda: str(obj.ToString())),
+                "note": "返回 (状态码, v1..v7)；状态码 = 5000 + 模型号"}
 
     if act == "object_palette":
         # 实测：PaletteAssign(调色板 Identifier, 颜色序号) /
@@ -5507,6 +5540,8 @@ SHAPE_OPS = (
     "range_outline",
     # 第四十八波：复制到其它图层（AsRange）/ 对齐到形状范围
     "copy_to_layer_range", "align_to_range",
+    # 第四十九波：按掩码复制属性
+    "copy_props",
 )
 
 
@@ -5767,6 +5802,20 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
                     "api": used,
                     "first_width": _round(_s(lambda: float(first.Outline.Width)))
                     if first is not None else None}
+        if op == "copy_props":
+            # 实测：Shape.CopyPropertiesFrom(source, 掩码) 可用；
+            # 掩码 4/8/15 会把填充复制过来，1/2 不影响填充
+            spec = dict(params or {})
+            source = find_shape(doc, page, target or {})
+            if not other:
+                raise CdrBadArgument("copy_props 需要 other（源对象）")
+            mask = int(spec.get("mask", 15))
+            src = find_shape(doc, page, other)
+            with atomic(doc, label):
+                ok = bool(_s(lambda: bool(source.CopyPropertiesFrom(src, mask)), False))
+            return {"op": op, "from": _s(lambda: str(src.Name)), "mask": mask,
+                    "applied": ok, "bbox": _bbox(source),
+                    "note": "实测掩码 4/8/15 会复制填充；1/2 不影响填充"}
         if op in {"copy_to_layer_range", "align_to_range"}:
             spec = dict(params or {})
             source = find_shape(doc, page, target or {})
