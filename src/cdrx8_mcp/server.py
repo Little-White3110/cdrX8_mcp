@@ -89,7 +89,12 @@ def _with_doc(document_id: str):
 
     def _do(bridge):
         app = bridge.ensure_app()
-        return ops.find_document(app, sess.name)
+        doc = ops.find_document(app, sess.name)
+        try:
+            bridge._install_doc_events(doc)
+        except Exception:
+            pass
+        return doc
 
     return _com(_do, label="find_document"), sess
 

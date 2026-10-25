@@ -53,6 +53,8 @@ class ComBridge:
         self._events_lock = threading.Lock()
         self._event_sink: Any = None
         self._event_error: str | None = None
+        self._event_module: Any = None
+        self._doc_sinks: dict[str, Any] = {}
 
     # ---------------- 生命周期 ----------------
     def start(self) -> None:
@@ -100,6 +102,12 @@ class ComBridge:
         except Exception:
             pass
         self._event_sink = None
+        for sink in list(self._doc_sinks.values()):
+            try:
+                sink.close()
+            except Exception:
+                pass
+        self._doc_sinks = {}
         if self._thread is None:
             return
         self._q.put(None)
@@ -202,29 +210,89 @@ class ComBridge:
         with self._events_lock:
             self.events.append(item)
 
-    def _install_events(self, app: Any) -> None:  # pragma: no cover - STA 线程
-        """在 STA 线程安装 Application 事件 sink（连接点）。失败则静默跳过。"""
+    def _load_event_module(self, app: Any) -> Any:  # pragma: no cover - STA 线程
+        if self._event_module is not None:
+            return self._event_module
+        import os
+        import win32com.client.gencache as gencache
+        base = str(app.Path)
+        candidates = [
+            os.path.join(base, "vgcoreauto.tlb"),
+            os.path.join(base, "..", "Programs64", "vgcoreauto.tlb"),
+            os.path.join(base, "Programs64", "vgcoreauto.tlb"),
+        ]
+        tlb = next((p for p in candidates if os.path.exists(p)), candidates[0])
+        tl = pythoncom.LoadTypeLib(tlb)
+        attr = tl.GetLibAttr()
+        gencache.is_readonly = False
+        self._event_module = gencache.EnsureModule(str(attr[0]), attr[1],
+                                                   attr[3], attr[4])
+        return self._event_module
+
+    def _install_doc_events(self, doc: Any) -> None:  # pragma: no cover - STA 线程
         try:
-            import os
-            import win32com.client.gencache as gencache
-            base = str(app.Path)
-            candidates = [
-                os.path.join(base, "vgcoreauto.tlb"),
-                os.path.join(base, "..", "Programs64", "vgcoreauto.tlb"),
-                os.path.join(base, "Programs64", "vgcoreauto.tlb"),
-            ]
-            tlb = next((p for p in candidates if os.path.exists(p)), candidates[0])
-            tl = pythoncom.LoadTypeLib(tlb)
-            attr = tl.GetLibAttr()
-            gencache.is_readonly = False
-            module = gencache.EnsureModule(str(attr[0]), attr[1], attr[3], attr[4])
+            name = str(doc.Name)
+            if name in self._doc_sinks or self._event_module is None:
+                return
+            module = self._event_module
+            bridge = self
+            class DocSink(module.DIVGDocumentEvents):  # type: ignore[misc]
+                def _rec(self, name, args):
+                    bridge._record_event("Doc:" + name, args)
+                def OnLayerCreate(self, *a): self._rec("LayerCreate", a)
+                def OnLayerDelete(self, *a): self._rec("LayerDelete", a)
+                def OnLayerActivate(self, *a): self._rec("LayerActivate", a)
+                def OnLayerChange(self, *a): self._rec("LayerChange", a)
+                def OnPageCreate(self, *a): self._rec("PageCreate", a)
+                def OnPageDelete(self, *a): self._rec("PageDelete", a)
+                def OnPageActivate(self, *a): self._rec("PageActivate", a)
+                def OnPageChange(self, *a): self._rec("PageChange", a)
+                def OnShapeCreate(self, *a): self._rec("ShapeCreate", a)
+                def OnShapeDelete(self, *a): self._rec("ShapeDelete", a)
+                def OnShapeMove(self, *a): self._rec("ShapeMove", a)
+                def OnShapeTransform(self, *a): self._rec("ShapeTransform", a)
+                def OnShapeDistort(self, *a): self._rec("ShapeDistort", a)
+                def OnShapeChange(self, *a): self._rec("ShapeChange", a)
+                def OnSelectionChange(self, *a): self._rec("SelectionChange", a)
+                def OnBeforeSave(self, *a): self._rec("DocBeforeSave", a)
+                def OnAfterSave(self, *a): self._rec("DocAfterSave", a)
+                def OnBeforeExport(self, *a): self._rec("DocBeforeExport", a)
+                def OnAfterExport(self, *a): self._rec("DocAfterExport", a)
+            self._doc_sinks[name] = DocSink(doc)
+        except BaseException:
+            pass
+
+    def _close_doc_sink(self, name: str) -> None:  # pragma: no cover - STA 线程
+        sink = self._doc_sinks.pop(name, None)
+        if sink is not None:
+            try:
+                sink.close()
+            except Exception:
+                pass
+
+    def _install_events(self, app: Any) -> None:  # pragma: no cover - STA 线程
+        """在 STA 线程安装 Application/Document 事件 sink（连接点）。失败则静默跳过。"""
+        try:
+            module = self._load_event_module(app)
             bridge = self
             class Sink(module.DIVGApplicationEvents):  # type: ignore[misc]
                 def _rec(self, name, args):
                     bridge._record_event(name, args)
-                def OnDocumentNew(self, *a): self._rec("DocumentNew", a)
-                def OnDocumentOpen(self, *a): self._rec("DocumentOpen", a)
-                def OnDocumentClose(self, *a): self._rec("DocumentClose", a)
+                def OnDocumentNew(self, doc=None, *a):
+                    self._rec("DocumentNew", (doc,) + a)
+                    if doc is not None:
+                        bridge._install_doc_events(doc)
+                def OnDocumentOpen(self, doc=None, *a):
+                    self._rec("DocumentOpen", (doc,) + a)
+                    if doc is not None:
+                        bridge._install_doc_events(doc)
+                def OnDocumentClose(self, doc=None, *a):
+                    self._rec("DocumentClose", (doc,) + a)
+                    try:
+                        if doc is not None:
+                            bridge._close_doc_sink(str(doc.Name))
+                    except Exception:
+                        pass
                 def OnDocumentBeforeSave(self, *a): self._rec("DocumentBeforeSave", a)
                 def OnDocumentAfterSave(self, *a): self._rec("DocumentAfterSave", a)
                 def OnDocumentBeforeExport(self, *a): self._rec("DocumentBeforeExport", a)
@@ -241,6 +309,13 @@ class ComBridge:
             except Exception:
                 pass
             self._event_sink = Sink(app)
+            # 为连接时已打开的文档安装文档事件
+            try:
+                docs = app.Documents
+                for i in range(1, int(docs.Count) + 1):
+                    self._install_doc_events(docs.Item(i))
+            except Exception:
+                pass
             self._event_error = None
         except BaseException as exc:
             self._event_sink = None

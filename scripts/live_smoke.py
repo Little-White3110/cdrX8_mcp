@@ -2327,6 +2327,14 @@ def main() -> int:
                   and any(n in {"DocumentNew", "WindowActivate",
                                 "DocumentOpen"} for n in names),
                   f"count={ev2.get('count')} names={names}")
+        server.cdr_create(doc_id, [{"type": "line", "x1": 10, "y1": 10,
+                                    "x2": 20, "y2": 20}])
+        ev3 = server.cdr_doc(doc_id, "events", limit=50)
+        if no_error("cdr_doc(events shape)", ev3):
+            names3 = [e.get("event") for e in (ev3.get("events") or [])]
+            check("文档事件可捕获图形变化",
+                  any(str(n).startswith("Doc:Shape") for n in names3),
+                  f"names={names3}")
         ce1 = server.cdr_doc(doc_id, "clear_events")
         if no_error("cdr_doc(clear_events after open)", ce1):
             check("事件队列可清空", (ce1.get("cleared") or 0) >= 1,
