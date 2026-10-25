@@ -3238,6 +3238,59 @@ def main() -> int:
                   str(bad_dst.get("error")))
         no_error("关闭矩阵/扭曲测试文档", server.cdr_close(m_id))
 
+    # ---------------- 15at. 第四十波：参考点定位 / 吸附反查 / 链接 / 位图化 ----------------
+    print("\n[15at] 第四十波：参考点定位、FindSnapPoint、链接对象、ConvertToBitmapEx、叠印状态")
+    p40_doc = server.cdr_open(preset="A4")
+    if "document_id" in p40_doc:
+        p40_id = p40_doc["document_id"]
+        p40r = server.cdr_create(p40_id, [
+            {"type": "rectangle", "x": 20, "y": 20, "width": 40, "height": 30},
+        ])
+        if no_error("cdr_create(参考点测试)", p40r):
+            pA = {"name": p40r["created"][0]["name"]}
+            pe = server.cdr_shape_ops(p40_id, op="position_ex", target=pA,
+                                      params={"ref": 9})
+            if no_error("cdr_shape_ops(position_ex read)", pe):
+                check("参考点定位可读（9=中心）", pe.get("position") == [40.0, 35.0],
+                      str(pe.get("position")))
+            pset = server.cdr_shape_ops(p40_id, op="position_ex", target=pA,
+                                        params={"ref": 9, "x": 70, "y": 80})
+            if no_error("cdr_shape_ops(position_ex set)", pset):
+                bb = pset.get("bbox") or {}
+                check("可按参考点定位对象",
+                      pset.get("position") == [70.0, 80.0]
+                      and bb.get("x") == 50.0 and bb.get("y") == 65.0,
+                      f"pos={pset.get('position')} bbox={bb}")
+            ops_ = server.cdr_shape_ops(p40_id, op="overprint_state", target=pA)
+            if no_error("cdr_shape_ops(overprint_state)", ops_):
+                check("叠印状态可读", ops_.get("outline_state") == 2
+                      and ops_.get("overprint_fill") is False,
+                      f"fill={ops_.get('fill_state')} outline={ops_.get('outline_state')}")
+            linked = server.cdr_shape_ops(p40_id, op="linked", target=pA,
+                                          params={"link_type": 3})
+            if no_error("cdr_shape_ops(linked)", linked):
+                check("链接对象查询可用（无链接时空集合）",
+                      linked.get("count") == 0, str(linked.get("count")))
+            snap40 = server.cdr_snap(p40_id, action="list", target=pA)
+            ref40 = ((snap40.get("points") or [{}])[0] or {}).get("reference")
+            if ref40:
+                fs = server.cdr_shape_ops(p40_id, op="find_snap", target=pA,
+                                          params={"reference": ref40})
+                if no_error("cdr_shape_ops(find_snap)", fs):
+                    check("可按引用反查吸附点（FindSnapPoint）",
+                          fs.get("found") is True and fs.get("type") == 2,
+                          f"type={fs.get('type')} pos={fs.get('position')}")
+            fsbad = server.cdr_shape_ops(p40_id, op="find_snap", target=pA)
+            check("find_snap 缺引用被拒绝", fsbad.get("error") == "bad_argument",
+                  str(fsbad.get("error")))
+            rast = server.cdr_shape_ops(p40_id, op="rasterize_ex", target=pA,
+                                        params={"mode": 4, "resolution": 150})
+            if no_error("cdr_shape_ops(rasterize_ex)", rast):
+                check("可带参数位图化（ConvertToBitmapEx）",
+                      rast.get("type_id") == 5 and rast.get("has_bitmap") is True,
+                      f"type={rast.get('type_id')} bitmap={rast.get('has_bitmap')}")
+        no_error("关闭参考点测试文档", server.cdr_close(p40_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

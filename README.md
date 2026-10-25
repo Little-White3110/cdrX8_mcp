@@ -7,9 +7,9 @@
 
 > **已在真机验证**：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）+ Python 3.11.9 64 位
 > - 单元测试 **93 项通过**
-> - 端到端联调（真实 CorelDRAW）**408/408 通过**
+> - 端到端联调（真实 CorelDRAW）**415/415 通过**
 > - 能力边界来自对 `vgcoreauto.tlb` 的反解（196 个自动化类 / 1619 个方法）+ 逐项实跑
-> - 方法级覆盖 **55.3%**（主干 20 接口 73.2%），可用 `python scripts/coverage_audit.py` 复现
+> - 方法级覆盖 **56.1%**（主干 20 接口 75.0%），可用 `python scripts/coverage_audit.py` 复现
 > - 完整清单见 [docs/COVERAGE.md](docs/COVERAGE.md)
 
 ---
@@ -70,7 +70,7 @@ python -m cdrx8_mcp              # 启动 MCP 服务器（stdio）
 | `cdr_text` | 排版级：内容 / 字体 / 字号 / 粗斜体 / 下划线 / 对齐 / 大小写 / 项目符号 / 首字下沉 / 行距字距 / 段落缩进 / **制表位** / 前后插入 / 沿路径 / 自适应 / 转曲 / 艺术字↔段落字互转 / 段落内容读写与替换 / 文本区间 / 区间删除·复制·粘贴·拉直 / 读取全文·指定区间·导出纯文本 / **字体属性读取·断字设置读取·格式段列表·按格式查询区间（@font/@bold）** / OpenType 特性 / **四个结构体快照（struct_info：字体·间距·对齐·断字）** / **区间宽接口（range_action：插入·替换·折叠·重设·判等·包含·行距）** |
 | `cdr_replace_text` | 全文档文字替换（底层用 X8 原生 `Page.TextReplace`） |
 | `cdr_select` | 按名字 / 类型 / 矩形框选，加入选择集；**可移除或清空选择集** |
-| `cdr_shape_ops` | **布尔与整形**：weld / trim / intersect / combine / group / ungroup / break_apart / to_curves / **outline_to_curves** / to_symbol / powerclip / fillet / chamfer / scallop / **step_repeat / distribute / boundary / perspective / separate / parallel_curves / rasterize / batch_outline_to_curves / fill_mode / pixel_aligned / range_boundary / envelope_from_shape / compare / project / unproject / to_document / extrude / lens / extrude_set / lens_set / effect_info / clear_effects / blend / blend_set / **unlock_all / ungroup_all / break_apart_ex / clear_effect / range_info / range_add / range_remove / apply_fill（Fill 工厂批量上色）/ **matrix（矩阵读写）/ is_type / in_front_of / is_on_shape / distort（pushpull·twister·zipper）/ place_text（文字内嵌）/ duplicate_range · clone_range** |
+| `cdr_shape_ops` | **布尔与整形**：weld / trim / intersect / combine / group / ungroup / break_apart / to_curves / **outline_to_curves** / to_symbol / powerclip / fillet / chamfer / scallop / **step_repeat / distribute / boundary / perspective / separate / parallel_curves / rasterize / batch_outline_to_curves / fill_mode / pixel_aligned / range_boundary / envelope_from_shape / compare / project / unproject / to_document / extrude / lens / extrude_set / lens_set / effect_info / clear_effects / blend / blend_set / **unlock_all / ungroup_all / break_apart_ex / clear_effect / range_info / range_add / range_remove / apply_fill（Fill 工厂批量上色）/ **matrix（矩阵读写）/ is_type / in_front_of / is_on_shape / distort（pushpull·twister·zipper）/ place_text（文字内嵌）/ duplicate_range · clone_range / **position_ex（9 个参考点）/ find_snap（按引用反查吸附点）/ linked（链接对象）/ rasterize_ex（带参位图化）/ overprint_state** |
 | `cdr_align` | 对齐与分布（左中右 / 上下中 / 等间距；`to=selection/page`，**以及原生范围对齐 `to=page_center/grid/point/shape/range`**） |
 | `cdr_find` | 按名字或类型查找（跨图层） |
 | `cdr_style` | **对象样式**：列出 / 从对象创建（fill·outline·character·paragraph）/ **基于已有样式派生** / 按名套用 / 改名 / 删除 / **读可读属性·改属性** / 列派生样式 / **样式表 .cdst 导入导出** / **颜色样式与颜色协调** / **覆盖属性（override_props）·继承状态（inherited）·属性取值（get_property）·属性清除** |
@@ -186,7 +186,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ---
 
-## X8 特有问题（122 条，全部实测）
+## X8 特有问题（123 条，全部实测）
 
 这些是 **X8 与 2024+ 的差异**，也是本项目存在的主要理由。
 
@@ -314,6 +314,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 | 120 | **文字结构体只能读不能写** | `Text.FontProperties(2, struct)` 当方法调报 `TypeError: IVGStruct... object is not callable`；改写成属性赋值 `text.FontProperties = struct` 不报错但把字号写成 1.17e-38 之类的垃圾值；带下标的 `FontPropertiesInRange` 返回的结构体字段同样是垃圾 | 四个结构体只做**只读快照**（`cdr_text(struct_info=true)`）；写字号/字体继续走 `font=/size=` |
 | 121 | **`CreatePaletteColor` / `CreateSpotColor` 不是"新建颜色"** | `CreatePaletteColor("PANTONE 185 C", 0)` 报「找不到颜色」、`CreateSpotColor("MCP专色", 100, 0)` 报「未找到颜色」—— 它们是从**已存在**的调色板/文档专色里取色 | 新建专色仍用 `cdr_doc(action="spot_color")`（CreateSpotColorByName + 已打开调色板） |
 | 122 | **`Shape.GetMatrix` 的 tx/ty 是内部单位** | 读回的初始矩阵是 `[1,0,0,1,-850000,-285000]`；写 `tx=5` 实际位移极小（内部按 1/100000 存）。另外用 `SetMatrix` 改过矩阵的形状，`IsOnShape` 判定会失效（坐标映射被重置） | 矩阵读写精确、但别拿它做毫米级平移（用 `cdr_modify(move=…)`）；做命中判定要放在改矩阵之前 |
+| 123 | **`GetOverprintFillState` 恒为 1** | `Shape.GetOverprintFillState()` 在`OverprintFill` 开/关前后都返回 1（outline 版才随开关 2→4 变化）；`RemoveFromContainer(1)` 报「参考的对象已不再存在」；`Shape.Next/Previous` 是带 3 个参数的 propget，取不到 | 判断填充叠印读布尔属性 `OverprintFill/OverprintOutline`；z 序用页面枚举 |
 
 改代码前请先读 [`src/cdrx8_mcp/constants.py`](src/cdrx8_mcp/constants.py) 里的注释。
 
@@ -363,7 +364,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ```powershell
 python -m pytest -q                # 93 项逻辑测试，任何平台可跑
-python scripts/live_smoke.py       # 408 项端到端，需要 CorelDRAW X8
+python scripts/live_smoke.py       # 415 项端到端，需要 CorelDRAW X8
 python scripts/live_smoke.py --keep   # 保留文档方便肉眼看效果
 python scripts/coverage_audit.py   # 覆盖率审计（复现 README/COVERAGE 里的数字）
 ```

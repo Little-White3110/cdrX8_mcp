@@ -5059,6 +5059,8 @@ SHAPE_OPS = (
     # 第三十九波：形状矩阵 / 扭曲 / 文字内嵌 / 范围复制 / 命中与层序
     "matrix", "is_type", "in_front_of", "is_on_shape", "distort", "place_text",
     "duplicate_range", "clone_range",
+    # 第四十波：参考点定位 / 吸附点反查 / 链接对象 / 位图化 / 叠印状态
+    "position_ex", "find_snap", "linked", "rasterize_ex", "overprint_state",
 )
 
 
@@ -5279,6 +5281,75 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
                         "fill_type": _n(lambda: int(first.Fill.Type), 0)
                         if first is not None else None,
                         "color": _s(lambda: str(color.ToString()))}
+        if op in {"position_ex", "find_snap", "linked", "rasterize_ex",
+                  "overprint_state"}:
+            source = find_shape(doc, page, target or {})
+            spec = dict(params or {})
+            if op == "position_ex":
+                ref_point = int(spec.get("ref", 9))
+                if spec.get("x") is not None and spec.get("y") is not None:
+                    with atomic(doc, label):
+                        source.SetPositionEx(ref_point, float(spec["x"]),
+                                             float(spec["y"]))
+                    got = _s(lambda: source.GetPositionEx(ref_point))
+                    return {"op": op, "ref": ref_point, "applied": True,
+                            "position": [round(float(v), 3) for v in got]
+                            if isinstance(got, (tuple, list)) else None,
+                            "bbox": _bbox(source)}
+                got = _s(lambda: source.GetPositionEx(ref_point))
+                return {"op": op, "ref": ref_point, "applied": False,
+                        "position": [round(float(v), 3) for v in got]
+                        if isinstance(got, (tuple, list)) else None,
+                        "note": "cdrReferencePoint：1 右上 / 2 上中 / 3 左上 / 4 左中 / "
+                                "5 左下 / 6 下中 / 7 右下 / 8 右中 / 9 中心",
+                        "bbox": _bbox(source)}
+            if op == "find_snap":
+                refdata = str(spec.get("reference", ""))
+                if not refdata:
+                    raise CdrBadArgument(
+                        "find_snap 需要 params.reference（吸附点的 ReferenceData，"
+                        "可从 cdr_snap action=list 的 reference 字段取）")
+                snap = _s(lambda: source.FindSnapPoint(refdata))
+                if snap is None:
+                    return {"op": op, "found": False, "reference": refdata}
+                return {"op": op, "found": True, "reference": refdata,
+                        "type": _n(lambda: int(snap.Type)),
+                        "position": [_round(_s(lambda: float(snap.PositionX))),
+                                     _round(_s(lambda: float(snap.PositionY)))]}
+            if op == "linked":
+                link_type = int(spec.get("link_type", 0))
+                rng = _s(lambda: source.GetLinkedShapes(link_type))
+                count = _n(lambda: int(rng.Count), 0) if rng is not None else 0
+                return {"op": op, "link_type": link_type, "count": count or 0,
+                        "names": [_s(lambda i=i: str(rng.Item(i).Name))
+                                  for i in range(1, min(count or 0, 20) + 1)],
+                        "note": "cdrShapeLinkType：0 直接依赖 / 3 全部依赖 / 6 直接控制 / 8 全部连接"}
+            if op == "rasterize_ex":
+                before = _bbox(source)
+                with atomic(doc, label):
+                    made = source.ConvertToBitmapEx(
+                        int(spec.get("mode", 4)), bool(spec.get("dithered", False)),
+                        bool(spec.get("transparent", True)),
+                        int(spec.get("resolution", 150)),
+                        int(spec.get("anti_aliasing", 2)),
+                        bool(spec.get("use_color_profile", False)),
+                        bool(spec.get("overprint_black", False)),
+                        int(spec.get("overprint_black_limit", 0)))
+                if made is None:
+                    raise CdrComFailure("Shape.ConvertToBitmapEx 返回空")
+                return {"op": op, "type_id": _n(lambda: int(made.Type)),
+                        "bbox_before": before, "bbox_after": _bbox(made),
+                        "has_bitmap": bool(_s(lambda: made.Bitmap is not None, False)),
+                        "page_shapes": _n(lambda: int(page.Shapes.Count), 0)}
+            # overprint_state
+            return {"op": op,
+                    "fill_state": _n(lambda: int(source.GetOverprintFillState())),
+                    "outline_state": _n(lambda: int(source.GetOverprintOutlineState())),
+                    "overprint_fill": bool(_s(lambda: bool(source.OverprintFill), False)),
+                    "overprint_outline": bool(_s(
+                        lambda: bool(source.OverprintOutline), False)),
+                    "note": "实测 outline 状态 2→4 随叠印开关变化；fill 状态恒为 1，"
+                            "判断填充是否叠印请读 OverprintFill 布尔属性"}
         if op in {"matrix", "is_type", "in_front_of", "is_on_shape", "distort",
                   "place_text", "duplicate_range", "clone_range"}:
             source = find_shape(doc, page, target or {})
