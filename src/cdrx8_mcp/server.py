@@ -373,7 +373,8 @@ def cdr_text(document_id: str, target: dict, text: str | None = None,
              line_spacing: float | None = None, char_spacing: float | None = None,
              word_spacing: float | None = None,
              indent_left: float | None = None, indent_right: float | None = None,
-             indent_first_line: float | None = None,
+             indent_first_line: float | None = None, clear_tabs: bool = False,
+             tab_stops: list | None = None,
              insert_before: str | None = None, insert_after: str | None = None,
              to_paragraph: bool = False, to_artistic: bool = False,
              contents: str | None = None, find: str | None = None,
@@ -397,7 +398,9 @@ def cdr_text(document_id: str, target: dict, text: str | None = None,
     样式：font / size / bold / italic / underline / alignment /
           change_case（sentence·lower·upper·title·toggle）/ bullet / drop_cap /
           line_spacing / char_spacing / word_spacing /
-          indent_left / indent_right / indent_first_line（段落缩进，mm）
+          indent_left / indent_right / indent_first_line（段落缩进，mm）/
+          tab_stops（制表位：["10mm" 数值 / {position,alignment,leadered}]）/
+          clear_tabs（先清空制表位）
     文本区间：select_all / align_to_baseline / copy_attributes_from（复制另一对象的文字属性）
     版式：fit_to_path（沿曲线）/ fit_frame（自动适配文本框）/ insert_before / insert_after
     输出：to_curves（转曲，发排前必做）
@@ -424,7 +427,7 @@ def cdr_text(document_id: str, target: dict, text: str | None = None,
             opentype,
         )) or any((to_curves, fit_frame, no_effect, to_paragraph, to_artistic,
                    select_all, align_to_baseline, range_delete, range_copy,
-                   range_paste, range_straighten))
+                   range_paste, range_straighten, clear_tabs)) or bool(tab_stops)
         warnings = _check_view(sess, expected_revision, snapshot_token, doc) \
             if mutating else []
         target_path = resolve_write_path(export_path, overwrite=export_overwrite)[0] \
@@ -437,7 +440,7 @@ def cdr_text(document_id: str, target: dict, text: str | None = None,
             line_spacing=line_spacing, char_spacing=char_spacing,
             word_spacing=word_spacing, indent_left=indent_left,
             indent_right=indent_right, indent_first_line=indent_first_line,
-            insert_before=insert_before,
+            clear_tabs=clear_tabs, tab_stops=tab_stops, insert_before=insert_before,
             insert_after=insert_after, to_paragraph=to_paragraph, to_artistic=to_artistic,
             contents=contents, find=find, replace_old=replace_old,
             replace_new=replace_new, select_all=select_all,

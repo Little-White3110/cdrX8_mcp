@@ -4261,6 +4261,7 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
              char_spacing: float | None = None, word_spacing: float | None = None,
              indent_left: float | None = None, indent_right: float | None = None,
              indent_first_line: float | None = None,
+             clear_tabs: bool = False, tab_stops: list | None = None,
              insert_before: str | None = None, insert_after: str | None = None,
              to_paragraph: bool = False, to_artistic: bool = False,
              contents: str | None = None, find: str | None = None,
@@ -4290,7 +4291,7 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
             opentype,
         )) or any((to_curves, fit_frame, no_effect, to_paragraph, to_artistic,
                    select_all, align_to_baseline, range_delete, range_copy,
-                   range_paste, range_straighten))
+                   range_paste, range_straighten, clear_tabs)) or bool(tab_stops)
         if not mutating:
             # 纯读取 / 导出：不建 undo 组，也不改动文档
             result: dict = {"applied": [], "warnings": [],
@@ -4341,6 +4342,16 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
                     "right": _s(lambda: float(story.RightIndent)),
                     "first_line": _s(lambda: float(story.FirstLineIndent)),
                 }
+                try:
+                    tabs = story.Tabs
+                    count = _n(lambda: int(tabs.Count), 0)
+                    result["tabs"] = [
+                        {"position": _s(lambda i=i: float(tabs.Item(i).Position)),
+                         "alignment": _n(lambda i=i: int(tabs.Item(i).Alignment)),
+                         "leadered": bool(_s(lambda i=i: bool(tabs.Item(i).Leadered), False))}
+                        for i in range(1, min(count, 100) + 1)]
+                except Exception:
+                    result["tabs"] = []
             return result
         with atomic(doc, label):
             story = shape.Text.Story
@@ -4485,6 +4496,21 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
                     applied.append("indent")
                 except Exception as exc:  # noqa: BLE001
                     warnings.append(f"段落缩进设置失败：{exc}")
+            if clear_tabs or tab_stops:
+                try:
+                    tabs = shape.Text.Story.Tabs
+                    if clear_tabs:
+                        tabs.Clear()
+                    for spec in (tab_stops or []):
+                        if isinstance(spec, dict):
+                            tabs.Add(float(spec.get("position", 0)),
+                                     int(spec.get("alignment", 0)),
+                                     bool(spec.get("leadered", False)))
+                        else:
+                            tabs.Add(float(spec), 0, False)
+                    applied.append("tabs")
+                except Exception as exc:  # noqa: BLE001
+                    warnings.append(f"制表位设置失败：{exc}")
             if fit_to_path:
                 try:
                     path_shape = find_shape(doc, _page(doc, page_index), fit_to_path)
@@ -4594,6 +4620,16 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
                     "right": _s(lambda: float(story.RightIndent)),
                     "first_line": _s(lambda: float(story.FirstLineIndent)),
                 }
+                try:
+                    tabs = story.Tabs
+                    count = _n(lambda: int(tabs.Count), 0)
+                    reading["tabs"] = [
+                        {"position": _s(lambda i=i: float(tabs.Item(i).Position)),
+                         "alignment": _n(lambda i=i: int(tabs.Item(i).Alignment)),
+                         "leadered": bool(_s(lambda i=i: bool(tabs.Item(i).Leadered), False))}
+                        for i in range(1, min(count, 100) + 1)]
+                except Exception:
+                    reading["tabs"] = []
             return {
                 "applied": applied,
                 "warnings": warnings,

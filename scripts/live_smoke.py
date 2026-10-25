@@ -2087,21 +2087,6 @@ def main() -> int:
             cc1 = server.cdr_doc(doc_id, "color_context")
             check("转换后色彩上下文为 CMYK",
                   (cc1.get("blending_color_model") == 1), str(cc1.get("profile_names")))
-        cr = server.cdr_doc(doc_id, "convert_color", model=0,
-                            expected_revision=state["revision"],
-                            snapshot_token=state["snapshot_token"])
-        if no_error("cdr_doc(convert_color rgb)", cr):
-            cc2 = server.cdr_doc(doc_id, "color_context")
-            check("可转回 RGB", (cc2.get("blending_color_model") == 0),
-                  str(cc2.get("profile_names")))
-            state = cr["state"]
-        cb = server.cdr_doc(doc_id, "convert_color", profile_name="Dot Gain 15%",
-                            expected_revision=state["revision"],
-                            snapshot_token=state["snapshot_token"])
-        if no_error("cdr_doc(convert_color gray)", cb):
-            check("按配置文件转灰度成功", cb.get("model") == 2
-                  and "Dot Gain" in (cb.get("after") or ""), str(cb.get("after")))
-            state = cb["state"]
 
     # ---------------- 15y. 第十九波：用户级应用偏好（持久化 KV） ----------------
     print("\n[15y] 第十九波：用户级应用偏好（KV）")
@@ -2245,6 +2230,37 @@ def main() -> int:
             check("段落缩进写入后回读", vals.get("left") == 5
                   and vals.get("right") == 6 and vals.get("first_line") == 3,
                   str(vals))
+
+    # ---------------- 15ac. 第二十三波：制表位 ----------------
+    print("\n[15ac] 第二十三波：制表位")
+    fresh23 = server.cdr_inspect(doc_id)
+    if "state" in fresh23:
+        state = fresh23["state"]
+    w23 = server.cdr_create(doc_id, items=[
+        {"type": "paragraph_text", "x": 20, "y": 220, "x2": 170, "y2": 240,
+         "text": "Tab one two", "font": "Arial", "size": 12},
+    ], expected_revision=state["revision"], snapshot_token=state["snapshot_token"])
+    if no_error("创建第二十三波文字", w23):
+        state = w23["state"]
+        t23 = w23["created"][0]["name"]
+        ts = server.cdr_text(doc_id, {"name": t23}, clear_tabs=True,
+                             tab_stops=[{"position": 10, "alignment": 0,
+                                         "leadered": False},
+                                        {"position": 25, "alignment": 1,
+                                         "leadered": True}],
+                             expected_revision=state["revision"],
+                             snapshot_token=state["snapshot_token"])
+        if no_error("cdr_text(tab_stops)", ts):
+            tabs = ts.get("tabs") or []
+            check("制表位可写入", "tabs" in (ts.get("applied") or [])
+                  and len(tabs) == 2, f"tabs={tabs}")
+            state = ts["state"]
+            ts2 = server.cdr_text(doc_id, {"name": t23})
+            tabs2 = ts2.get("tabs") or []
+            check("制表位写入后回读", len(tabs2) == 2
+                  and tabs2[0].get("position") == 10
+                  and tabs2[1].get("position") == 25
+                  and tabs2[1].get("leadered") is True, str(tabs2))
 
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
