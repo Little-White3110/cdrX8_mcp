@@ -2291,6 +2291,28 @@ def main() -> int:
               and (loc2.get("languages") or {}).get("2052") == "中文标题",
               str(loc2))
 
+    # ---------------- 15ae. 第二十五波：屏幕叠加层 ----------------
+    print("\n[15ae] 第二十五波：屏幕叠加层")
+    ov1 = server.cdr_view(doc_id, "overlay_text", text="Smoke overlay",
+                          x=200, y=200, color=0x0000FF)
+    if no_error("cdr_view(overlay_text)", ov1):
+        check("叠加文字已显示", ov1.get("shown") == 1, str(ov1))
+    ov2 = server.cdr_view(doc_id, "overlay_rect", x=50, y=50, x2=300,
+                          y2=200, color=0x00FF00)
+    if no_error("cdr_view(overlay_rect)", ov2):
+        check("叠加矩形已显示", (ov2.get("shown") or 0) >= 2, str(ov2))
+    ov3 = server.cdr_view(doc_id, "overlay_line", x=50, y=250, x2=300,
+                          y2=250, color=0x00FFFF)
+    if no_error("cdr_view(overlay_line)", ov3):
+        check("叠加直线已显示", (ov3.get("shown") or 0) >= 3, str(ov3))
+    ov4 = server.cdr_view(doc_id, "overlay_circle", x=400, y=150, radius=40,
+                          color=0xFFFF00)
+    if no_error("cdr_view(overlay_circle)", ov4):
+        check("叠加圆已显示", (ov4.get("shown") or 0) >= 4, str(ov4))
+    ovc = server.cdr_view(doc_id, "overlay_clear")
+    if no_error("cdr_view(overlay_clear)", ovc):
+        check("叠加层可全部隐藏", (ovc.get("hidden") or 0) >= 4, str(ovc))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

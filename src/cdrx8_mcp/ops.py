@@ -232,15 +232,57 @@ def save_as_copy(doc: Any, path: str) -> dict:
 
 
 VIEW_ACTIONS = ("refresh", "activate", "to_screen", "to_document",
-                "distance_to_screen", "distance_to_document")
+                "distance_to_screen", "distance_to_document",
+                "overlay_text", "overlay_rect", "overlay_line",
+                "overlay_circle", "overlay_clear")
+_ONSCREEN = {"items": []}
 
 
 def view_ops(doc: Any, action: str, *, x: float | None = None, y: float | None = None,
-             distance: float = 10.0) -> dict:
+             distance: float = 10.0, text: str | None = None,
+             x2: float | None = None, y2: float | None = None,
+             radius: float = 20.0, color: int = 0x0000FF,
+             width: int = 2) -> dict:
     """视图/窗口操作（IVGWindow，实测可用）。"""
     act = (action or "refresh").lower()
     if act not in VIEW_ACTIONS:
         raise CdrBadArgument(f"未知 action {action!r}；可用：{', '.join(VIEW_ACTIONS)}")
+    if act == "overlay_clear":
+        hidden = 0
+        for obj in list(_ONSCREEN["items"]):
+            try:
+                obj.Hide()
+                hidden += 1
+            except Exception:
+                pass
+        _ONSCREEN["items"] = []
+        return {"action": act, "hidden": hidden}
+    if act.startswith("overlay_"):
+        app = _app_of(doc)
+        if act == "overlay_text":
+            obj = app.CreateOnScreenText()
+            obj.SetTextAndPosition(str(text or "overlay"),
+                                   float(x if x is not None else 100),
+                                   float(y if y is not None else 100))
+            obj.SetTextColor(int(color))
+        else:
+            obj = app.CreateOnScreenCurve()
+            obj.SetPen(int(color), int(width), 0)
+            obj.SetNoBrush()
+            ox = float(x if x is not None else 50)
+            oy = float(y if y is not None else 50)
+            ex = float(x2 if x2 is not None else ox + 100)
+            ey = float(y2 if y2 is not None else oy + 60)
+            if act == "overlay_rect":
+                obj.SetRectangle(ox, oy, ex, ey)
+            elif act == "overlay_line":
+                obj.SetLine(ox, oy, ex, ey)
+            else:  # overlay_circle
+                obj.SetCircle(ox, oy, float(radius))
+        obj.Show()
+        _ONSCREEN["items"].append(obj)
+        return {"action": act, "shown": len(_ONSCREEN["items"]),
+                "screen_coords": True}
     win = _s(lambda: doc.ActiveWindow)
     if win is None:
         # 实测：按名取回的 Document 偶尔取不到 ActiveWindow，退到 Application 层

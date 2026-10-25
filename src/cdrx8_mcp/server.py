@@ -1149,7 +1149,10 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
 @mcp.tool()
 def cdr_view(document_id: str, action: str = "refresh",
              x: float | None = None, y: float | None = None,
-             distance: float = 10.0) -> dict:
+             distance: float = 10.0, text: str | None = None,
+             x2: float | None = None, y2: float | None = None,
+             radius: float = 20.0, color: int = 0x0000FF,
+             width: int = 2) -> dict:
     """视图/窗口操作。
 
     action:
@@ -1159,10 +1162,18 @@ def cdr_view(document_id: str, action: str = "refresh",
       to_document（x,y）    屏幕坐标 -> 文档坐标
       distance_to_screen（distance）  文档距离 -> 屏幕距离
       distance_to_document（distance）  屏幕距离 -> 文档距离
+      overlay_text（text,x,y,color）        屏幕叠加文字（xor，不写入文档）
+      overlay_rect（x,y,x2,y2,color,width） 屏幕叠加矩形
+      overlay_line（x,y,x2,y2,color,width） 屏幕叠加直线
+      overlay_circle（x,y,radius,color,width） 屏幕叠加圆
+      overlay_clear                         隐藏所有叠加层
     """
     def _run():
         doc, _sess = _with_doc(document_id)
-        return _com(lambda _b: ops.view_ops(doc, action, x=x, y=y, distance=distance),
+        return _com(lambda _b: ops.view_ops(doc, action, x=x, y=y,
+                                           distance=distance, text=text,
+                                           x2=x2, y2=y2, radius=radius,
+                                           color=color, width=width),
                     label="cdr_view")
 
     return _guard(_run)
