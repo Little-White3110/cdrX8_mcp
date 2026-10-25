@@ -1766,6 +1766,137 @@ def snap_ops(doc: Any, action: str, *, target: dict | None = None,
         return payload
 
 
+# --------------------------------------------------------------------------- #
+# 描边对象（IVGOutline 深度操作）
+# --------------------------------------------------------------------------- #
+OUTLINE_ACTIONS = ("info", "set", "convert_to_object", "copy", "compare")
+OUTLINE_PROPS = {
+    "width": "Width",
+    "nib_stretch": "NibStretch",
+    "nib_angle": "NibAngle",
+    "miter_limit": "MiterLimit",
+    "justification": "Justification",
+    "dashdot_length": "DashDotLength",
+    "behind_fill": "BehindFill",
+    "scale_with_shape": "ScaleWithShape",
+}
+
+
+def _outline_info(shape: Any) -> dict:
+    ol = _s(lambda: shape.Outline)
+    if ol is None:
+        raise CdrBadArgument("该对象取不到 Outline")
+    color = _s(lambda: ol.Color)
+    info: dict = {
+        "shape": _s(lambda: str(shape.Name)),
+        "width": _round(_s(lambda: float(ol.Width), 0.0)),
+        "type": _n(lambda: int(ol.Type)),
+        "color": _s(lambda: str(color.ToString())) if color is not None else None,
+        "style_index": _n(lambda: int(ol.Style.Index),),
+        "line_caps": _n(lambda: int(ol.LineCaps)),
+        "line_join": _n(lambda: int(ol.LineJoin)),
+        "behind_fill": bool(_s(lambda: bool(ol.BehindFill), False)),
+        "scale_with_shape": bool(_s(lambda: bool(ol.ScaleWithShape), False)),
+        "nib_stretch": _n(lambda: int(ol.NibStretch)),
+        "nib_angle": _round(_s(lambda: float(ol.NibAngle), 0.0)),
+        "miter_limit": _round(_s(lambda: float(ol.MiterLimit), 0.0)),
+        "justification": _n(lambda: int(ol.Justification)),
+        "dashdot_length": _round(_s(lambda: float(ol.DashDotLength), 0.0)),
+        "pen_width": _round(_s(lambda: float(ol.PenWidth), 0.0)),
+        "start_arrow": _s(lambda: str(ol.StartArrow.ToString())),
+        "end_arrow": _s(lambda: str(ol.EndArrow.ToString())),
+    }
+    return info
+
+
+def outline_ops(doc: Any, page_index: int | None, target: dict, action: str, *,
+                changes: dict | None = None, target2: dict | None = None) -> dict:
+    """描边对象深度操作（实测可用）。
+
+    * 属性：Width / Type / Color / Style.Index / LineCaps / LineJoin / BehindFill /
+      ScaleWithShape / NibStretch / NibAngle / MiterLimit / Justification
+    * `Outline.SetProperties(...)` 只要**14 个参数全是实参**（可选位传 0 / 0.0 / None 的对象位）
+      就能用；早先「TypeError 不可用」是传了 None 到 int 形参导致的。
+    * `Outline.ConvertToObject()` 把描边变成独立曲线对象（源对象被替换，对象总数不变）。
+    * `GetCopy` / `CopyAssign` / `CompareWith` 可用；`PenWidth` 恒为 0（派生属性，没用）、
+      `DashDotLength` 写入不生效、`ToString/StringAssign` 在 pywin32 包装类里不存在。
+    """
+    act = (action or "").lower()
+    if act not in OUTLINE_ACTIONS:
+        raise CdrBadArgument(f"未知 action {action!r}；可用：{', '.join(OUTLINE_ACTIONS)}")
+
+    with mm_units(doc):
+        page = _page(doc, page_index)
+        shape = find_shape(doc, page, target)
+
+        if act == "info":
+            return {"action": act, **_outline_info(shape)}
+
+        if act == "compare":
+            if target2 is None:
+                raise CdrBadArgument("action=compare 需要 target2（对比对象）")
+            other = find_shape(doc, page, target2)
+            same = bool(_s(lambda: bool(shape.Outline.CompareWith(other.Outline)), False))
+            return {"action": act, "same": same,
+                    "a": _outline_info(shape), "b": _outline_info(other)}
+
+        if act == "copy":
+            if target2 is None:
+                raise CdrBadArgument("action=copy 需要 target2（源对象，复制它的描边）")
+            src = find_shape(doc, page, target2)
+            shape.Outline.CopyAssign(src.Outline)
+            return {"action": act, "from": _s(lambda: str(src.Name)),
+                    **_outline_info(shape)}
+
+        if act == "convert_to_object":
+            before = _n(lambda: int(page.Shapes.Count), 0) or 0
+            made = _s(lambda: shape.Outline.ConvertToObject())
+            after = _n(lambda: int(page.Shapes.Count), 0) or 0
+            if made is None:
+                raise CdrComFailure("Outline.ConvertToObject 没有返回对象")
+            name = _ensure_name(made)
+            return {"action": act, "created": {"name": name,
+                                               "type_id": _n(lambda: int(made.Type)),
+                                               "bbox": _bbox(made)},
+                    "shapes_before": before, "shapes_after": after}
+
+        # action == "set"
+        spec = dict(changes or {})
+        if not spec:
+            raise CdrBadArgument("action=set 需要 changes")
+        applied: dict = {}
+        if spec.get("use_set_properties"):
+            shape.Outline.SetProperties(
+                float(spec.get("width", shape.Outline.Width)),
+                None, shape.Outline.Color, None, None,
+                int(bool(spec.get("behind_fill", False))),
+                int(bool(spec.get("scale_with_shape", False))),
+                int(spec.get("line_caps", 0)),
+                int(spec.get("line_join", 0)),
+                float(spec.get("nib_angle", 0.0)),
+                int(spec.get("nib_stretch", 100)),
+                float(spec.get("dashdot_length", 0.0)),
+                float(spec.get("pen_width", 1.0)),
+                float(spec.get("miter_limit", 5.0)),
+            )
+            applied["use_set_properties"] = True
+        else:
+            generic = {k: v for k, v in spec.items() if k in (
+                "width", "color", "caps", "join", "behind_fill", "scale_with_shape",
+                "dash", "dash_pattern", "start_arrow", "end_arrow", "none",
+                "type", "save_outline_styles")}
+            if generic:
+                apply_outline(doc, shape, generic)
+                applied.update({k: (v if not isinstance(v, (list, tuple)) else "…")
+                                for k, v in generic.items()})
+            for key in ("nib_stretch", "nib_angle", "miter_limit", "justification",
+                        "dashdot_length"):
+                if key in spec:
+                    setattr(shape.Outline, OUTLINE_PROPS[key], spec[key])
+                    applied[key] = spec[key]
+        return {"action": act, "applied": applied, **_outline_info(shape)}
+
+
 def objects_bounds(doc: Any, page_index: int | None = None,
                    selected_only: bool = False) -> dict:
     """本页所有对象（或当前选中对象）的总包围盒。
@@ -3663,9 +3794,170 @@ def _apply_effect(shape: Any, spec: Any) -> str:
     return kind
 
 
+COLOR_OBJECT_ACTIONS = ("object_info", "object_name", "object_compare", "object_blend",
+                        "object_copy", "object_string_assign", "object_convert",
+                        "object_fixed", "object_assign")
+# 显式写法（而不是 getattr 动态调用）：既方便 grep，也让覆盖率审计能统计到
+COLOR_CONVERT_CALLS = {
+    "rgb": lambda c: c.ConvertToRGB(),
+    "cmyk": lambda c: c.ConvertToCMYK(),
+    "gray": lambda c: c.ConvertToGray(),
+    "hls": lambda c: c.ConvertToHLS(),
+    "hsb": lambda c: c.ConvertToHSB(),
+    "lab": lambda c: c.ConvertToLab(),
+    "cmy": lambda c: c.ConvertToCMY(),
+    "yiq": lambda c: c.ConvertToYIQ(),
+}
+COLOR_COMPONENT_ARITY = {"rgb": 3, "cmyk": 4, "gray": 1, "hls": 3, "hsb": 3,
+                         "lab": 3, "cmy": 3, "yiq": 3, "bw": 1, "registration": 0}
+COLOR_ASSIGN_CALLS = {
+    "rgb": lambda c, v: c.RGBAssign(int(v[0]), int(v[1]), int(v[2])),
+    "cmyk": lambda c, v: c.CMYKAssign(int(v[0]), int(v[1]), int(v[2]), int(v[3])),
+    "gray": lambda c, v: c.GrayAssign(int(v[0])),
+    "hls": lambda c, v: c.HLSAssign(int(v[0]), int(v[1]), int(v[2])),
+    "hsb": lambda c, v: c.HSBAssign(int(v[0]), int(v[1]), int(v[2])),
+    "lab": lambda c, v: c.LabAssign(float(v[0]), float(v[1]), float(v[2])),
+    "cmy": lambda c, v: c.CMYAssign(int(v[0]), int(v[1]), int(v[2])),
+    "yiq": lambda c, v: c.YIQAssign(int(v[0]), int(v[1]), int(v[2])),
+    "bw": lambda c, v: c.BWAssign(int(v[0])),
+    "registration": lambda c, v: c.RegistrationAssign(),
+}
+
+
+def _color_object(spec: Any) -> Any:
+    """按 spec 造一个 IVGColor（走桥接持有的 Application，与文档无关）。"""
+    if spec is None:
+        raise CdrBadArgument("需要 color")
+    return _color(None, spec)
+
+
+def _color_object_info(spec: Any) -> dict:
+    obj = _color_object(spec)
+    return {
+        "input": spec if isinstance(spec, (str, int, float)) else "dict",
+        "type": _n(lambda: int(obj.Type)),
+        "to_string": _s(lambda: str(obj.ToString())),
+        "name": _s(lambda: str(obj.GetName())),
+    }
+
+
+def color_object_ops(action: str, *, color: Any = None, color2: Any = None,
+                     ratio: float = 50.0, name: str | None = None,
+                     model: str | None = None, mode: int = 0,
+                     values: list | None = None) -> dict:
+    """X8 `IVGColor` 对象级操作（实测：分量属性不可读，但下面这些都能用）。
+
+    * `IsSame` / `IsSimilar` / `GetColorDistanceFrom` 可比较两种颜色
+    * `BlendWith(other, 0..100)` **原地**改色，返回 None
+    * `ConvertToRGB/CMYK/Gray/HLS/HSB/Lab/CMY/YIQ` **原地**转换（返回 None，类型会变）
+    * `ConvertToFixed(0/1/2)` 转固定调色板（实测 0=USER、1=TRU、2=PAN_PROC）
+    * `GetName/SetName` 读写颜色名；`StringAssign("CMYK,USER,…")` 从颜色串赋值
+    * `ConvertToPalette` / `SpotAssignByName` / `CopyAppearance` 实测报错，未暴露
+    """
+    act = (action or "").lower()
+    if act not in COLOR_OBJECT_ACTIONS:
+        raise CdrBadArgument(f"未知 action {action!r}；可用：{', '.join(COLOR_OBJECT_ACTIONS)}")
+
+    if act == "object_info":
+        return {"action": act, **_color_object_info(color)}
+
+    if act == "object_name":
+        obj = _color_object(color)
+        before = _s(lambda: str(obj.GetName()))
+        if name:
+            obj.SetName(str(name))
+        return {"action": act, "name_before": before,
+                "name_after": _s(lambda: str(obj.GetName())),
+                "to_string": _s(lambda: str(obj.ToString()))}
+
+    if act == "object_compare":
+        if color2 is None:
+            raise CdrBadArgument("object_compare 需要 color2")
+        a = _color_object(color)
+        b = _color_object(color2)
+        distance = _s(lambda: float(a.GetColorDistanceFrom(b)))
+        return {
+            "action": act,
+            "a": _s(lambda: str(a.ToString())),
+            "b": _s(lambda: str(b.ToString())),
+            "is_same": bool(_s(lambda: bool(a.IsSame(b)), False)),
+            "is_similar": bool(_s(lambda: bool(a.IsSimilar(b)), False)),
+            "distance": _round(distance) if distance is not None else None,
+        }
+
+    if act == "object_blend":
+        if color2 is None:
+            raise CdrBadArgument("object_blend 需要 color2")
+        a = _color_object(color)
+        b = _color_object(color2)
+        before = _s(lambda: str(a.ToString()))
+        a.BlendWith(b, float(ratio))
+        return {"action": act, "ratio": float(ratio), "before": before,
+                "after": _s(lambda: str(a.ToString())),
+                "type_after": _n(lambda: int(a.Type))}
+
+    if act == "object_copy":
+        a = _color_object(color)
+        clone = _s(lambda: a.GetCopy())
+        if clone is None:
+            raise CdrComFailure("Color.GetCopy 返回空")
+        return {"action": act, "original": _s(lambda: str(a.ToString())),
+                "copy": _s(lambda: str(clone.ToString())),
+                "is_same": bool(_s(lambda: bool(clone.IsSame(a)), False))}
+
+    if act == "object_string_assign":
+        a = _color_object(color)
+        if not isinstance(color2, str) or not color2:
+            raise CdrBadArgument('object_string_assign 需要 color2 = 颜色串，'
+                                 '如 "CMYK,USER,10,20,30,40,100,<GUID>"')
+        before = _s(lambda: str(a.ToString()))
+        a.StringAssign(color2)
+        return {"action": act, "before": before,
+                "after": _s(lambda: str(a.ToString())),
+                "type_after": _n(lambda: int(a.Type))}
+
+    if act == "object_convert":
+        want = str(model or color2 or "cmyk").lower()
+        if want not in COLOR_CONVERT_CALLS:
+            raise CdrBadArgument(
+                f"不支持的目标模型 {want!r}；可用 {sorted(COLOR_CONVERT_CALLS)}")
+        a = _color_object(color)
+        before = _s(lambda: str(a.ToString()))
+        COLOR_CONVERT_CALLS[want](a)
+        return {"action": act, "model": want, "before": before,
+                "after": _s(lambda: str(a.ToString())),
+                "type_after": _n(lambda: int(a.Type))}
+
+    if act == "object_assign":
+        want = str(model or "rgb").lower()
+        if want not in COLOR_ASSIGN_CALLS:
+            raise CdrBadArgument(
+                f"不支持的分量模型 {want!r}；可用 {sorted(COLOR_ASSIGN_CALLS)}")
+        need = COLOR_COMPONENT_ARITY[want]
+        vals = list(values or [])
+        if need and len(vals) != need:
+            raise CdrBadArgument(
+                f"{want} 需要 {need} 个分量，收到 {len(vals)} 个（用 values=[…] 传）")
+        a = _color_object(color if color is not None else "#000000")
+        before = _s(lambda: str(a.ToString()))
+        COLOR_ASSIGN_CALLS[want](a, vals)
+        return {"action": act, "model": want, "values": vals, "before": before,
+                "after": _s(lambda: str(a.ToString())),
+                "type_after": _n(lambda: int(a.Type))}
+
+    # object_fixed
+    a = _color_object(color)
+    before = _s(lambda: str(a.ToString()))
+    a.ConvertToFixed(int(mode))
+    return {"action": act, "mode": int(mode), "before": before,
+            "after": _s(lambda: str(a.ToString())),
+            "type_after": _n(lambda: int(a.Type))}
+
+
 def color_ops(doc: Any, action: str, *, color: Any = None, color2: Any = None,
               ratio: float = 0.5, index: int = 1,
-              label: str = "cdr_color") -> dict:
+              model: str | None = None, mode: int = 0, name: str | None = None,
+              values: list | None = None, label: str = "cdr_color") -> dict:
     """颜色运算（**纯 Python 计算，不依赖 CorelDRAW**）。
 
     实测原因：X8 的 IVGColor 不暴露任何分量属性（Red/Cyan/Gray 全部 AttributeError），
@@ -3679,8 +3971,14 @@ def color_ops(doc: Any, action: str, *, color: Any = None, color2: Any = None,
     from . import colors as colorlib
 
     act = (action or "info").lower()
+    if act in COLOR_OBJECT_ACTIONS:
+        # ratio 对 COM 侧是 0..100；调用方习惯 0..1，这里统一归一
+        pct = float(ratio) * 100.0 if float(ratio) <= 1.0 else float(ratio)
+        return color_object_ops(act, color=color, color2=color2, ratio=pct,
+                                model=model, mode=mode, name=name, values=values)
     if act not in {"info", "convert", "blend"}:
-        raise CdrBadArgument("action 可用 info / convert / blend")
+        raise CdrBadArgument(
+            "action 可用 info / convert / blend / " + " / ".join(COLOR_OBJECT_ACTIONS))
     if color is None:
         raise CdrBadArgument("需要 color")
 

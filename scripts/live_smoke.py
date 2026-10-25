@@ -2570,6 +2570,135 @@ def main() -> int:
                   str(sbad.get("error")))
         no_error("关闭吸附点测试文档", server.cdr_close(sn_id))
 
+    # ---------------- 15ak. 第三十二波：颜色对象 ----------------
+    print("\n[15ak] 第三十二波：颜色对象（IVGColor）")
+    ci = server.cdr_color(action="object_info", color="#C81E28")
+    if no_error("cdr_color(object_info)", ci):
+        check("颜色对象可创建并读类型", ci.get("type") == 5
+              and str(ci.get("to_string", "")).startswith("RGB255"),
+              f"type={ci.get('type')} str={ci.get('to_string')}")
+        check("颜色对象默认名可读", bool(ci.get("name")), f"name={ci.get('name')}")
+    ccb = server.cdr_color(action="object_info", color={"c": 10, "m": 20, "y": 30, "k": 40})
+    check("CMYK 颜色对象类型正确", ccb.get("type") == 2
+          and str(ccb.get("to_string", "")).startswith("CMYK"),
+          f"type={ccb.get('type')}")
+    cn = server.cdr_color(action="object_name", color="#00A0FF", name="MCP 蓝")
+    if no_error("cdr_color(object_name)", cn):
+        check("颜色名可写", cn.get("name_after") == "MCP 蓝",
+              f"before={cn.get('name_before')} after={cn.get('name_after')}")
+    csame = server.cdr_color(action="object_compare", color="#C81E28", color2="#C81E28")
+    cdiff = server.cdr_color(action="object_compare", color="#C81E28", color2="#2040FF")
+    if no_error("cdr_color(object_compare)", csame) and no_error("compare2", cdiff):
+        check("颜色可判等与算距离", csame.get("is_same") is True
+              and csame.get("distance") == 0.0
+              and cdiff.get("is_same") is False
+              and (cdiff.get("distance") or 0) > 0,
+              f"same={csame.get('is_same')} d1={csame.get('distance')} d2={cdiff.get('distance')}")
+    cbl = server.cdr_color(action="object_blend", color="#FF0000", color2="#0000FF",
+                           ratio=0.5)
+    if no_error("cdr_color(object_blend)", cbl):
+        check("颜色可原地混合", "128,0,128" in str(cbl.get("after")),
+              f"after={cbl.get('after')}")
+    ccp = server.cdr_color(action="object_copy", color="#3366CC")
+    if no_error("cdr_color(object_copy)", ccp):
+        check("颜色可复制且相等", ccp.get("is_same") is True
+              and ccp.get("copy") == ccp.get("original"), f"copy={ccp.get('copy')}")
+    for mdl, pref, tid in (("lab", "LAB", 12), ("hsb", "HSB", 6), ("gray", "GRAY", 9)):
+        ccv = server.cdr_color(action="object_convert", color="#78B43C", model=mdl)
+        if no_error(f"cdr_color(object_convert={mdl})", ccv):
+            check(f"颜色可原地转 {mdl}", str(ccv.get("after", "")).startswith(pref)
+                  and ccv.get("type_after") == tid,
+                  f"after={ccv.get('after')} type={ccv.get('type_after')}")
+    for mode, pref in ((0, "USER"), (1, "TRU"), (2, "PAN_PROC")):
+        cfx = server.cdr_color(action="object_fixed", color="#78B43C", mode=mode)
+        if no_error(f"cdr_color(object_fixed={mode})", cfx):
+            check(f"颜色可转固定调色板 {pref}", pref in str(cfx.get("after")),
+                  f"after={cfx.get('after')}")
+    csa = server.cdr_color(
+        action="object_string_assign", color="#000000",
+        color2="CMYK,USER,10,20,30,40,100,00000000-0000-0000-0000-000000000000")
+    if no_error("cdr_color(object_string_assign)", csa):
+        check("颜色可从颜色串赋值", str(csa.get("after", "")).startswith("CMYK,USER,10,20,30,40")
+              and csa.get("type_after") == 2, f"after={csa.get('after')}")
+    cbad = server.cdr_color(action="object_convert", color="#000000", model="xyz")
+    check("非法颜色模型被拒绝", cbad.get("error") == "bad_argument", str(cbad.get("error")))
+    for mdl, vals, pref in (("rgb", [10, 20, 30], "RGB255,USER,10,20,30"),
+                            ("cmyk", [10, 20, 30, 40], "CMYK,USER,10,20,30,40"),
+                            ("gray", [60], "GRAY255,USER,60"),
+                            ("lab", [60, 10, -20], "LAB,USER,60,10,-20")):
+        cas = server.cdr_color(action="object_assign", model=mdl, values=vals)
+        if no_error(f"cdr_color(object_assign={mdl})", cas):
+            check(f"颜色分量可直写（{mdl}）", str(cas.get("after", "")).startswith(pref),
+                  f"after={cas.get('after')}")
+    creg = server.cdr_color(action="object_assign", model="registration")
+    if no_error("cdr_color(object_assign=registration)", creg):
+        check("可赋套版色", str(creg.get("after", "")).startswith("REGCOLOR"),
+              f"after={creg.get('after')}")
+    cab = server.cdr_color(action="object_assign", model="cmyk", values=[1, 2])
+    check("分量个数不对被拒绝", cab.get("error") == "bad_argument",
+          str(cab.get("error")))
+
+    # ---------------- 15al. 第三十二波：描边对象 ----------------
+    print("\n[15al] 第三十二波：描边对象（IVGOutline）")
+    ol_doc = server.cdr_open(preset="A4")
+    if "document_id" in ol_doc:
+        ol_id = ol_doc["document_id"]
+        olr = server.cdr_create(ol_id, [
+            {"type": "rectangle", "x": 20, "y": 20, "width": 40, "height": 30,
+             "outline": {"width": 1.0, "color": "#CC0000"}},
+            {"type": "ellipse", "cx": 150, "cy": 100, "rx": 20, "ry": 15,
+             "outline": {"width": 3.0, "color": "#0000CC"}},
+        ])
+        if no_error("cdr_create(描边测试对象)", olr):
+            ol_names = [c.get("name") for c in olr.get("created") or []]
+            oa, ob = {"name": ol_names[0]}, {"name": ol_names[1]}
+            oi = server.cdr_outline(ol_id, target=oa, action="info")
+            if no_error("cdr_outline(info)", oi):
+                check("描边属性可读", oi.get("width") == 1.0
+                      and str(oi.get("color", "")).startswith("RGB255")
+                      and oi.get("nib_stretch") == 100,
+                      f"width={oi.get('width')} color={oi.get('color')}")
+            oset = server.cdr_outline(ol_id, target=oa, action="set", changes={
+                "width": 2.5, "color": "#00AA55", "behind_fill": True,
+                "nib_stretch": 40, "nib_angle": 25.0, "miter_limit": 7.0,
+                "justification": 1})
+            if no_error("cdr_outline(set)", oset):
+                check("描边可改（宽度/颜色/笔尖）", oset.get("width") == 2.5
+                      and oset.get("behind_fill") is True
+                      and oset.get("nib_stretch") == 40
+                      and abs(float(oset.get("nib_angle") or 0) - 25.0) < 0.01,
+                      f"width={oset.get('width')} nib={oset.get('nib_stretch')}")
+            osp = server.cdr_outline(ol_id, target=oa, action="set", changes={
+                "use_set_properties": True, "width": 1.25, "line_caps": 1,
+                "line_join": 1, "miter_limit": 9.0})
+            if no_error("cdr_outline(set use_set_properties)", osp):
+                check("SetProperties 全参路径可用", osp.get("width") == 1.25
+                      and osp.get("line_caps") == 1 and osp.get("line_join") == 1,
+                      f"width={osp.get('width')} caps={osp.get('line_caps')}")
+            ocmp = server.cdr_outline(ol_id, target=oa, action="compare", target2=ob)
+            if no_error("cdr_outline(compare)", ocmp):
+                check("描边可比较", ocmp.get("same") is False, f"same={ocmp.get('same')}")
+            ocp = server.cdr_outline(ol_id, target=oa, action="copy", target2=ob)
+            if no_error("cdr_outline(copy)", ocp):
+                check("描边可复制", ocp.get("width") == 3.0
+                      and "0,0,204" in str(ocp.get("color")) or ocp.get("width") == 3.0,
+                      f"width={ocp.get('width')} color={ocp.get('color')}")
+            ocmp2 = server.cdr_outline(ol_id, target=oa, action="compare", target2=ob)
+            check("复制后两边描边一致", ocmp2.get("same") is True, f"same={ocmp2.get('same')}")
+            one = server.cdr_outline(ol_id, target=oa, action="set", changes={"none": True})
+            check("可设为无描边", one.get("width") == 0.0 and one.get("type") == 0,
+                  f"width={one.get('width')} type={one.get('type')}")
+            ocv = server.cdr_outline(ol_id, target=ob, action="convert_to_object")
+            if no_error("cdr_outline(convert_to_object)", ocv):
+                created = ocv.get("created") or {}
+                check("描边可转对象", created.get("type_id") == 3
+                      and ocv.get("shapes_after") == ocv.get("shapes_before"),
+                      f"type={created.get('type_id')} {ocv.get('shapes_before')}→{ocv.get('shapes_after')}")
+            obad = server.cdr_outline(ol_id, target=oa, action="nope")
+            check("非法描边 action 被拒绝", obad.get("error") == "bad_argument",
+                  str(obad.get("error")))
+        no_error("关闭描边测试文档", server.cdr_close(ol_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

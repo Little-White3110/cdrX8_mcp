@@ -2,7 +2,7 @@
 
 > 目的：证明"还有多少没探"。每一行要么有对应的工具，要么有实测失败证据。
 > 环境：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）/ Python 3.11.9 64 位
-> 最近更新：2026-10-25 第三十一波（吸附点：枚举/新建/移动/删除/范围）
+> 最近更新：2026-10-25 第三十二波（颜色对象 / 描边对象深度操作）
 
 ## 怎么得出这份清单
 
@@ -26,7 +26,7 @@
 | `IVGShape` | 124 | 已用：几何 / Fill / Outline / Transparency / Locked / Name / Type / GetBoundingBox / Duplicate / Clone / Delete / **层级 / StepAndRepeat / Distribute / CreateBoundary / CreatePerspective / Separate / CreateEnvelopeFromCurve / CreateEnvelopeFromShape / CompareTo / CreateSelection / RemoveFromSelection / IsOnShape / Copy / Cut / CopyToLayer / MoveToLayer / Project / Unproject / CreateDocumentFrom / CreateExtrude / CreateLens / CreateBlend / OverprintFill / OverprintOutline / OverprintBitmap** / ConvertToCurves / ConvertToSymbol / Weld·Trim·Intersect / AddToPowerClip / CreateDropShadow·Contour·Envelope / AlignToPage·AlignToShape / Fillet·Chamfer·Scallop / Group / Ungroup / BreakApart / Combine |
 | `IVGShapeRange` | 131 | 已用：Group / Combine / AlignAndDistribute / ApplyFountainFill / SetOutlineProperties(不适用，改属性直写) / ConvertToCurves / Add / Count / **CreateParallelCurves / ConvertToBitmap / ConvertOutlineToObject / CreateBoundary / SetFillMode / SetPixelAlignedRendering / ApplyFill / ApplyOutline / CreateDocumentFrom** |
 | `IVGFill` | 13 | 已用：ApplyUniformFill / ApplyFountainFill / ApplyTextureFill / **ApplyPatternFill（内存 PatternCanvas 可用；文件型 Pattern 仍需图像文件）** / ApplyPostscriptFill / ApplyNoFill / **GetCopy / CompareWith**；Hatch 需本机 Hatch 库（本机为空） |
-| `IVGOutline` | 9 | 已用：Width / Color / **Style（可赋自定义线型）** / StartArrow·EndArrow(赋对象) / LineCaps / LineJoin / BehindFill / ScaleWithShape / SetNoOutline / **GetCopy / CompareWith** |
+| `IVGOutline` | 15 | **第三十二波补齐（13/15）**：Width / Color / **Style（可赋自定义线型）** / StartArrow·EndArrow / LineCaps / LineJoin / BehindFill / ScaleWithShape / SetNoOutline / **NibStretch / NibAngle / MiterLimit / Justification**（可读写）/ **GetCopy / CopyAssign / CompareWith / ConvertToObject / SetProperties（14 参全实参可用）**；`PenWidth` 恒 0（派生）、`DashDotLength` 写入不生效、`ToString/StringAssign` 在 pywin32 包装类里不存在 |
 | `IVGOutlineStyle` / `IVGOutlineStyles` | 6 / 6 | **新打通（第十一波）**：`CreateOutlineStyle(dash,gap[,dash,gap,…])` 生成虚拟线型（Index=-1），`OutlineStyles.AddStyle(virtual)` 注册后得到可用 Index，赋给 `Outline.Style` 即生效；`Save()` 可持久化 |
 | `IVGDataFields` / `IVGDataField` / `IVGDataItems` | 8 / 18 / 4 | **新打通（第十一波）**：`DataFields.Add(Name,"0")`、`IsPresent/Item`、`Shape.ObjectData.Add(DataField, Value)`、`DataItem.Value/FormattedValue` 可读写（对象级持久化数据字段） |
 | `IVGCurve` | 37 | 已用：Length / Area / SubPaths / Contour / CreateSubPath / GetCopy / **Nodes / Segments / Selection / FindNodeAtPoint / FindSegmentAtPoint / ReverseDirection / JoinTouchingSubpaths / RemoveOverlaps / GetPolyline / IsOnCurve / IsClockwise / Closed / GetCurveInfo**；数组入参（AppendSubpathFromPoints / CreateSubPathFromArray）不可用；CreateCurveMappedToStroke 类型不匹配 |
@@ -35,7 +35,7 @@
 | `IVGText` | 30 | 已用：Story（**Font / Size / Bold / Italic / Underline 读取**）/ GetSpaceProperties / SetSpaceProperties / GetAlignProperties / SetAlignProperties / FitToPath / FitTextToFrame / **GetContents / Range / ExportToFile / GetHyphenationSettings**；GetFontProperties 结构体返回默认值不可信 |
 | `IVGTextRange` | 35 | 已用：Text / Font / Size / Bold / Italic / Underline / ChangeCase / ApplyBulletEffect / ApplyDropCapEffect / ApplyNoEffect / InsertBefore / InsertAfter / **SetOpenTypeFeature / GetOpenTypeFeature / Delete / Copy / Paste / Straighten / FindRanges / EnumRanges / LeftIndent / RightIndent / FirstLineIndent / Tabs**；ApplyStyle 调用不报错但未观测到效果 |
 | `IVGTextTabPositions` | 9 | **新打通（第二十三波）**：`TextRange.Tabs` 的 Count/Item(i)/Add(Position,Alignment,Leadered)/AddEvery/Clear；`TextTabPosition` 的 Position/Alignment/Leadered 可读写 |
-| `IVGColor` | 44 | 通过 Create*Color 间接使用（RGB/CMYK/Gray/Lab/HLS/Registration）；**ToString / GetName / CopyAppearance / StringAssign / IsSame / BlendWith / GetColorDistanceFrom** 均已实测 |
+| `IVGColor` | 44 | **第三十二波补齐（32/43）**：仍不暴露分量属性，但对象级能力全通 —— ToString / GetName·SetName / StringAssign / IsSame·IsSimilar / GetColorDistanceFrom / BlendWith（原地）/ GetCopy / ConvertToRGB·CMYK·Gray·HLS·HSB·Lab·CMY·YIQ（原地）/ ConvertToFixed(0=USER,1=TRU,2=PAN_PROC) / RGBAssign·CMYKAssign·GrayAssign·HLSAssign·HSBAssign·LabAssign·CMYAssign·YIQAssign·BWAssign·RegistrationAssign；不可用：ConvertToPalette / SpotAssignByName / CopyAppearance / ModifyColorStyleColor / UserAssign(Ex)（参数是窗口句柄，会弹对话框）|
 | `IVGBitmap` | 16 | 已用：ConvertTo / ConvertToBW / **ConvertToPaletted（0~9） / ConvertToDuotone** / Resample / Crop / ResetCropEnvelope / Inflate / Mode / ResolutionX / Size / Image / Duotone / **SetImageData（Alpha 必须传 None） / ApplyBitmapEffect（命令串） / ExternallyLinked / LinkFileName / UpdateLink / ResolveLink**；Trace 禁用（见下） |
 | `IVGFountainFill` | 7 | 通过 ApplyFountainFill 设置，未做二次编辑 |
 | `IVGTransparency` | 9 | 已用：ApplyUniformTransparency / ApplyFountainTransparency / **ApplyPatternTransparency（PatternCanvas 可用）** / ApplyNoTransparency / **Freeze / Unfreeze / Frozen** |
@@ -69,7 +69,7 @@
 
 ---
 
-## 二、能力域 → 工具（28 个）
+## 二、能力域 → 工具（29 个）
 
 | 能力域 | 工具 | 状态 |
 |---|---|---|
@@ -87,6 +87,8 @@
 | **跨文档 / 对象到图层** | `cdr_modify(copy_clipboard/cut_clipboard)` + `cdr_layers(action="paste")`；`cdr_modify(move_to_layer/copy_to_layer)` | ✅ 第八波 |
 | 页面 | `cdr_pages`（列表/增删/插入空白页/切页/自定义尺寸/纸张预设/参考线/角度参考线/**吸附点查询**/解锁/包围盒） | ✅ |
 | **吸附点** | `cdr_snap`（枚举/类型掩码过滤/自动·包围盒·对象·边定址/新增用户点（GUID）/文档·应用级自由点/页面级与集合级最近点/相对移动·绝对定位/删除/方向/选择/**SnapPointRange 批量**） | ✅ 第三十一波 |
+| **颜色对象** | `cdr_color`（object_info / object_name / object_compare / object_blend / object_copy / object_string_assign / object_convert / object_fixed / object_assign） | ✅ 第三十二波 |
+| **描边对象** | `cdr_outline`（info / set（含 SetProperties 全参）/ convert_to_object / copy / compare） | ✅ 第三十二波 |
 | 位图 | `cdr_bitmap`（信息/转色彩模式/重采样/裁剪/取消裁剪/取像素色·图像缓冲信息·调色板模式 0~9·双色调/内容替换 SetImageData/位图特效命令串 ApplyBitmapEffect/**链接信息·重新加载·解析链接**） | ✅（Trace 除外） |
 | 路径 | `cdr_path`（长度面积/偏移轮廓/追加子路径/折线点/反转方向·焊子路径·去重叠·参数取点·切/法向量·速度·交点·找节点/线段） | ✅ |
 | 导入导出 | `cdr_import`（**可传 import_options：外链位图/重采样/保留图层**） `cdr_export`（png/jpg/svg/pdf，可指定 DPI，可只导选区，**可传 export_options 控制抗锯齿/透明/压缩/尺寸**） | ✅ |
@@ -108,7 +110,7 @@
 | **混合** | `Shape.CreateBlend` | 第二个形状参数同样 TypeError | 暂不支持混合效果 |
 | **文字区间查询** | `TextRange.FindRanges(Query)` | `Identifier 'Wave' is not a method of 'global'`（Query 是查询表达式，不是普通字符串） | 只提供 `Text.Range(start,end)` 直接取区间 |
 | 立体化 / 透镜 / 尺寸标注 / 连接线 / 符号插入 | `CreateExtrude` `CreateLens` `CreateLinearDimension` `CreateConnector` `CreateSymbol` | `TypeError: Python instance can not be converted to a COM object`（5 组参数组合均失败） | 需要 pywin32 无法构造的结构体/枚举参数 |
-| 描边整体设置 | `Outline.SetProperties(Ex)` | 同样 TypeError | 已改用逐属性赋值绕过 |
+| 描边整体设置 | `Outline.SetProperties(Width, Style, Color, …)`（14 参）/ `SetPropertiesEx`（15 参） | **第三十二波纠正**：早先「TypeError」是因为把 `None` 传给了 int 形参；**14 个实参全给对（可选对象位传 None、可选数值位传 0/0.0）即可用**，宽度/颜色/线帽/连接/斜接都生效 | 已封装 `cdr_outline(action="set", changes={"use_set_properties":true,…})` |
 | 样式分组属性 | `Style.GetProperty("fill"/"outline")` | 报「为参数 Name 指定的值无效」 | 分组名不可读写，只能读写叶子属性（primaryColor / type / angle…） |
 | 按拷贝打开 | `Application.OpenDocumentAsCopy(FileName, Options)` | 无论 Options 传 0 还是 None 都是 `TypeError: Python instance can not be converted to a COM object` | 只能 OpenDocument / 从模板创建；需要"副本"请 SaveAs 新路径 |
 | HTML 兼容文本 | `Text.MakeHTMLCompatible(HTML)` | 返回 False，未见效果 | 不封装 |
@@ -215,6 +217,8 @@
 >   `CreateFreeConnector` 报「未实现」；本机无符号库。
 > * 混合 **可用（第十七波）**：`CreateBlend` 传全参数且 `Path=None` 时成功；
 >   效果经 `Effects.Item(i).Blend`（IVGEffectBlend）读写 Steps/Spacing/Angle 等。
+> * 颜色对象 **可用（第三十二波）**：`ToString/GetName/SetName/StringAssign/IsSame/IsSimilar/GetColorDistanceFrom/BlendWith/GetCopy` 与 `ConvertTo*`（原地）、`*Assign`（分量直写）、`ConvertToFixed` 全通；`ConvertToPalette`/`SpotAssignByName`/`CopyAppearance` 不可用。
+> * 描边对象 **可用（第三十二波）**：`NibStretch/NibAngle/MiterLimit/Justification` 可读写，`SetProperties` 全实参可用，`ConvertToObject` 可把描边转成曲线。
 > * 吸附点 **可用（第三十一波）**：`Shape.SnapPoints` 枚举、`AddUserSnapPoint`、`Document.CreateFreeSnapPoint`、
 >   `Application.CreateSnapPoint`、`SnapPoints.Range` 批量 Move/Delete/Find/ChangeDirection/SetAutoSnap；
 >   移动对象吸附点会转成用户吸附点；`FindClosestSnapPoint` 未命中返回 Type=16 的伪命中。
@@ -250,8 +254,8 @@
 ## 五、复现方式
 
 ```powershell
-python -m pytest -q              # 61 项纯逻辑
-python scripts/live_smoke.py     # 293 项端到端（真实 CorelDRAW）
+python -m pytest -q              # 68 项纯逻辑
+python scripts/live_smoke.py     # 323 项端到端（真实 CorelDRAW）
 ```
 
 联调断言覆盖了上表所有 ✅ 项。反解脚本属于过程产物，已按要求放在 `tmp/` 并在完成时清理；
@@ -259,14 +263,14 @@ python scripts/live_smoke.py     # 293 项端到端（真实 CorelDRAW）
 
 ---
 
-## 六、量化覆盖率（2026-10-25 第三十一波实测）
+## 六、量化覆盖率（2026-10-25 第三十二波实测）
 
 方法：反解类型库拿到 196 个自动化类 / **1619** 个方法（已剔除 `QueryInterface` 等 COM 基础设施）；
 用 AST 扫描 `src/cdrx8_mcp/*.py`，收集所有 `.方法名(` 调用与 `setattr/getattr` 的属性名，
 与主干接口的方法名求交集。**注意：属性名（如 `curve.Nodes`）也会被计入**，所以本波数字含真实属性访问。
 
-**全局：746 / 1619 = 46.1%**（21.2% → … → 44.7% → 本轮 46.1%）
-**主干 20 接口：429 / 743 = 57.7%**
+**全局：800 / 1619 = 49.4%**（21.2% → … → 46.1% → 本轮 49.4%）
+**主干 20 接口：463 / 743 = 62.3%**
 
 复现命令：`python scripts/coverage_audit.py`（会临时展开类型库到 `tmp/gen_py`，跑完自动清理）
 
@@ -274,30 +278,30 @@ python scripts/live_smoke.py     # 293 项端到端（真实 CorelDRAW）
 |---|---:|---:|---:|
 | `IVGShape` | 123 | 81 | **66%** |
 | `IVGShapeRange` | 125 | 80 | 64% |
-| `IVGSubPath` | 38 | 29 | **76%** |
+| `IVGSubPath` | 38 | 30 | **79%** |
 | `IVGDocument` | 74 | 40 | **54%** |
 | `IVGPage` | 21 | 19 | **90%** |
-| `IVGCurve` | 36 | 22 | 61% |
+| `IVGCurve` | 36 | 23 | 64% |
 | `IVGLayer` | 49 | 23 | **47%** |
-| `IVGTextRange` | 31 | 22 | **71%** |
+| `IVGTextRange` | 31 | 23 | **74%** |
 | `IVGApplication` | 78 | 29 | **37%** |
 | `IVGText` | 29 | 16 | **55%** |
 | `IVGNode` | 18 | 9 | 50% |
 | `IVGBitmap` | 15 | 13 | **87%** |
-| `IVGFill` | 12 | 7 | **58%** |
+| `IVGFill` | 12 | 9 | **75%** |
 | `IVGWindow` | 8 | 7 | **88%** |
 | `IVGFountainFill` | 6 | 5 | 83% |
-| `IVGColor` | 43 | 9 | 21%（色彩运算已改纯 Python，见下） |
-| `IVGOutline` | 8 | 3 | 38% |
+| `IVGColor` | 43 | 32 | **74%**（分量运算仍走纯 Python，对象级全通） |
+| `IVGOutline` | 8 | 6 | **75%** |
 | `IVGTransparency` | 8 | 6 | **75%** |
-| `IVGStyle` | 15 | 8 | **53%** |
-| `IVGColorContext` | 6 | 1 | 17% |
-| **合计** | **743** | **429** | **57.7%** |
+| `IVGStyle` | 15 | 9 | **60%** |
+| `IVGColorContext` | 6 | 3 | 50% |
+| **合计** | **743** | **463** | **62.3%** |
 
 > **怎么读这两个数**：
-> 1. 全局 46.1% 覆盖 1619 个方法（含变体与重复）；主干 20 接口 57.7%。
+> 1. 全局 49.4% 覆盖 1619 个方法（含变体与重复）；主干 20 接口 62.3%。
 > 2. 它是**方法/属性名匹配**的近似值，同名方法会跨接口误计。
-> 3. `IVGColor` 的 21% 是**故意的**：实测不暴露分量属性，色彩运算在纯 Python 完成。
+> 3. `IVGColor` 已到 74%：分量**读写**现在走 `*Assign`（RGBAssign/CMYKAssign/…），纯 Python 只用于无 COM 场景的换算。
 > 4. 未调用方法多为变体（Wide/Ex/2/3 后缀）与事件订阅、CorelScriptTools/MathUtils。
 
 ---
@@ -665,6 +669,34 @@ python scripts/live_smoke.py     # 293 项端到端（真实 CorelDRAW）
 > `uuid.UUID` / `{GUID}` / IVGUserSnapPoint 对象 / IVGSnapPoint 对象 / VT_BSTR / VT_DISPATCH，
 > 一律报「为参数 ID 指定的值无效」（`0x80070057`）。
 
+## 七之三十、第三十二波已接入（2026-10-25，颜色对象与描边对象）
+
+| 能力 | 落地位置 | 实测 |
+|---|---|---|
+| 颜色对象创建/读 | `cdr_color(action="object_info")` | ✅ RGB `Type=5`、CMYK `Type=2`，`ToString()` 给出 `RGB255,USER,200,30,40,100,<GUID>` 形式 |
+| 颜色名读写 | `cdr_color(action="object_name", name=…)` | ✅ 默认 `"unnamed color"`，写入后 `GetName()` 回读一致（`ToString` 不受影响） |
+| 颜色比较 | `cdr_color(action="object_compare", color2=…)` | ✅ `IsSame` / `GetColorDistanceFrom`（同色 0.0、红蓝 647.0）；`IsSimilar` 对同色也返回 False（X8 行为，仅作参考） |
+| 原地混合 | `cdr_color(action="object_blend", ratio=0.5)` | ✅ 红+蓝 50% → `RGB255,USER,128,0,128`；**BlendWith 原地改色、返回 None** |
+| 取副本 | `cdr_color(action="object_copy")` | ✅ `GetCopy()` 后 `IsSame` 为真 |
+| 颜色串赋值 | `cdr_color(action="object_string_assign", color2="CMYK,USER,…")` | ✅ 与 `ToString` 可往返 |
+| 原地换模型 | `cdr_color(action="object_convert", model=…)` | ✅ RGB→CMYK(59,7,98,0)/Gray(Type 9)/HLS/HSB(Type 6)/Lab(Type 12)/CMY/YIQ 全通，**返回 None 但对象类型已变** |
+| 固定调色板 | `cdr_color(action="object_fixed", mode=0/1/2)` | ✅ 得到 `CMYK255` 且标识分别为 `USER` / `TRU` / `PAN_PROC` + 各自 GUID |
+| **分量直写** | `cdr_color(action="object_assign", model=…, values=[…])` | ✅ RGBAssign/CMYKAssign/GrayAssign/HLSAssign/HSBAssign/LabAssign/CMYAssign/YIQAssign/BWAssign/RegistrationAssign 全通（`registration` 得到 `REGCOLOR`） |
+| **描边全量读** | `cdr_outline(action="info")` | ✅ 宽度/颜色串/线型 Index/线帽/连接/BehindFill/ScaleWithShape/笔尖角度·拉伸/斜接/对齐/箭头 |
+| **描边写入** | `cdr_outline(action="set", changes={…})` | ✅ width/color/caps/join/nib_stretch/nib_angle/miter_limit/justification 全部写后即生效 |
+| **SetProperties 全参** | `changes={"use_set_properties":true,…}` | ✅ 宽度 1.25 + 线帽 1 + 连接 1 + 斜接 9 全部落地（早先判「不可用」是传参错误） |
+| 描边转对象 | `cdr_outline(action="convert_to_object")` | ✅ 返回曲线对象（`Type=3`），源对象被替换，`Shapes.Count` 不变 |
+| 描边复制/比较 | `cdr_outline(action="copy"/"compare")` | ✅ `CopyAssign` 后 `CompareWith` 变 True（宽度/颜色都复制过去） |
+
+> **第三十二波纠正与新怪癖**：
+> 1. `Outline.SetProperties/SetPropertiesEx` **不是不可用**，而是 14/15 个参数必须给实参，
+>    把 `None` 传给 int 形参才会 `TypeError: int() argument must be … not 'NoneType'`。
+> 2. `Outline.PenWidth` 恒为 0（派生属性），`Outline.DashDotLength` 写入不生效。
+> 3. `Color.IsSimilar(同色)` 返回 False，但 `IsSame` 为 True —— 判等要用 `IsSame`。
+> 4. `Color.ConvertToPalette` / `SpotAssignByName` 报「服务器出现意外情况」；
+>    `CopyAppearance` 报 `TypeError`；`UserAssign/UserAssignEx` 的参数其实是**窗口句柄**
+>    （`ParentWindowHandle`），本质是弹「选择颜色」对话框，**绝不暴露**。
+
 ## 七之二、仍未接入（第三轮候选）
 
 | 能力 | 接口 | 为什么还没做 |
@@ -686,16 +718,16 @@ python scripts/live_smoke.py     # 293 项端到端（真实 CorelDRAW）
 
 ## 八、一句话总结
 
-* **能力域覆盖**：56 个能力域 / 28 个工具，日常出图闭环完整；节点编辑、对象样式、专色、
+* **能力域覆盖**：58 个能力域 / 29 个工具，日常出图闭环完整；节点编辑、对象样式、专色、
   图案/纹理填充、跨文档复制、模板/样式表/颜色样式、文档元数据、本地化元数据、对象数据字段、
   自定义虚线、文档设置、文本区间编辑、自定义箭头、图案微调、文本格式查询、位图内容替换/链接、
   文档回滚、立体化/透镜/效果管理、位图特效命令串、混合、文档颜色转换、用户偏好 KV、OLE 嵌入、
-  命名视图、网格设置、叠印、段落缩进、制表位、屏幕叠加层、应用/文档事件、导出/保存/导入选项、吸附点全家族都已补上。
-* **方法级覆盖**：全局 46.1%（746/1619），主干 20 接口 57.7%（429/743）。
+  命名视图、网格设置、叠印、段落缩进、制表位、屏幕叠加层、应用/文档事件、导出/保存/导入选项、吸附点全家族、颜色对象分量、描边对象全量属性都已补上。
+* **方法级覆盖**：全局 49.4%（800/1619），主干 20 接口 62.3%（463/743）。
 * **明确不可用**：位图描摹、文本导入、点集数组建曲线、尺寸标注/连接线（MathUtils 点对象
   不可创建）、符号库、文件型图案/影线填充（本机无库）、曲线贴笔触、OpenDocumentAsCopy、
   HTML 兼容文本、断字写入、填充字符串、文本尺寸查询、灰度→RGB 转换、真实应用偏好读取、
   文本分栏（SetColumns 数组参数）。
-* **第三十一波新增**：吸附点（枚举/过滤/新增用户点/自由点/移动/删除/方向/选择/SnapPointRange 批量），IVGSnapPoint 与 IVGSnapPointRange 已 100% 覆盖。
+* **第三十二波新增**：颜色对象（比较/混合/复制/换模型/固定调色板/分量直写）与描边对象（全量属性读写、SetProperties 全参、描边转对象、复制/比较），新增 `cdr_outline` 工具。
 
 

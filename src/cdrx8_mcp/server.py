@@ -1,6 +1,6 @@
 """CorelDRAW X8 的 MCP 服务器（stdio / 可选 HTTP）。
 
-工具面是 28 个**语义化**操作，而不是把 6800 多个 COM 方法直接暴露给模型——
+工具面是 29 个**语义化**操作，而不是把 6800 多个 COM 方法直接暴露给模型——
 模型在几千个方法里会迷路，安全审计也无从下手。
 每个工具背后能做的事，都是先反解 vgcoreauto.tlb、再在 X8 真机上实测通过才写进来的。
 """
@@ -145,7 +145,7 @@ def cdr_status() -> dict:
             info.update({"running": False, "probe_error": str(exc)})
         except Exception as exc:  # noqa: BLE001
             info.update({"running": False, "probe_error": f"{type(exc).__name__}: {exc}"})
-        info["tools"] = 28
+        info["tools"] = 29
         return info
 
     return _guard(_run)
@@ -996,19 +996,42 @@ def cdr_path(document_id: str, target: dict, action: str = "info",
 # --------------------------------------------------------------------------- #
 @mcp.tool()
 def cdr_color(action: str = "info", color: Any = None, color2: Any = None,
-              ratio: float = 0.5) -> dict:
-    """颜色运算：解析 / 转换色彩空间 / 两色混合。
+              ratio: float = 0.5, model: str | None = None, mode: int = 0,
+              name: str | None = None, values: list | None = None) -> dict:
+    """颜色运算：解析 / 转换色彩空间 / 两色混合；以及 X8 颜色对象自身的能力。
 
     Args:
-        action: info（解析并返回各通道）/ convert（转空间，color2 给目标空间名）/
-                blend（按 ratio 混合 color 与 color2，0=全 color，1=全 color2）
+        action:
+          info（解析并返回各通道）/ convert（转空间，color2 给目标空间名）/
+          blend（按 ratio 混合 color 与 color2，0=全 color，1=全 color2）
+          —— 以上为纯 Python 计算，不需要 CorelDRAW
+          object_info      造一个 X8 颜色对象，返回 Type / ToString / GetName
+          object_name      读改写颜色名（name=新名字）
+          object_compare   IsSame / IsSimilar / GetColorDistanceFrom（color2 对比色）
+          object_blend     Color.BlendWith 原地混合（ratio 0~1 或 0~100）
+          object_copy      Color.GetCopy 取副本并校验 IsSame
+          object_string_assign  从颜色串赋值（color2="CMYK,USER,10,20,30,40,100,<GUID>"）
+          object_convert   ConvertToRGB/CMYK/Gray/HLS/HSB/Lab/CMY/YIQ 原地转换（model=目标）
+          object_fixed     ConvertToFixed(0=USER/1=TRU/2=PAN_PROC) 转固定调色板
+          object_assign    按分量直接赋值（model=rgb/cmyk/gray/hls/hsb/lab/cmy/yiq/bw/
+                           registration，values=[…]）
         color: 任意颜色写法：#RRGGBB / {c,m,y,k} / {r,g,b} / {gray} / {lab} / {hls}
-        color2: blend 的第二个颜色；convert 时传目标空间名（cmyk/rgb/gray/lab/hls/hsb/cmy）
+        color2: blend / compare 的第二个颜色；convert 时传目标空间名
+        model: object_convert / object_assign 的目标模型
+        mode: object_fixed 的固定调色板序号（0~2）
+        values: object_assign 的分量值，如 [10,20,30,40]（cmyk）
 
     注意：这是**颜色对象**运算，不修改文档，所以不需要 document_id。
     """
     def _run():
-        return ops.color_ops(None, action, color=color, color2=color2, ratio=ratio)
+        is_com = (action or "").lower() in ops.COLOR_OBJECT_ACTIONS
+        call = lambda: ops.color_ops(None, action, color=color, color2=color2,
+                                     ratio=ratio, model=model, mode=mode, name=name,
+                                     values=values)
+        if is_com:
+            # COM 侧必须跑在桥接的 STA 线程上，否则报「为另一线程整理过的接口」
+            return _com(lambda _b: call(), label="cdr_color")
+        return call()
 
     return _guard(_run)
 
@@ -1191,6 +1214,39 @@ def cdr_view(document_id: str, action: str = "refresh",
                                            x2=x2, y2=y2, radius=radius,
                                            color=color, width=width),
                     label="cdr_view")
+
+    return _guard(_run)
+
+
+@mcp.tool()
+def cdr_outline(document_id: str, target: dict, action: str = "info",
+                changes: dict | None = None, target2: dict | None = None,
+                page_index: int | None = None,
+                expected_revision: int | None = None,
+                snapshot_token: str | None = None) -> dict:
+    """描边（outline）对象深度操作。
+
+    action:
+      info              读描边全量属性（宽度/颜色/线型/线帽/连接/斜接/笔尖/箭头…）
+      set（changes）     改描边：width / color / caps / join / behind_fill / scale_with_shape /
+                        dash（线型索引）/ dash_pattern（自定义虚线对）/ start_arrow / end_arrow /
+                        nib_stretch / nib_angle / miter_limit / justification / dashdot_length /
+                        none:true（无描边）/ use_set_properties:true（走 SetProperties 全参路径）
+      convert_to_object 把描边转成独立曲线对象（源对象被替换，对象总数不变）
+      copy（target2）    从另一个对象复制描边（CopyAssign）
+      compare（target2） 两个对象的描边是否相同（CompareWith）
+    """
+    def _run():
+        doc, sess = _with_doc(document_id)
+        readonly = action in ("info", "compare")
+        warnings = None if readonly else _check_view(
+            sess, expected_revision, snapshot_token, doc)
+        result = _com(lambda _b: ops.outline_ops(
+            doc, page_index, target, action, changes=changes, target2=target2),
+            label="cdr_outline")
+        if readonly:
+            return result
+        return _commit(doc, sess, result, warnings)
 
     return _guard(_run)
 

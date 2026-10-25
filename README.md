@@ -6,10 +6,10 @@
 所有坐标统一 **毫米 / 页面左下角原点 / Y 轴向上**，每次变更都收成**一个原子 undo 步**。
 
 > **已在真机验证**：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）+ Python 3.11.9 64 位
-> - 单元测试 **61 项通过**
-> - 端到端联调（真实 CorelDRAW）**293/293 通过**
+> - 单元测试 **68 项通过**
+> - 端到端联调（真实 CorelDRAW）**323/323 通过**
 > - 能力边界来自对 `vgcoreauto.tlb` 的反解（196 个自动化类 / 1619 个方法）+ 逐项实跑
-> - 方法级覆盖 **46.1%**（主干 20 接口 57.7%），可用 `python scripts/coverage_audit.py` 复现
+> - 方法级覆盖 **49.4%**（主干 20 接口 62.3%），可用 `python scripts/coverage_audit.py` 复现
 > - 完整清单见 [docs/COVERAGE.md](docs/COVERAGE.md)
 
 ---
@@ -46,7 +46,7 @@ python -m cdrx8_mcp              # 启动 MCP 服务器（stdio）
 
 ---
 
-## 工具一览（28 个）
+## 工具一览（29 个）
 
 ### 会话与文档
 
@@ -77,10 +77,11 @@ python -m cdrx8_mcp              # 启动 MCP 服务器（stdio）
 | `cdr_path` | 曲线/子路径级：长度面积 / 偏移轮廓（刀模线）/ **折线采样** / **追加圆·椭圆·矩形·三点弧·贝塞尔** / **节点精简** / **自焊接** / **路径等分** / **加节点·断开·移动子路径** / **点在形状内·曲线求交·取点取切向** / **参数取点·切向量·法向量·速度·交点·按坐标找节点/线段·反转方向·焊接子路径·去重叠** |
 | `cdr_node` | **节点/线段级编辑（第五波打通）**：列节点·列线段 / 移动·选中·删除 / 圆角·倒角· scallop·平滑 / 拉伸·旋转·斜切·断开 / 加节点·断线 / 读写贝塞尔控制点 / 按坐标找节点与线段 |
 | `cdr_bitmap` | 位图：信息 / 转色彩模式（rgb·cmyk·gray·bw）/ **阈值二值化** / **调色板模式 0~9（9=自定义调色板）** / **双色调 0~3（可给 .cpd 预设）** / **取像素颜色** / 图像缓冲信息 / 重采样 / **扩边** / 裁剪 / **内容替换（SetImageData，支持色块/像素绘制）** / **位图特效命令串（ApplyBitmapEffect）** / **链接信息·重新加载·解析链接** |
-| `cdr_color` | **颜色运算（纯 Python）**：解析成 HEX/RGB/CMYK/Gray/HLS/Lab、转换、两色混合 |
+| `cdr_color` | **颜色运算**：解析成 HEX/RGB/CMYK/Gray/HLS/Lab、转换、两色混合（纯 Python）；**X8 颜色对象**：`object_info` / `object_name` / `object_compare`（IsSame·IsSimilar·距离）/ `object_blend`（原地混合）/ `object_copy` / `object_string_assign` / `object_convert`（8 种模型原地转换）/ `object_fixed`（USER·TRU·PAN_PROC）/ `object_assign`（分量直写，含套版色）|
 | `cdr_doc` | **文档级**：概况 / 清空选择集 / 清撤销栈 / **登记调色板** / **用曲线生成自定义箭头（可登记全局箭头库）** / **单位换算** / **取色（点/区域）** / **字体列表** / **调色板列表·取色·固定调色板打开·颜色枚举·专色创建·自定义调色板创建** / **图案画布创建（含区域变换）** / **纹理库列表** / **文档元数据读写·本地化元数据** / **数据字段·对象数据·色彩管理·线型样式·叠印读取** / **文档设置读写** / **应用信息·文档回滚** / **色彩配置文件·文档颜色转换** / **用户偏好 KV** / **命名视图** / **网格设置** / **应用/文档事件队列** / **显示隐藏对象** / **页面版式** / **重复上一操作** |
 | `cdr_view` | **视图**：刷新重绘 / 激活窗口 / 文档↔屏幕坐标换算 / **屏幕距离↔文档距离** / **屏幕叠加层（文字/矩形/直线/圆，不写入文档）** |
 | `cdr_snap` | **吸附点**：对象吸附点枚举（类型掩码过滤）/ **自动点·包围盒点·对象点·边上点定址** / **新增用户吸附点（GUID）** / **文档·应用级自由点** / 最近吸附点查询（页面级与集合级）/ 移动（相对+绝对）/ 删除 / 方向 / 选择 / **SnapPointRange 批量（Move·Delete·Add·Remove·Find·ChangeDirection·SetAutoSnap）** |
+| `cdr_outline` | **描边对象**：全量属性读取（宽度/颜色/线型/线帽/连接/笔尖角度与拉伸/斜接/对齐/箭头）/ 写入（含 `SetProperties` 全参路径）/ **描边转曲线对象** / 复制描边 / 描边比较 |
 
 ### 图层 / 页面 / 文件
 
@@ -184,7 +185,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ---
 
-## X8 特有问题（108 条，全部实测）
+## X8 特有问题（111 条，全部实测）
 
 这些是 **X8 与 2024+ 的差异**，也是本项目存在的主要理由。
 
@@ -298,6 +299,9 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 | 106 | **导入选项可外链位图** | `cdr_import(import_options={link_bitmap_externally:true,resample_dpi:96})` 导入后 `Bitmap.ExternallyLinked=true`、`LinkFileName` 指向源图；`UpdateLink()` 可重新加载 | 导入后自动补对象名；`ResolveLink` 会清空 LinkFileName |
 | 107 | **移动对象吸附点会变成用户吸附点** | `SnapPoints.Item(i).Move(dx,dy)` 或 `Range.Move` 作用于 Type=2（对象点）后，该点变 Type=1（用户点）并排到用户点段，`Count` 不变 | 想保留对象点就别移动；用 `cdr_snap(action="move")` 并检查返回的 `kind` |
 | 108 | **`FindClosestSnapPoint` 未命中不报错** | 热区内没有匹配点时返回 Type=16 的“自由吸附点”，坐标恰好等于查询点 | 本服务的 `cdr_snap(action="find")` 会识别并回 `fallback=true, found=false`；别把 Type=16 当命中 |
+| 109 | **`Outline.SetProperties` 不是不能用，而是参数必须给全** | 14 个形参里 int 位传 `None` 会 `TypeError: int() argument must be … not NoneType`；把实参全给对（对象可选位传 None、数值可选位传 0/0.0）后，宽度/颜色/线帽/连接/斜接全部生效 | `cdr_outline(action="set", changes={"use_set_properties":true,…})` |
+| 110 | **`Color.IsSimilar` 对同色返回 False** | 同一个 RGB 值分别建两个颜色对象，`IsSame`=True 但 `IsSimilar`=False | 判色用 `IsSame`；要数值差异用 `GetColorDistanceFrom` |
+| 111 | **`Color.UserAssign/UserAssignEx` 参数是窗口句柄** | 形参名 `ParentWindowHandle`，传颜色对象报 `int() argument must be … not IVGColor` —— 本质是弹「选择颜色」对话框 | **不暴露**（会卡住无人值守会话）；用 `*Assign` 分量直写代替 |
 
 改代码前请先读 [`src/cdrx8_mcp/constants.py`](src/cdrx8_mcp/constants.py) 里的注释。
 
@@ -346,8 +350,8 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 ## 测试
 
 ```powershell
-python -m pytest -q                # 61 项纯逻辑测试，任何平台可跑
-python scripts/live_smoke.py       # 293 项端到端，需要 CorelDRAW X8
+python -m pytest -q                # 68 项纯逻辑测试，任何平台可跑
+python scripts/live_smoke.py       # 323 项端到端，需要 CorelDRAW X8
 python scripts/live_smoke.py --keep   # 保留文档方便肉眼看效果
 python scripts/coverage_audit.py   # 覆盖率审计（复现 README/COVERAGE 里的数字）
 ```
