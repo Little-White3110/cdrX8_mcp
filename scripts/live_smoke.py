@@ -3493,6 +3493,35 @@ def main() -> int:
                       str(tt.get("applied")))
         no_error("关闭色彩上下文测试文档", server.cdr_close(c44_id))
 
+    # ---------------- 15ay. 第四十五波：Outline.SetPropertiesEx / Text.BeginEdit ----------------
+    print("\n[15ay] 第四十五波：SetPropertiesEx（15 参）与文字 BeginEdit")
+    o45_doc = server.cdr_open(preset="A4")
+    if "document_id" in o45_doc:
+        o45_id = o45_doc["document_id"]
+        o45r = server.cdr_create(o45_id, [
+            {"type": "rectangle", "x": 20, "y": 20, "width": 30, "height": 20,
+             "outline": {"width": 1.0, "color": "#CC0000"}, "fill": "#3366CC"},
+            {"type": "text", "x": 20, "y": 80, "text": "编辑测试", "size": 16},
+        ])
+        if no_error("cdr_create(SetPropertiesEx 测试)", o45r):
+            o45a = {"name": o45r["created"][0]["name"]}
+            o45t = {"name": o45r["created"][1]["name"]}
+            sp = server.cdr_outline(o45_id, target=o45a, action="set", changes={
+                "use_set_properties_ex": True, "width": 2.5, "line_caps": 1,
+                "line_join": 1, "miter_limit": 8.0, "justification": 1})
+            if no_error("cdr_outline(use_set_properties_ex)", sp):
+                check("SetPropertiesEx 15 参全参可用",
+                      sp.get("width") == 2.5 and sp.get("line_caps") == 1
+                      and sp.get("justification") == 1,
+                      f"width={sp.get('width')} caps={sp.get('line_caps')} "
+                      f"just={sp.get('justification')}")
+            be = server.cdr_text(o45_id, o45t, begin_edit=True)
+            if no_error("cdr_text(begin_edit)", be):
+                check("文字可进入编辑态（Text.BeginEdit）",
+                      "begin_edit" in (be.get("applied") or []),
+                      str(be.get("applied")))
+        no_error("关闭 SetPropertiesEx 测试文档", server.cdr_close(o45_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

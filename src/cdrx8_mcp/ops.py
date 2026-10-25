@@ -2181,7 +2181,24 @@ def outline_ops(doc: Any, page_index: int | None, target: dict, action: str, *,
         if not spec:
             raise CdrBadArgument("action=set 需要 changes")
         applied: dict = {}
-        if spec.get("use_set_properties"):
+        if spec.get("use_set_properties_ex"):
+            # 实测：SetPropertiesEx 多一个 Justification（第 15 参），其余同 SetProperties
+            shape.Outline.SetPropertiesEx(
+                float(spec.get("width", shape.Outline.Width)),
+                None, shape.Outline.Color, None, None,
+                int(bool(spec.get("behind_fill", False))),
+                int(bool(spec.get("scale_with_shape", False))),
+                int(spec.get("line_caps", 0)),
+                int(spec.get("line_join", 0)),
+                float(spec.get("nib_angle", 0.0)),
+                int(spec.get("nib_stretch", 100)),
+                float(spec.get("dashdot_length", 0.0)),
+                float(spec.get("pen_width", 1.0)),
+                float(spec.get("miter_limit", 5.0)),
+                int(spec.get("justification", 0)),
+            )
+            applied["use_set_properties_ex"] = True
+        elif spec.get("use_set_properties"):
             shape.Outline.SetProperties(
                 float(spec.get("width", shape.Outline.Width)),
                 None, shape.Outline.Color, None, None,
@@ -3415,7 +3432,8 @@ def node_ops(doc: Any, page_index: int | None, target: dict, action: str, *,
 # --------------------------------------------------------------------------- #
 STYLE_ACTIONS = ("list", "get", "create", "apply", "rename", "delete",
                  "set_property", "derived", "export_sheet", "import_sheet",
-                 "color_styles", "create_color_styles", "override_props", "inherited", "get_property", "clear_property")
+                 "color_styles", "create_color_styles", "override_props", "inherited",
+                 "get_property", "clear_property")
 STYLE_MUTATIONS = {"create", "apply", "rename", "delete", "set_property",
                    "import_sheet", "create_color_styles"}
 STYLE_CATEGORIES = ("fill", "outline", "character", "paragraph")
@@ -6483,6 +6501,7 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
              range_delete: bool = False, range_copy: bool = False,
              range_paste: bool = False, range_straighten: bool = False,
              find_query: str | None = None, runs: bool = False,
+             begin_edit: bool = False,
              struct_info: bool = False,
              range_action: dict | None = None,
              label: str = "cdr_text") -> dict:
@@ -6500,7 +6519,8 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
             opentype,
         )) or any((to_curves, fit_frame, no_effect, to_paragraph, to_artistic,
                    select_all, align_to_baseline, range_delete, range_copy,
-                   range_paste, range_straighten, clear_tabs)) or bool(tab_stops)
+                   range_paste, range_straighten, clear_tabs)) or bool(tab_stops) \
+            or begin_edit
         if not mutating:
             # 纯读取 / 导出：不建 undo 组，也不改动文档
             result: dict = {"applied": [], "warnings": [],
@@ -6634,6 +6654,12 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
                 except Exception as exc:  # noqa: BLE001
                     warnings.append(f"复制文字属性失败：{exc}")
 
+            if begin_edit:
+                try:
+                    shape.Text.BeginEdit()
+                    applied.append("begin_edit")
+                except Exception as exc:  # noqa: BLE001
+                    warnings.append(f"BeginEdit 失败：{exc}")
             if text is not None:
                 story.Text = str(text)
                 applied.append("text")
