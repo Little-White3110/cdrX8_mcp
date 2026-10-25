@@ -3345,6 +3345,64 @@ def main() -> int:
                       f"first={srt.get('first_segment')} last={srt.get('last_segment')}")
         no_error("关闭任意集合测试文档", server.cdr_close(nr_id))
 
+    # ---------------- 15av. 第四十二波：对象列表建范围 / 范围位图化 / 箭头变体 ----------------
+    print("\n[15av] 第四十二波：CreateShapeRangeFromArray、范围位图化、箭头变体、颜色上下文")
+    r42_doc = server.cdr_open(preset="A4")
+    if "document_id" in r42_doc:
+        r42_id = r42_doc["document_id"]
+        r42r = server.cdr_create(r42_id, [
+            {"type": "rectangle", "x": 20, "y": 20, "width": 30, "height": 20,
+             "fill": "#3366CC"},
+            {"type": "rectangle", "x": 60, "y": 20, "width": 30, "height": 20,
+             "fill": "#CC6633"},
+            {"type": "curve_segment", "x1": 20, "y1": 80, "x2": 60, "y2": 100},
+        ])
+        if no_error("cdr_create(对象列表/箭头测试)", r42r):
+            qa, qb, qc = [x["name"] for x in r42r["created"]]
+            rfl = server.cdr_shape_ops(r42_id, op="range_from_list",
+                                       params={"targets": [{"name": qa},
+                                                           {"name": qb}]})
+            if no_error("cdr_shape_ops(range_from_list)", rfl):
+                check("可用对象列表直接建范围（CreateShapeRangeFromArray）",
+                      rfl.get("count") == 2 and rfl.get("exists_first") is True,
+                      f"count={rfl.get('count')} exists={rfl.get('exists_first')}")
+            rfl2 = server.cdr_shape_ops(r42_id, op="range_from_list",
+                                        params={"targets": [{"name": qa},
+                                                            {"name": qb}],
+                                                "then": "rotate_ex", "angle": 15,
+                                                "cx": 55, "cy": 30})
+            if no_error("cdr_shape_ops(range_from_list then=rotate_ex)", rfl2):
+                check("对象列表范围可整批旋转", rfl2.get("applied") == "rotate_ex",
+                      str(rfl2.get("applied")))
+            ahex = server.cdr_doc(r42_id, action="arrowhead_ex",
+                                  target={"name": qc}, query="EX2", x=40, y=90,
+                                  register=True)
+            if no_error("cdr_doc(arrowhead_ex)", ahex):
+                check("命名箭头变体可用（CreateArrowHeadEx2）",
+                      ahex.get("name") == "EX2" and ahex.get("registered") is True
+                      and (ahex.get("options_length") or 0) > 0,
+                      f"name={ahex.get('name')} len={ahex.get('options_length')}")
+            ssd = server.cdr_doc(r42_id, action="stylesheet_default")
+            if no_error("cdr_doc(stylesheet_default)", ssd):
+                check("样式表可设为默认（SaveStyleSheetAsDefault）",
+                      ssd.get("saved") is True, str(ssd.get("saved")))
+            acc = server.cdr_doc(r42_id, action="assign_color_context",
+                                 palette_index=1)
+            if no_error("cdr_doc(assign_color_context)", acc):
+                check("可指派文档色彩上下文（AssignColorContext）",
+                      acc.get("profile_index") == 1
+                      and acc.get("rendering_intent") is not None,
+                      f"intent={acc.get('rendering_intent')}")
+            server.cdr_select(r42_id, name=qa)
+            server.cdr_select(r42_id, name=qb)
+            rbm = server.cdr_shape_ops(r42_id, op="range_bitmap",
+                                       params={"mode": 4, "resolution": 96})
+            if no_error("cdr_shape_ops(range_bitmap)", rbm):
+                check("整批位图化可用（ShapeRange.ConvertToBitmapEx）",
+                      rbm.get("type_id") == 5 and rbm.get("has_bitmap") is True,
+                      f"type={rbm.get('type_id')}")
+        no_error("关闭对象列表测试文档", server.cdr_close(r42_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

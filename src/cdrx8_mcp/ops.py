@@ -484,7 +484,9 @@ DOC_ACTIONS = ("info", "clear_selection", "clear_undo", "palette", "arrowhead",
                "metadata_localized", "set_metadata_localized",
                # 第三十五波：单位换算（COM）/ 文档设置快照 / 解析位图链接
                "convert_units", "save_settings", "restore_settings",
-               "reset_settings", "resolve_links", "arrowhead_named")
+               "reset_settings", "resolve_links", "arrowhead_named",
+               # 第四十二波：颜色上下文指派 / 样式表设为默认 / 箭头变体
+               "assign_color_context", "stylesheet_default", "arrowhead_ex")
 
 
 def doc_ops(doc: Any, action: str, *, target: dict | None = None,
@@ -1303,6 +1305,60 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
                     "curve": _s(lambda: str(shape.Name)),
                     "registered": registered, "arrowheads": after,
                     "index": after if registered else None}
+    if act == "assign_color_context":
+        # 实测：ColorManager.ColorProfiles.Item(i).CreateColorContext() →
+        # Document.AssignColorContext(ctx) 可把文档色彩上下文换成该配置文件
+        app = _app_of(doc)
+        idx = int(palette_index or 1)
+        count = _n(lambda: int(app.ColorManager.ColorProfiles.Count), 0) or 0
+        if not 1 <= idx <= count:
+            raise CdrBadArgument(f"profile_index 越界：{idx}（共 {count} 个配置文件）")
+        prof = app.ColorManager.ColorProfiles.Item(idx)
+        ctx = _s(lambda: prof.CreateColorContext())
+        if ctx is None:
+            raise CdrComFailure("ColorProfile.CreateColorContext 返回空")
+        doc.AssignColorContext(ctx)
+        return {"action": act, "profile_index": idx,
+                "profile": _s(lambda: str(prof.Name))[:120],
+                "color_model": _n(lambda: int(prof.ColorModel)),
+                "rendering_intent": _n(
+                    lambda: int(doc.ColorContext.RenderingIntent))}
+    if act == "stylesheet_default":
+        doc.SaveStyleSheetAsDefault()
+        return {"action": act, "saved": True,
+                "styles": _n(lambda: int(doc.StyleSheet.Styles.Count), 0)}
+    if act == "arrowhead_ex":
+        with mm_units(doc):
+            page = _page(doc, page_index)
+            shape = find_shape(doc, page, target or {})
+            curve = _s(lambda: shape.Curve)
+            if curve is None:
+                raise CdrBadArgument("arrowhead_ex 需要一条曲线对象")
+            head_name = str(query or "MCP 箭头")
+            cx = float(x if x is not None else 0.0)
+            cy = float(y if y is not None else 0.0)
+            head = _s(lambda: doc.CreateArrowHeadEx2(curve, head_name, cx, cy,
+                                                     float(tint or 1.0), 0.0))
+            if head is None:
+                raise CdrComFailure("Document.CreateArrowHeadEx2 返回空")
+            app = _app_of(doc)
+            before = _n(lambda: int(app.ArrowHeads.Count), 0)
+            registered = False
+            if register:
+                app.ArrowHeads.Add(head)
+                registered = True
+            after = _n(lambda: int(app.ArrowHeads.Count), before)
+            # 顺带读一下 options 对象（CreateArrowHeadOptions）
+            opts = _s(lambda: doc.CreateArrowHeadOptions(float(cx), float(cy),
+                                                         1.0, 0.0, 1.0, False, False))
+            return {"action": act, "created": True, "name": head_name,
+                    "center": [cx, cy], "registered": registered,
+                    "arrowheads": after, "index": after if registered else None,
+                    "options_length": _round(_s(lambda: float(opts.Length)))
+                    if opts is not None else None,
+                    "options_offset": ([_round(_s(lambda: float(opts.OffsetX))),
+                                        _round(_s(lambda: float(opts.OffsetY)))]
+                                       if opts is not None else None)}
     # arrowhead
     with mm_units(doc):
         page = _page(doc, page_index)
@@ -5182,6 +5238,8 @@ SHAPE_OPS = (
     "duplicate_range", "clone_range",
     # 第四十波：参考点定位 / 吸附点反查 / 链接对象 / 位图化 / 叠印状态
     "position_ex", "find_snap", "linked", "rasterize_ex", "overprint_state",
+    # 第四十二波：用对象列表直接建 ShapeRange 并整批操作
+    "range_from_list", "range_bitmap",
 )
 
 
@@ -5402,6 +5460,60 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
                         "fill_type": _n(lambda: int(first.Fill.Type), 0)
                         if first is not None else None,
                         "color": _s(lambda: str(color.ToString()))}
+        if op in {"range_from_list", "range_bitmap"}:
+            spec = dict(params or {})
+            targets = list(spec.get("targets") or [])
+            if op == "range_from_list" and not targets:
+                raise CdrBadArgument(
+                    'range_from_list 需要 params.targets=[{"name":…}, …]（至少 1 个对象）')
+            if op == "range_from_list":
+                # 实测 Document.CreateShapeRangeFromArray 接受 Python list[Shape]
+                shapes = [find_shape(doc, page, t) for t in targets]
+                rng = _s(lambda: doc.CreateShapeRangeFromArray(shapes))
+                if rng is None:
+                    raise CdrComFailure("Document.CreateShapeRangeFromArray 返回空")
+                count = _n(lambda: int(rng.Count), 0) or 0
+                sub = str(spec.get("then", "")).lower()
+                applied = None
+                if sub == "rotate_ex":
+                    with atomic(doc, label):
+                        rng.RotateEx(float(spec.get("angle", 30.0)),
+                                     float(spec.get("cx", 0.0)),
+                                     float(spec.get("cy", 0.0)))
+                    applied = "rotate_ex"
+                return {"op": op, "count": count,
+                        "names": [_s(lambda i=i: str(rng.Item(i).Name))
+                                  for i in range(1, min(count, 30) + 1)],
+                        "exists_first": bool(_s(
+                            lambda: bool(rng.Exists(shapes[0])), False)),
+                        "applied": applied,
+                        "note": "用 Document.CreateShapeRangeFromArray 按对象列表建范围，"
+                                "可再 then=rotate_ex 整批旋转"}
+            # range_bitmap：把当前选择集整体位图化
+            with atomic(doc, label):
+                sr = selection_range(doc)
+                if target:
+                    try:
+                        doc.Selection().RemoveAll()
+                    except Exception:
+                        pass
+                    find_shape(doc, page, target).AddToSelection()
+                    sr = selection_range(doc)
+                if _n(lambda: int(sr.Count), 0) < 1:
+                    raise CdrBadArgument("range_bitmap 需要先选中对象，或用 target 指定")
+                made = sr.ConvertToBitmapEx(
+                    int(spec.get("mode", 4)), bool(spec.get("dithered", False)),
+                    bool(spec.get("transparent", True)),
+                    int(spec.get("resolution", 150)),
+                    int(spec.get("anti_aliasing", 2)),
+                    bool(spec.get("use_color_profile", False)),
+                    bool(spec.get("overprint_black", False)),
+                    int(spec.get("overprint_black_limit", 0)))
+            if made is None:
+                raise CdrComFailure("ShapeRange.ConvertToBitmapEx 返回空")
+            return {"op": op, "type_id": _n(lambda: int(made.Type)),
+                    "bbox": _bbox(made),
+                    "has_bitmap": bool(_s(lambda: made.Bitmap is not None, False))}
         if op in {"position_ex", "find_snap", "linked", "rasterize_ex",
                   "overprint_state"}:
             source = find_shape(doc, page, target or {})
