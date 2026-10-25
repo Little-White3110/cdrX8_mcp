@@ -1,6 +1,6 @@
 """CorelDRAW X8 的 MCP 服务器（stdio / 可选 HTTP）。
 
-工具面是 20 个**语义化**操作，而不是把 6800 多个 COM 方法直接暴露给模型——
+工具面是 28 个**语义化**操作，而不是把 6800 多个 COM 方法直接暴露给模型——
 模型在几千个方法里会迷路，安全审计也无从下手。
 每个工具背后能做的事，都是先反解 vgcoreauto.tlb、再在 X8 真机上实测通过才写进来的。
 """
@@ -145,7 +145,7 @@ def cdr_status() -> dict:
             info.update({"running": False, "probe_error": str(exc)})
         except Exception as exc:  # noqa: BLE001
             info.update({"running": False, "probe_error": f"{type(exc).__name__}: {exc}"})
-        info["tools"] = 27
+        info["tools"] = 28
         return info
 
     return _guard(_run)
@@ -1191,6 +1191,65 @@ def cdr_view(document_id: str, action: str = "refresh",
                                            x2=x2, y2=y2, radius=radius,
                                            color=color, width=width),
                     label="cdr_view")
+
+    return _guard(_run)
+
+
+@mcp.tool()
+def cdr_snap(document_id: str, action: str = "list",
+             target: dict | None = None, page_index: int | None = None,
+             index: int | None = None, indices: list[int] | None = None,
+             x: float | None = None, y: float | None = None,
+             dx: float = 0.0, dy: float = 0.0, angle: float = 0.0,
+             direction_type: int = 0, uses_direction: bool | None = None,
+             use_direction: bool = False, typeset: int | None = None,
+             hot_area: float = 5.0, auto_snap: bool | None = None,
+             range_op: str | None = None, reference: str | None = None,
+             position: int | None = None, offset: float = 0.5,
+             expected_revision: int | None = None,
+             snapshot_token: str | None = None) -> dict:
+    """对象的吸附点（snap points）操作。
+
+    吸附点类型是位掩码：1 用户 / 2 对象 / 4 包围盒 / 8 边 / 16 自由 / 32 自动。
+
+    action:
+      list（target）                    列出对象全部吸附点（类型/坐标/方向）
+      info（target,index）              单个吸附点详情（含 user id / edge 段号 / bbox 序号）
+      of_type（target,typeset）         按类型掩码过滤
+      add_user（target,x,y,angle,use_direction）  给对象加用户吸附点（文档坐标 mm）
+      free（x,y）                       文档级自由吸附点（Document.CreateFreeSnapPoint）
+      create（x,y）                     应用级吸附点（Application.CreateSnapPoint）
+      find（x,y,typeset,hot_area）      页面内找最近吸附点
+      move（target,index|indices,dx,dy 或 x,y） 移动吸附点（相对位移 / 绝对定位）
+      delete（target,index|indices）    删除吸附点
+      direction（target,index,angle,uses_direction） 改吸附方向
+      auto（target）                     自动吸附点（SnapPoints.Auto）
+      bbox（target,index=1..9）         包围盒第 index 个吸附点（SnapPoints.BBox）
+      obj（target,index=1..4）          对象第 index 个吸附点（SnapPoints.Object）
+      edge（target,index=边序号,offset） 某条边上的吸附点（SnapPoints.Edge）
+      user（target,reference=GUID）     按 ID 取用户吸附点（SnapPoints.User）
+      near（target,x,y,typeset）        集合内找最近吸附点（SnapPoints.FindClosest）
+      select（target,index） / clear_selection（target）
+      range（target,indices,range_op）  SnapPointRange 批量操作，range_op:
+          move / delete / add（index）/ remove（position）/ remove_by_reference（reference）
+          / find（reference）/ selection / add_to_selection / remove_from_selection
+          / auto_snap（auto_snap）/ change_direction（angle,direction_type）
+    """
+    def _run():
+        doc, sess = _with_doc(document_id)
+        readonly = action in ops.SNAP_READ_ACTIONS
+        warnings = None if readonly else _check_view(
+            sess, expected_revision, snapshot_token, doc)
+        result = _com(lambda _b: ops.snap_ops(
+            doc, action, target=target, page_index=page_index, index=index,
+            indices=indices, x=x, y=y, dx=dx, dy=dy, angle=angle,
+            direction_type=direction_type, uses_direction=uses_direction,
+            use_direction=use_direction, typeset=typeset, hot_area=hot_area,
+            auto_snap=auto_snap, range_op=range_op, reference=reference,
+            position=position, offset=offset), label="cdr_snap")
+        if readonly:
+            return result
+        return _commit(doc, sess, result, warnings)
 
     return _guard(_run)
 

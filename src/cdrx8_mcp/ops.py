@@ -1373,6 +1373,399 @@ def page_snap_point(doc: Any, page_index: int | None = None, x: float = 0.0,
                 "deletable": bool(_s(lambda: bool(snap.IsDeletable), False))}
 
 
+# --------------------------------------------------------------------------- #
+# 吸附点（IVGSnapPoint / IVGSnapPoints / IVGSnapPointRange）
+# --------------------------------------------------------------------------- #
+SNAP_ACTIONS = ("list", "info", "of_type", "add_user", "free", "create", "find",
+                "move", "delete", "direction", "select", "clear_selection", "range",
+                "auto", "bbox", "obj", "edge", "user", "near")
+SNAP_READ_ACTIONS = ("list", "info", "of_type", "find", "auto", "bbox", "obj",
+                     "edge", "user", "near")
+SNAP_RANGE_OPS = ("move", "delete", "add", "remove", "remove_by_reference", "find",
+                  "selection", "add_to_selection", "remove_from_selection",
+                  "auto_snap", "change_direction")
+# 实测 cdrObjectSnapPointType 是位掩码：1 用户 / 2 对象 / 4 包围盒 / 8 边 / 16 自由 / 32 自动
+SNAP_TYPE_NAMES = {1: "user", 2: "object", 4: "bbox", 8: "edge", 16: "free", 32: "auto"}
+
+
+def _snap_type_name(value: Any) -> Any:
+    iv = _n(lambda: int(value))
+    if iv is None:
+        return None
+    return SNAP_TYPE_NAMES.get(iv, f"type_{iv}")
+
+
+def _snap_point_dict(snap: Any, index: int | None = None) -> dict:
+    """把一个 IVGSnapPoint 压成字典，并按类型补 BBox/Edge/User/Object 子信息。"""
+    if snap is None:
+        raise CdrBadArgument("吸附点对象为空")
+    info: dict = {
+        "index": None if index is None else int(index),
+        "type": _n(lambda: int(snap.Type)),
+        "kind": None,
+        "position": [_round(_s(lambda: float(snap.PositionX))),
+                     _round(_s(lambda: float(snap.PositionY)))],
+        "direction": _round(_s(lambda: float(snap.Direction), 0.0)),
+        "uses_direction": bool(_s(lambda: bool(snap.UsesDirection), False)),
+        "movable": bool(_s(lambda: bool(snap.IsMovable), False)),
+        "deletable": bool(_s(lambda: bool(snap.IsDeletable), False)),
+        "selectable": bool(_s(lambda: bool(snap.IsSelectable), False)),
+        "selected": bool(_s(lambda: bool(snap.Selected), False)),
+        "can_change_direction": bool(_s(lambda: bool(snap.CanChangeDirection), False)),
+    }
+    info["kind"] = _snap_type_name(info["type"])
+    got = _s(lambda: snap.GetPosition())
+    if isinstance(got, (tuple, list)) and len(got) == 2:
+        info["position_get"] = [_round(float(got[0])), _round(float(got[1]))]
+    ref = _s(lambda: snap.ReferenceData)
+    if isinstance(ref, str) and ref:
+        info["reference"] = ref
+    node = _s(lambda: snap.Node)
+    if node is not None:
+        info["node_index"] = _n(lambda: int(node.Index))
+    if info["type"] == 1:
+        user = _s(lambda: snap.User)
+        if user is not None:
+            info["id"] = _s(lambda: str(user.ID))
+            info["auto_snap"] = bool(_s(lambda: bool(user.AutoSnap), False))
+    elif info["type"] == 2:
+        obj = _s(lambda: snap.Object)
+        if obj is not None:
+            info["object_type"] = _n(lambda: int(obj.Type))
+    elif info["type"] == 4:
+        box = _s(lambda: snap.BBox)
+        if box is not None:
+            info["bbox_type"] = _n(lambda: int(box.Type))
+    elif info["type"] == 8:
+        edge = _s(lambda: snap.Edge)
+        if edge is not None:
+            info["segment_index"] = _n(lambda: int(edge.SegmentIndex))
+            info["segment_offset"] = _round(_s(lambda: float(edge.SegmentOffset), 0.0))
+    return info
+
+
+def _snap_collection(shape: Any) -> Any:
+    sps = _s(lambda: shape.SnapPoints)
+    if sps is None:
+        raise CdrBadArgument("该对象取不到 Shape.SnapPoints（仅矢量对象有吸附点）")
+    return sps
+
+
+def _snap_list(collection: Any, limit: int = 500) -> list[dict]:
+    total = _n(lambda: int(collection.Count), 0) or 0
+    out = []
+    for i in range(1, min(total, limit) + 1):
+        item = _s(lambda i=i: collection.Item(i))
+        if item is None:
+            continue
+        out.append(_snap_point_dict(item, i))
+    return out
+
+
+def _snap_range(sps: Any, indices: Iterable[int] | None) -> Any:
+    wanted = [int(i) for i in (indices or [])]
+    if not wanted:
+        raise CdrBadArgument("indices 不能为空（要操作哪些吸附点）")
+    refs = []
+    total = _n(lambda: int(sps.Count), 0) or 0
+    for i in wanted:
+        if i < 1 or i > total:
+            raise CdrBadArgument(f"吸附点 index 越界：{i}（共 {total} 个）")
+        ref = _s(lambda i=i: sps.Item(i).ReferenceData)
+        if not isinstance(ref, str) or not ref:
+            raise CdrBadArgument(f"第 {i} 个吸附点取不到 ReferenceData")
+        refs.append(ref)
+    rng = _s(lambda: sps.Range(refs))
+    if rng is None:
+        raise CdrBadArgument("SnapPoints.Range 未返回集合")
+    return rng
+
+
+def _snap_kind_counts(points: Iterable[dict]) -> dict:
+    counts: dict = {}
+    for p in points:
+        key = str(p.get("kind") or p.get("type"))
+        counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
+def snap_ops(doc: Any, action: str, *, target: dict | None = None,
+             page_index: int | None = None, index: int | None = None,
+             indices: Iterable[int] | None = None, x: float | None = None,
+             y: float | None = None, dx: float = 0.0, dy: float = 0.0,
+             angle: float = 0.0, direction_type: int = 0,
+             uses_direction: bool | None = None, use_direction: bool = False,
+             typeset: int | None = None, hot_area: float = 5.0,
+             auto_snap: bool | None = None, range_op: str | None = None,
+             reference: str | None = None, position: int | None = None,
+             offset: float = 0.5, mode: str = "create") -> dict:
+    """吸附点操作（实测可用：枚举 / 过滤 / 新建用户点 / 自由点 / 移动 / 删除 / 方向）。
+
+    `cdrObjectSnapPointType` 是位掩码：1 用户 2 对象 4 包围盒 8 边 16 自由 32 自动；
+    `FindClosestSnapPoint` 未命中时返回 Type=16 的“自由吸附点”（坐标=查询点），需自行剔除。
+    实测怪癖：**移动对象吸附点会把它变成用户吸附点**（Type 2 -> 1，并排到用户点段）。
+    """
+    if action not in SNAP_ACTIONS:
+        raise CdrBadArgument(f"未知 action {action!r}；可用：{', '.join(SNAP_ACTIONS)}")
+
+    with mm_units(doc):
+        page = _page(doc, page_index)
+
+        if action in ("free", "create"):
+            if x is None or y is None:
+                raise CdrBadArgument(f"action={action} 需要 x / y（文档坐标 mm）")
+            if action == "free":
+                snap = _s(lambda: doc.CreateFreeSnapPoint(float(x), float(y)))
+            else:
+                app = _app_of(doc)
+                snap = _s(lambda: app.CreateSnapPoint(float(x), float(y)))
+            if snap is None:
+                raise CdrBadArgument(f"action={action} 没有返回吸附点")
+            result = _snap_point_dict(snap)
+            result["action"] = action
+            result["source"] = ("document_free_snap_point" if action == "free"
+                                else "application_snap_point")
+            return result
+
+        if action == "find":
+            if x is None or y is None:
+                raise CdrBadArgument("action=find 需要 x / y（文档坐标 mm）")
+            want = 2 if typeset is None else int(typeset)
+            snap = _s(lambda: page.FindClosestSnapPoint(
+                want, float(x), float(y), float(hot_area)))
+            if snap is None:
+                return {"action": "find", "found": False, "typeset": want,
+                        "position": [float(x), float(y)], "hot_area": float(hot_area)}
+            result = _snap_point_dict(snap)
+            # 实测怪癖：热区内没有匹配点时会返回 Type=16 的“自由吸附点”，
+            # 坐标恰好等于查询点。这种不能算命中。
+            px, py = result["position"]
+            fallback = (result["type"] == 16
+                        and abs(float(px) - float(x)) < 1e-6
+                        and abs(float(py) - float(y)) < 1e-6)
+            result.update({"action": "find", "found": not fallback, "typeset": want,
+                           "query": [float(x), float(y)], "hot_area": float(hot_area),
+                           "fallback": fallback})
+            return result
+
+        if action == "clear_selection":
+            if target is None:
+                raise CdrBadArgument("action=clear_selection 需要 target（哪个对象）")
+            sps = _snap_collection(find_shape(doc, page, target))
+            sps.ClearSelection()
+            return {"action": "clear_selection",
+                    "selected": _n(lambda: int(sps.Selection.Count), 0) or 0}
+
+        if target is None:
+            raise CdrBadArgument(f"action={action} 需要 target（如 {{\"name\": ...}}）")
+        shape = find_shape(doc, page, target)
+        sps = _snap_collection(shape)
+
+        if action == "list":
+            points = _snap_list(sps)
+            return {
+                "action": "list",
+                "shape": _s(lambda: str(shape.Name)),
+                "count": _n(lambda: int(sps.Count), 0) or 0,
+                "by_kind": _snap_kind_counts(points),
+                "all": _n(lambda: int(sps.All.Count), 0) or 0,
+                "selected": _n(lambda: int(sps.Selection.Count), 0) or 0,
+                "points": points,
+            }
+
+        if action == "info":
+            if index is None:
+                raise CdrBadArgument("action=info 需要 index（第几个吸附点，从 1 起）")
+            total = _n(lambda: int(sps.Count), 0) or 0
+            if int(index) < 1 or int(index) > total:
+                raise CdrBadArgument(f"index 越界：{index}（共 {total} 个吸附点）")
+            result = _snap_point_dict(_s(lambda: sps.Item(int(index))), int(index))
+            result.update({"action": "info", "shape": _s(lambda: str(shape.Name)),
+                           "count": total})
+            return result
+
+        if action == "of_type":
+            want = 2 if typeset is None else int(typeset)
+            collection = _s(lambda: shape.SnapPointsOfType(want))
+            if collection is None:
+                raise CdrBadArgument(f"SnapPointsOfType({want}) 没有返回集合")
+            points = _snap_list(collection)
+            return {"action": "of_type", "typeset": want, "count": len(points),
+                    "by_kind": _snap_kind_counts(points), "points": points}
+
+        if action in ("bbox", "obj", "edge"):
+            # 集合级的定址取点：BBox(Type 1..9) / Object(Type 1..4) / Edge(SegmentIndex>=1, offset)
+            if action == "bbox":
+                pos = 1 if index is None else int(index)
+                if not 1 <= pos <= 9:
+                    raise CdrBadArgument(f"bbox 的 index 只能是 1..9，收到 {pos}")
+                snap = _s(lambda: sps.BBox(pos))
+            elif action == "obj":
+                pos = 1 if index is None else int(index)
+                if not 1 <= pos <= 4:
+                    raise CdrBadArgument(f"obj 的 index 只能是 1..4，收到 {pos}")
+                snap = _s(lambda: sps.Object(pos))
+            else:
+                seg = 1 if index is None else int(index)
+                if seg < 1:
+                    raise CdrBadArgument(f"edge 的 index（边序号）必须 >= 1，收到 {seg}")
+                snap = _s(lambda: sps.Edge(seg, float(offset)))
+            if snap is None:
+                raise CdrBadArgument(f"{action} 没有返回吸附点")
+            result = _snap_point_dict(snap, index)
+            result["action"] = action
+            if action == "edge":
+                result["offset"] = float(offset)
+            return result
+
+        if action == "auto":
+            # 实测 Auto 是方法（返回对象的自动吸附点），不是集合
+            snap = _s(lambda: sps.Auto())
+            if snap is None:
+                raise CdrBadArgument("该对象没有自动吸附点（SnapPoints.Auto 返回空）")
+            result = _snap_point_dict(snap)
+            result["action"] = "auto"
+            return result
+
+        if action == "user":
+            if not reference:
+                raise CdrBadArgument(
+                    "action=user 需要 reference（用户吸附点 GUID，可从 list 的 id 字段拿）")
+            snap = _s(lambda: sps.User(reference))
+            if snap is None:
+                raise CdrBadArgument(f"没有 ID 为 {reference} 的用户吸附点")
+            result = _snap_point_dict(snap)
+            result["action"] = "user"
+            result["query_id"] = reference
+            return result
+
+        if action == "near":
+            if x is None or y is None:
+                raise CdrBadArgument("action=near 需要 x / y（文档坐标 mm）")
+            want = 2 if typeset is None else int(typeset)
+            snap = _s(lambda: sps.FindClosest(want, float(x), float(y)))
+            if snap is None:
+                return {"action": "near", "typeset": want, "query": [float(x), float(y)],
+                        "found": False}
+            result = _snap_point_dict(snap)
+            result.update({"action": "near", "typeset": want,
+                           "query": [float(x), float(y)], "found": True})
+            return result
+
+        if action == "add_user":
+            if x is None or y is None:
+                raise CdrBadArgument("action=add_user 需要 x / y（文档坐标 mm，不是对象局部坐标）")
+            new = _s(lambda: sps.AddUserSnapPoint(
+                float(x), float(y), float(angle), bool(use_direction)))
+            if new is None:
+                raise CdrBadArgument("AddUserSnapPoint 没有返回吸附点")
+            result = _snap_point_dict(new)
+            result.update({"action": "add_user",
+                           "count": _n(lambda: int(sps.Count), 0) or 0,
+                           "shape": _s(lambda: str(shape.Name))})
+            return result
+
+        if action == "direction":
+            if index is None:
+                raise CdrBadArgument("action=direction 需要 index")
+            item = _s(lambda: sps.Item(int(index)))
+            if item is None:
+                raise CdrBadArgument(f"index 越界：{index}")
+            item.Direction = float(angle)
+            if uses_direction is not None:
+                item.UsesDirection = bool(uses_direction)
+            result = _snap_point_dict(item, int(index))
+            result["action"] = "direction"
+            return result
+
+        if action == "select":
+            if index is None:
+                raise CdrBadArgument("action=select 需要 index")
+            item = _s(lambda: sps.Item(int(index)))
+            if item is None:
+                raise CdrBadArgument(f"index 越界：{index}")
+            item.CreateSelection()
+            return {"action": "select", "index": int(index),
+                    "selected": _n(lambda: int(sps.Selection.Count), 0) or 0}
+
+        if action in ("move", "delete"):
+            wanted = list(indices or ([int(index)] if index is not None else []))
+            rng = _snap_range(sps, wanted)
+            if action == "move":
+                if x is not None and y is not None:
+                    # 绝对定位：对范围内每个点调用 IVGSnapPoint.SetPosition
+                    for _i in range(1, int(rng.Count) + 1):
+                        rng.Item(_i).SetPosition(float(x), float(y))
+                elif not dx and not dy:
+                    raise CdrBadArgument(
+                        "action=move 需要 dx / dy（相对移动）或 x / y（绝对定位）")
+                else:
+                    rng.Move(float(dx), float(dy))
+            else:
+                rng.Delete()
+            sps = _snap_collection(shape)
+            return {"action": action, "indices": [int(i) for i in wanted],
+                    "dx": float(dx), "dy": float(dy),
+                    "absolute": [float(x), float(y)] if x is not None and y is not None else None,
+                    "count": _n(lambda: int(sps.Count), 0) or 0,
+                    "points": _snap_list(sps)}
+
+        # action == "range"
+        op = (range_op or "").strip().lower()
+        if op not in SNAP_RANGE_OPS:
+            raise CdrBadArgument(
+                f"action=range 需要 range_op，可选：{', '.join(SNAP_RANGE_OPS)}")
+        rng = _snap_range(sps, indices)
+        payload: dict = {"action": "range", "range_op": op,
+                         "indices": [int(i) for i in (indices or [])],
+                         "count_before": _n(lambda: int(rng.Count), 0) or 0}
+        if op == "move":
+            rng.Move(float(dx), float(dy))
+            payload.update({"dx": float(dx), "dy": float(dy)})
+        elif op == "delete":
+            rng.Delete()
+        elif op == "add":
+            if index is None:
+                raise CdrBadArgument("range_op=add 需要 index（把第几个点加进范围）")
+            point = _s(lambda: sps.Item(int(index)))
+            if point is None:
+                raise CdrBadArgument(f"index 越界：{index}")
+            payload["added"] = bool(_s(lambda: bool(rng.Add(point)), False))
+        elif op == "remove":
+            pos = 1 if position is None else int(position)
+            payload["removed"] = bool(_s(lambda: bool(rng.Remove(pos)), False))
+            payload["position"] = pos
+        elif op == "remove_by_reference":
+            if not reference:
+                raise CdrBadArgument("range_op=remove 需要 reference 或 position")
+            payload["removed"] = bool(_s(lambda: bool(rng.RemoveByReference(reference)), False))
+        elif op == "find":
+            if not reference:
+                raise CdrBadArgument("range_op=find 需要 reference（吸附点 ReferenceData）")
+            found = _s(lambda: rng.Find(reference))
+            payload["found"] = bool(found is not None)
+        elif op == "selection":
+            rng.CreateSelection()
+        elif op == "add_to_selection":
+            rng.AddToSelection()
+        elif op == "remove_from_selection":
+            rng.RemoveFromSelection()
+        elif op == "auto_snap":
+            if auto_snap is None:
+                raise CdrBadArgument("range_op=auto_snap 需要 auto_snap=true/false")
+            rng.SetAutoSnap(bool(auto_snap))
+            payload["auto_snap"] = bool(auto_snap)
+        elif op == "change_direction":
+            rng.ChangeDirection(float(angle), int(direction_type))
+            payload.update({"angle": float(angle), "direction_type": int(direction_type)})
+        total = _n(lambda: int(rng.Count), 0) or 0
+        payload["count_after"] = total
+        payload["points"] = _snap_list(rng)
+        payload["shape_count"] = _n(lambda: int(sps.Count), 0) or 0
+        payload["shape_selected"] = _n(lambda: int(sps.Selection.Count), 0) or 0
+        return payload
+
+
 def objects_bounds(doc: Any, page_index: int | None = None,
                    selected_only: bool = False) -> dict:
     """本页所有对象（或当前选中对象）的总包围盒。

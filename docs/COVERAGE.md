@@ -2,7 +2,7 @@
 
 > 目的：证明"还有多少没探"。每一行要么有对应的工具，要么有实测失败证据。
 > 环境：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）/ Python 3.11.9 64 位
-> 最近更新：2026-10-25 第三十波（导入选项 / 链接位图）
+> 最近更新：2026-10-25 第三十一波（吸附点：枚举/新建/移动/删除/范围）
 
 ## 怎么得出这份清单
 
@@ -62,13 +62,14 @@
 | `IVGDuotone` / `IVGDuotoneInk` | 8 / 8 | **新打通**：`app.CreateDuotone()` → `Type 0~3`、`Inks(i).Color`、`Load(.cpd)`；配合 `Bitmap.ConvertToDuotone` 转双色调 |
 | `IVGPalettes` / `IVGPalette` | 8 / 15 | **新打通**：`Palettes.OpenFixed(id)` 可打开 PANTONE 匹配系统（946 色）等内置调色板；`Create/AddColor/SaveAs/Color/ColorCount/Identifier/FindColor` 可用；`CreatePaletteColor(Identifier GUID, index)`、`CreateSpotColorByName(Identifier, 名称, tint)` 可用 |
 | `IVGFontList` | 3 | **新打通**：`app.FontList.Count / Item(i)` 返回字体名字符串（本机 2068 个） |
-| `IVGSnapPoint` | 9 | **新打通**：`Page.FindClosestSnapPoint(TypeSet,x,y,hot)` 返回吸附点；`PositionX/PositionY/Type/Direction/UsesDirection/IsSelectable/IsMovable/IsDeletable` 可读（TypeSet 1/16/32 会报错，2/4/8 及组合可用） |
+| `IVGSnapPoint` / `IVGSnapPoints` / `IVGSnapPointRange` | 24 / 17 / 14 | **新打通（第三十一波）**：吸附点全家族。`Shape.SnapPoints` 枚举（普通矢量对象 4 个角/边中点，`SnapPointsOfType(掩码)` 过滤）；`Auto()` / `BBox(1..9)` / `Object(1..4)` / `Edge(段>=1, offset)` / `User(GUID)` / `FindClosest(类型,x,y)` 定址取点；`AddUserSnapPoint(x,y,direction,use_direction)` 新增用户点；`Application.CreateSnapPoint` / `Document.CreateFreeSnapPoint` 建自由点；`Move/SetPosition/Delete/CreateSelection/Direction/UsesDirection` 就地编辑；`SnapPoints.Range([ReferenceData])` → `IVGSnapPointRange` 做批量 Move/Delete/Add/Remove/RemoveByReference/Find/CreateSelection/AddToSelection/RemoveFromSelection/ChangeDirection/SetAutoSnap。`AddUserSnapPointEx` 任何 ID 形态都报「为参数 ID 指定的值无效」 |
+| `IVGUserSnapPoint` / `IVGObjectSnapPoint` / `IVGBBoxSnapPoint` / `IVGEdgeSnapPoint` | 2 / 1 / 1 / 2 | **新打通（第三十一波）**：`SnapPoint.User` → ID(GUID)/AutoSnap（可读写）；`SnapPoint.Object.Type`、`SnapPoint.BBox.Type`、`SnapPoint.Edge.SegmentIndex/SegmentOffset` 全部可读 |
 | `IVGPatternCanvas` / `IVGPatternCanvases` | 13 / 8 | **新打通（第八/十三波）**：`CreatePatternCanvas()` 生成 32×32 单色画布；`Clear / FillArea / SetPixel / Line / CopyArea / RotateArea / FlipArea / PutCopy / Select / Data` 可用；`PatternCanvases.Add(canvas)` 登记后 `Fill.ApplyPatternFill(0,"",index,front,end,transform)` 即可图案填充，`Transparency.ApplyPatternTransparency(...)` 图案透明 |
 | `IVGPatternFill` | 18 | **新打通（第十三波）**：已有图案填充可微调 `FrontColor/BackColor/TileWidth/TileHeight/OriginX·Y/RotationAngle/SkewAngle/MirrorFill/MirrorFillX·Y/TransformWithShape/TileOffset/Canvas/Type`（全部可写且回读正确） |
 
 ---
 
-## 二、能力域 → 工具（27 个）
+## 二、能力域 → 工具（28 个）
 
 | 能力域 | 工具 | 状态 |
 |---|---|---|
@@ -84,7 +85,8 @@
 | 选择与查找 | `cdr_select`（加入/**移除/清空**）`cdr_find` | ✅ |
 | 图层 | `cdr_layers`（增删改/显隐/锁定/打印/移动/**上下相邻查询·下移·粘贴剪贴板**） | ✅ |
 | **跨文档 / 对象到图层** | `cdr_modify(copy_clipboard/cut_clipboard)` + `cdr_layers(action="paste")`；`cdr_modify(move_to_layer/copy_to_layer)` | ✅ 第八波 |
-| 页面 | `cdr_pages`（列表/增删/插入空白页/切页/自定义尺寸/纸张预设/参考线/角度参考线/**吸附点**/解锁/包围盒） | ✅ |
+| 页面 | `cdr_pages`（列表/增删/插入空白页/切页/自定义尺寸/纸张预设/参考线/角度参考线/**吸附点查询**/解锁/包围盒） | ✅ |
+| **吸附点** | `cdr_snap`（枚举/类型掩码过滤/自动·包围盒·对象·边定址/新增用户点（GUID）/文档·应用级自由点/页面级与集合级最近点/相对移动·绝对定位/删除/方向/选择/**SnapPointRange 批量**） | ✅ 第三十一波 |
 | 位图 | `cdr_bitmap`（信息/转色彩模式/重采样/裁剪/取消裁剪/取像素色·图像缓冲信息·调色板模式 0~9·双色调/内容替换 SetImageData/位图特效命令串 ApplyBitmapEffect/**链接信息·重新加载·解析链接**） | ✅（Trace 除外） |
 | 路径 | `cdr_path`（长度面积/偏移轮廓/追加子路径/折线点/反转方向·焊子路径·去重叠·参数取点·切/法向量·速度·交点·找节点/线段） | ✅ |
 | 导入导出 | `cdr_import`（**可传 import_options：外链位图/重采样/保留图层**） `cdr_export`（png/jpg/svg/pdf，可指定 DPI，可只导选区，**可传 export_options 控制抗锯齿/透明/压缩/尺寸**） | ✅ |
@@ -116,7 +118,7 @@
 | 文本格式查询的尺寸比较 | `TextRange.FindRanges("@size > 10")` | 报 `Incompatible unit powers of the operands: 'pt' and 'pt^0'`；`@size > 10pt` 解析失败 | 尺寸条件暂不可用；`@font = 'Arial'`、`@bold = true` 可用 |
 | 位图换内容 | `Bitmap.SetImageData(Image, Alpha, X, Y)` | `Alpha=0` 报 `TypeError: Python instance can not be converted to a COM object`；**Alpha=None 可用**，像素内容被替换 | 替换像素必须传 None |
 | 位图特效 | `Bitmap.ApplyBitmapEffect(UndoString, Command)` | 两个都是字符串；`Command` 是**效果命令串**，如 `"WhirlpoolEffect WhirpoolSpacing=20,WhirlpoolSmear=9,WhirlpoolTwist=70,WhirlpoolStreak=60,WhirpoolWarp=1,WhirlpoolRandomSeed=0"`，实测像素被改变 | 效果名/参数名需按 Corel 文档；已封装 `cdr_bitmap(action="effect")` |
-| 尺寸/连接线 | `Layer.CreateLinearDimension/CreateConnector` | 需要 IVGPoint；`MathUtils` CLSID 未注册，SubPath 取的点仍报 TypeError/类型不匹配 | 仍不可用；`CreateFreeConnector` 报「未实现」 |
+| 尺寸/连接线 | `Layer.CreateLinearDimension/CreateConnector` | 需要 **IVGPoint**，但类型库里 `IVGPoint` **没有任何公开构造入口**（`Application` 只有 `CreateSnapPoint`，返回的是 `IVGSnapPoint` 而不是 `IVGPoint`；`MathUtils` CLSID 未注册）；传 `IVGSnapPoint` 仍是 `TypeError: Python instance can not be converted to a COM object` | 仍不可用；`CreateFreeConnector` 报「未实现」。已系统排查：SnapPoint/Range 全家族都能建、能改，唯独不能当点用 |
 | 符号库 | `Application.SymbolLibraries` | 本机 Count=0，无符号库可 Add/插入 | 需先安装符号库文件 |
 | 文档颜色转换 | `Document.ConvertToColorContext(profile.CreateColorContext())` | RGB→CMYK→RGB 实测成功（填充色由 RGB 变 CMYK 再回 RGB）；**灰度→RGB 会报「服务器出现意外情况」** | 已封装 `cdr_doc(action="convert_color")`；转换前建议先以 RGB→CMYK→RGB 顺序，避免灰→RGB |
 | 色彩配置文件 | `Application.ColorManager.ColorProfiles` | 本机 64 个；`GetProfilesByColorModel(0/1/2)` 分别可取 RGB/CMYK/Gray；`DefaultColorContext` 含 3 个 | `CreateColorContext()` 直接调用不可用，须用 `profile.CreateColorContext()` |
@@ -137,6 +139,7 @@
 | 图案填充（文件型） | `Fill.ApplyPatternFill(Type=1/2, FileName=…)` | 提示「无法装入以下图样文件」 | 需要图案图像文件；**内存画布型（Type=0 + PatternCanvas）已可用** |
 | 影线填充 | `Fill.ApplyHatchFill` / `Document.HatchLibraries` | `HatchLibraries.Count = 0`、`ActiveLibrary = None`（本机未装 Hatch 库） | 需要先安装 Corel 的 Hatch 填充库 |
 | 曲线贴到笔触 | `Curve.CreateCurveMappedToStroke` | `com_error(-2147352571, 类型不匹配)`（Stroke 参数不是普通 Curve） | 需要 Artistic Media 的笔触对象，暂不封装 |
+| 用户吸附点带 ID 创建 | `SnapPoints.AddUserSnapPointEx(ID, x, y, Direction, UseDirection)` | ID 传 int / 字符串 GUID / `uuid.UUID` / `{GUID}` / IVGUserSnapPoint / IVGSnapPoint / VT_BSTR / VT_DISPATCH 一律报「为参数 ID 指定的值无效」`0x80070057` | 用 `AddUserSnapPoint`（自动生成 GUID），再 `SnapPoints.User("生成的GUID")` 反查 |
 | 符号库 | `app.SymbolLibraries` | 对象存在，但 `Count = 0`（本机未装符号库） | `CreateSymbol` 需要库内符号名，无库可用（`ConvertToSymbol` 可用，已封装为 `to_symbol`） |
 | 剪贴板 | `Document.Copy/Paste` | `AttributeError` | Document 上没有这两个方法（但 `Layer.Paste` 可用，已封装为 `cdr_layers(action="paste")`） |
 | 吸附设置 | `Document.SnapToGrid/SnapToObjects` | `AttributeError` | 同上 |
@@ -212,6 +215,9 @@
 >   `CreateFreeConnector` 报「未实现」；本机无符号库。
 > * 混合 **可用（第十七波）**：`CreateBlend` 传全参数且 `Path=None` 时成功；
 >   效果经 `Effects.Item(i).Blend`（IVGEffectBlend）读写 Steps/Spacing/Angle 等。
+> * 吸附点 **可用（第三十一波）**：`Shape.SnapPoints` 枚举、`AddUserSnapPoint`、`Document.CreateFreeSnapPoint`、
+>   `Application.CreateSnapPoint`、`SnapPoints.Range` 批量 Move/Delete/Find/ChangeDirection/SetAutoSnap；
+>   移动对象吸附点会转成用户吸附点；`FindClosestSnapPoint` 未命中返回 Type=16 的伪命中。
 > * 文档颜色转换 **可用（第十八波）**：`Application.ColorManager` 提供 64 个配置文件，
 >   `profile.CreateColorContext()` → `Document.ConvertToColorContext()` 可 RGB↔CMYK↔Gray；
 >   灰度→RGB 会报服务器异常，其余方向正常。
@@ -235,8 +241,7 @@
 * `Application.CreateHSBColor/CreateYIQColor/CreateCMYColor/CreateBWColor`：实测可用，但颜色运算已走纯 Python
 * `Palettes.Create / CreateFromDocument / CreateFromSelection`：可新建调色板并 `AddColor/SaveAs`，
   但会落盘点色板文件，暂未做成工具（`OpenFixed` 已封装）
-* 符号库插入：需要符号库名称，`CreateSymbol` 本身也未打通；`Page.FindClosestSnapPoint` 的
-  TypeSet 1/16/32 会报「服务器出现意外情况」（2/4/8 及组合可用）
+* 符号库插入：需要符号库名称，`CreateSymbol` 本身也未打通（吸附点已在第三十一波单独补齐）
 * `Bitmap.ResolveLink/UpdateLink`：需要外部链接位图才有意义，未做联调
 * `Bitmap.ConvertToPaletted(9=自定义)`：需要 `palette_index`（已支持，配合 `palette_open_fixed`）
 
@@ -245,8 +250,8 @@
 ## 五、复现方式
 
 ```powershell
-python -m pytest -q              # 55 项纯逻辑
-python scripts/live_smoke.py     # 263 项端到端（真实 CorelDRAW）
+python -m pytest -q              # 61 项纯逻辑
+python scripts/live_smoke.py     # 293 项端到端（真实 CorelDRAW）
 ```
 
 联调断言覆盖了上表所有 ✅ 项。反解脚本属于过程产物，已按要求放在 `tmp/` 并在完成时清理；
@@ -254,28 +259,28 @@ python scripts/live_smoke.py     # 263 项端到端（真实 CorelDRAW）
 
 ---
 
-## 六、量化覆盖率（2026-10-25 第三十波实测）
+## 六、量化覆盖率（2026-10-25 第三十一波实测）
 
 方法：反解类型库拿到 196 个自动化类 / **1619** 个方法（已剔除 `QueryInterface` 等 COM 基础设施）；
 用 AST 扫描 `src/cdrx8_mcp/*.py`，收集所有 `.方法名(` 调用与 `setattr/getattr` 的属性名，
 与主干接口的方法名求交集。**注意：属性名（如 `curve.Nodes`）也会被计入**，所以本波数字含真实属性访问。
 
-**全局：724 / 1619 = 44.7%**（21.2% → … → 44.5% → 本轮 44.7%）
-**主干 20 接口：425 / 743 = 57.2%**
+**全局：746 / 1619 = 46.1%**（21.2% → … → 44.7% → 本轮 46.1%）
+**主干 20 接口：429 / 743 = 57.7%**
 
 复现命令：`python scripts/coverage_audit.py`（会临时展开类型库到 `tmp/gen_py`，跑完自动清理）
 
 | 接口 | 方法数 | 已调用 | 覆盖 |
 |---|---:|---:|---:|
-| `IVGShape` | 123 | 80 | **65%** |
-| `IVGShapeRange` | 125 | 79 | 63% |
+| `IVGShape` | 123 | 81 | **66%** |
+| `IVGShapeRange` | 125 | 80 | 64% |
 | `IVGSubPath` | 38 | 29 | **76%** |
-| `IVGDocument` | 74 | 39 | **53%** |
+| `IVGDocument` | 74 | 40 | **54%** |
 | `IVGPage` | 21 | 19 | **90%** |
 | `IVGCurve` | 36 | 22 | 61% |
 | `IVGLayer` | 49 | 23 | **47%** |
 | `IVGTextRange` | 31 | 22 | **71%** |
-| `IVGApplication` | 78 | 28 | **36%** |
+| `IVGApplication` | 78 | 29 | **37%** |
 | `IVGText` | 29 | 16 | **55%** |
 | `IVGNode` | 18 | 9 | 50% |
 | `IVGBitmap` | 15 | 13 | **87%** |
@@ -287,10 +292,10 @@ python scripts/live_smoke.py     # 263 项端到端（真实 CorelDRAW）
 | `IVGTransparency` | 8 | 6 | **75%** |
 | `IVGStyle` | 15 | 8 | **53%** |
 | `IVGColorContext` | 6 | 1 | 17% |
-| **合计** | **743** | **425** | **57.2%** |
+| **合计** | **743** | **429** | **57.7%** |
 
 > **怎么读这两个数**：
-> 1. 全局 44.7% 覆盖 1619 个方法（含变体与重复）；主干 20 接口 57.2%。
+> 1. 全局 46.1% 覆盖 1619 个方法（含变体与重复）；主干 20 接口 57.7%。
 > 2. 它是**方法/属性名匹配**的近似值，同名方法会跨接口误计。
 > 3. `IVGColor` 的 21% 是**故意的**：实测不暴露分量属性，色彩运算在纯 Python 完成。
 > 4. 未调用方法多为变体（Wide/Ex/2/3 后缀）与事件订阅、CorelScriptTools/MathUtils。
@@ -628,6 +633,38 @@ python scripts/live_smoke.py     # 263 项端到端（真实 CorelDRAW）
 | **链接查询/更新** | `cdr_bitmap(action="link_info"/"update_link"/"resolve_link")` | ✅ link_info 读外部链接状态；update_link 重新加载成功 |
 | 对象命名 | 导入后自动补 `cdr_xxx` 名字 | ✅ 便于后续按名操作 |
 
+## 七之二十九、第三十一波已接入（2026-10-25，吸附点全家族）
+
+| 能力 | 落地位置 | 实测 |
+|---|---|---|
+| **对象吸附点枚举** | `cdr_snap(action="list")` | ✅ 普通矢量对象 4 个 Type=2（边中点）；`by_kind` 汇总；文本对象同样有 4 个 |
+| 按类型掩码过滤 | `cdr_snap(action="of_type", typeset=n)` | ✅ 掩码 1 用户 / 2 对象 / 4 包围盒 / 8 边 / 16 自由 / 32 自动；`typeset=4` 返回 9 个包围盒点 |
+| 单个吸附点详情 | `cdr_snap(action="info", index=n)` | ✅ 类型/坐标/方向/可移动/可删除/可选/`GetPosition` 一致性 |
+| **新增用户吸附点** | `cdr_snap(action="add_user", x, y, angle, use_direction)` | ✅ 生成 Type=1 点并带 GUID；x/y 是**文档坐标**（不是对象局部坐标） |
+| 自动吸附点 | `cdr_snap(action="auto")` | ✅ `SnapPoints.Auto()` 返回 Type=32（实测是**方法**不是集合） |
+| 包围盒定址 | `cdr_snap(action="bbox", index=1..9)` | ✅ 9 个包围盒方位点；越界由本服务拦成 `bad_argument` |
+| 对象定址 | `cdr_snap(action="obj", index=1..4)` | ✅ 4 个对象点 |
+| 边定址 | `cdr_snap(action="edge", index=段号, offset=0..1)` | ✅ `Edge(2,0.25)` 精确取到 (60, 27.5) |
+| 按 GUID 反查 | `cdr_snap(action="user", reference=<GUID>)` | ✅ 用 `sps.User("3f2c…")` 取回同一点；传数字/对象都报「为参数 ID 指定的值无效」 |
+| 集合内最近点 | `cdr_snap(action="near", x, y, typeset)` | ✅ `SnapPoints.FindClosest(类型,x,y)` |
+| 页面级最近点 | `cdr_snap(action="find", x, y, typeset, hot_area)` | ✅ 热区内命中；**未命中会返回 Type=16 的“自由点”（坐标=查询点）**，本服务标记 `fallback=true, found=false` |
+| 文档/应用级自由点 | `cdr_snap(action="free"/"create")` | ✅ `Document.CreateFreeSnapPoint` / `Application.CreateSnapPoint` 均返回 Type=16 |
+| **移动吸附点** | `cdr_snap(action="move", dx, dy)` 或 `x, y` 绝对定位 | ✅ 相对走 `IVGSnapPointRange.Move`，绝对走 `IVGSnapPoint.SetPosition` |
+| **删除吸附点** | `cdr_snap(action="delete", index|indices)` | ✅ 走 `IVGSnapPointRange.Delete`，集合 5 → 4 |
+| 方向编辑 | `cdr_snap(action="direction", angle, uses_direction)` | ✅ `Direction=15` 回读 15.0；`UsesDirection` 可写 |
+| 选择吸附点 | `cdr_snap(action="select")` / `clear_selection` | ✅ `CreateSelection` 后 `SnapPoints.Selection.Count=1`，清空回 0 |
+| **范围批量** | `cdr_snap(action="range", range_op=…)` | ✅ Move / Delete / Add / Remove / RemoveByReference / Find / CreateSelection / AddToSelection / RemoveFromSelection / ChangeDirection / SetAutoSnap 全部可用 |
+| 用户点属性 | `snap.User.ID` / `snap.User.AutoSnap` | ✅ GUID 与开关都可读写 |
+
+> **第三十一波新增的两个 X8 怪癖**（已写进代码注释）：
+> 1. **移动对象吸附点会把它变成用户吸附点**：Type 2 → 1，并从对象点段排到用户点段，集合总数不变。
+> 2. `FindClosestSnapPoint` 在热区内没有匹配点时**不报错也不返回空**，而是返回一个
+>    Type=16（自由）的吸附点，坐标等于查询点本身 —— 直接用会把“没吸附到”当成“吸附到了”。
+>
+> `AddUserSnapPointEx(ID, x, y, direction, useDirection)` 仍然不可用：尝试了 int / str(GUID) /
+> `uuid.UUID` / `{GUID}` / IVGUserSnapPoint 对象 / IVGSnapPoint 对象 / VT_BSTR / VT_DISPATCH，
+> 一律报「为参数 ID 指定的值无效」（`0x80070057`）。
+
 ## 七之二、仍未接入（第三轮候选）
 
 | 能力 | 接口 | 为什么还没做 |
@@ -649,16 +686,16 @@ python scripts/live_smoke.py     # 263 项端到端（真实 CorelDRAW）
 
 ## 八、一句话总结
 
-* **能力域覆盖**：54 个能力域 / 27 个工具，日常出图闭环完整；节点编辑、对象样式、专色、
+* **能力域覆盖**：56 个能力域 / 28 个工具，日常出图闭环完整；节点编辑、对象样式、专色、
   图案/纹理填充、跨文档复制、模板/样式表/颜色样式、文档元数据、本地化元数据、对象数据字段、
   自定义虚线、文档设置、文本区间编辑、自定义箭头、图案微调、文本格式查询、位图内容替换/链接、
   文档回滚、立体化/透镜/效果管理、位图特效命令串、混合、文档颜色转换、用户偏好 KV、OLE 嵌入、
-  命名视图、网格设置、叠印、段落缩进、制表位、屏幕叠加层、应用/文档事件、导出/保存/导入选项都已补上。
-* **方法级覆盖**：全局 44.7%（724/1619），主干 20 接口 57.2%（425/743）。
+  命名视图、网格设置、叠印、段落缩进、制表位、屏幕叠加层、应用/文档事件、导出/保存/导入选项、吸附点全家族都已补上。
+* **方法级覆盖**：全局 46.1%（746/1619），主干 20 接口 57.7%（429/743）。
 * **明确不可用**：位图描摹、文本导入、点集数组建曲线、尺寸标注/连接线（MathUtils 点对象
   不可创建）、符号库、文件型图案/影线填充（本机无库）、曲线贴笔触、OpenDocumentAsCopy、
   HTML 兼容文本、断字写入、填充字符串、文本尺寸查询、灰度→RGB 转换、真实应用偏好读取、
   文本分栏（SetColumns 数组参数）。
-* **第三十波新增**：导入选项（外链位图/重采样/保留图层）与链接位图查询/更新。
+* **第三十一波新增**：吸附点（枚举/过滤/新增用户点/自由点/移动/删除/方向/选择/SnapPointRange 批量），IVGSnapPoint 与 IVGSnapPointRange 已 100% 覆盖。
 
 

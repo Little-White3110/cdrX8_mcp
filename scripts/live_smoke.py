@@ -2412,6 +2412,164 @@ def main() -> int:
                     check("链接位图可重新加载", ul.get("updated") is True, str(ul))
             no_error("关闭链接位图测试文档", server.cdr_close(li_id))
 
+    # ---------------- 15aj. 第三十一波：吸附点 ----------------
+    print("\n[15aj] 第三十一波：吸附点（IVGSnapPoint / IVGSnapPoints / 范围）")
+    sn_doc = server.cdr_open(preset="A4")
+    if "document_id" in sn_doc:
+        sn_id = sn_doc["document_id"]
+        snr = server.cdr_create(sn_id, [{"type": "rectangle", "x": 20, "y": 20,
+                                         "width": 40, "height": 30,
+                                         "fill": "#3366CC"}])
+        if no_error("cdr_create(吸附点测试矩形)", snr):
+            sn_name = ((snr.get("created") or [{}])[0]).get("name")
+            sn_t = {"name": sn_name}
+            sl = server.cdr_snap(sn_id, action="list", target=sn_t)
+            if no_error("cdr_snap(list)", sl):
+                check("对象吸附点可枚举", sl.get("count") == 4
+                      and (sl.get("by_kind") or {}).get("object") == 4,
+                      f"count={sl.get('count')} kinds={sl.get('by_kind')}")
+            si = server.cdr_snap(sn_id, action="info", target=sn_t, index=1)
+            if no_error("cdr_snap(info)", si):
+                check("单个吸附点信息可读", si.get("type") in {1, 2, 4, 8}
+                      and len(si.get("position") or []) == 2,
+                      f"type={si.get('type')} pos={si.get('position')}")
+                check("GetPosition 与属性坐标一致",
+                      si.get("position_get") == si.get("position"),
+                      f"get={si.get('position_get')} props={si.get('position')}")
+            sb = server.cdr_snap(sn_id, action="of_type", target=sn_t, typeset=4)
+            if no_error("cdr_snap(of_type=bbox)", sb):
+                check("按类型过滤吸附点", sb.get("count") == 9,
+                      f"count={sb.get('count')}")
+            sau = server.cdr_snap(sn_id, action="auto", target=sn_t)
+            if no_error("cdr_snap(auto)", sau):
+                check("自动吸附点可读", sau.get("type") == 32
+                      and len(sau.get("position") or []) == 2,
+                      f"type={sau.get('type')} pos={sau.get('position')}")
+            sbb = server.cdr_snap(sn_id, action="bbox", target=sn_t, index=1)
+            if no_error("cdr_snap(bbox)", sbb):
+                check("包围盒吸附点可按序号取", sbb.get("type") == 4
+                      and sbb.get("bbox_type") is not None,
+                      f"type={sbb.get('type')} bbox_type={sbb.get('bbox_type')}")
+            sob = server.cdr_snap(sn_id, action="obj", target=sn_t, index=2)
+            if no_error("cdr_snap(obj)", sob):
+                check("对象吸附点可按序号取", sob.get("type") == 2
+                      and sob.get("object_type") is not None,
+                      f"type={sob.get('type')} object_type={sob.get('object_type')}")
+            sed = server.cdr_snap(sn_id, action="edge", target=sn_t, index=1, offset=0.5)
+            if no_error("cdr_snap(edge)", sed):
+                check("边上吸附点可按段取", sed.get("type") == 8
+                      and sed.get("segment_index") == 1,
+                      f"type={sed.get('type')} seg={sed.get('segment_index')} "
+                      f"off={sed.get('segment_offset')}")
+            snear = server.cdr_snap(sn_id, action="near", target=sn_t, x=20.0, y=30.0,
+                                    typeset=2)
+            if no_error("cdr_snap(near)", snear):
+                check("集合内最近吸附点可查", snear.get("found") is True
+                      and len(snear.get("position") or []) == 2,
+                      f"pos={snear.get('position')}")
+            sbad_bbox = server.cdr_snap(sn_id, action="bbox", target=sn_t, index=10)
+            check("bbox 越界被拒绝", sbad_bbox.get("error") == "bad_argument",
+                  str(sbad_bbox.get("error")))
+            sa = server.cdr_snap(sn_id, action="add_user", target=sn_t,
+                                 x=5, y=6, angle=30, use_direction=True)
+            if no_error("cdr_snap(add_user)", sa):
+                check("可新增用户吸附点", sa.get("type") == 1
+                      and sa.get("kind") == "user"
+                      and sa.get("position") == [5.0, 6.0],
+                      f"type={sa.get('type')} pos={sa.get('position')}")
+            sl2 = server.cdr_snap(sn_id, action="list", target=sn_t)
+            check("用户吸附点进入集合", (sl2.get("by_kind") or {}).get("user") == 1
+                  and sl2.get("count") == 5,
+                  f"count={sl2.get('count')} kinds={sl2.get('by_kind')}")
+            sd = server.cdr_snap(sn_id, action="direction", target=sn_t, index=1,
+                                 angle=15, uses_direction=True)
+            if no_error("cdr_snap(direction)", sd):
+                check("吸附方向可改", abs(float(sd.get("direction") or 0) - 15.0) < 0.01,
+                      f"direction={sd.get('direction')}")
+            ss = server.cdr_snap(sn_id, action="select", target=sn_t, index=1)
+            check("吸附点可选", ss.get("selected") == 1, str(ss.get("selected")))
+            sc = server.cdr_snap(sn_id, action="clear_selection", target=sn_t)
+            check("吸附点选择可清空", sc.get("selected") == 0, str(sc.get("selected")))
+            sf = server.cdr_snap(sn_id, action="free", x=50, y=50)
+            if no_error("cdr_snap(free)", sf):
+                check("文档自由吸附点可建", sf.get("type") == 16
+                      and sf.get("source") == "document_free_snap_point",
+                      f"type={sf.get('type')} pos={sf.get('position')}")
+            sk = server.cdr_snap(sn_id, action="create", x=60, y=60)
+            if no_error("cdr_snap(create)", sk):
+                check("应用级吸附点可建", sk.get("type") == 16
+                      and sk.get("source") == "application_snap_point",
+                      f"type={sk.get('type')}")
+            sfind = server.cdr_snap(sn_id, action="find", x=20.4, y=30.0,
+                                    typeset=2, hot_area=5.0)
+            if no_error("cdr_snap(find)", sfind):
+                fp = sfind.get("position") or [0, 0]
+                near = abs(float(fp[0]) - 20.4) <= 5.05 and abs(float(fp[1]) - 30.0) <= 5.05
+                check("最近吸附点可查", sfind.get("found") is True
+                      and sfind.get("fallback") is False and near,
+                      f"found={sfind.get('found')} pos={sfind.get('position')}")
+            # 未命中时返回的自由点不能当成命中
+            sfar = server.cdr_snap(sn_id, action="find", x=500.0, y=500.0,
+                                   typeset=2, hot_area=2.0)
+            check("未命中返回 fallback 标记", sfar.get("fallback") is True
+                  and sfar.get("found") is False, f"fallback={sfar.get('fallback')}")
+            # 移动对象吸附点会转成用户吸附点（X8 行为）
+            smv = server.cdr_snap(sn_id, action="move", target=sn_t, index=3,
+                                  dx=2.0, dy=3.0)
+            if no_error("cdr_snap(move)", smv):
+                check("吸附点可移动", smv.get("count") == 5, f"count={smv.get('count')}")
+            # 绝对定位（SetPosition）
+            sabs = server.cdr_snap(sn_id, action="move", target=sn_t, index=1,
+                                   x=9.0, y=9.0)
+            if no_error("cdr_snap(move absolute)", sabs):
+                ap = ((sabs.get("points") or [{}])[0]).get("position")
+                check("吸附点可绝对定位", ap == [9.0, 9.0], f"pos={ap}")
+            # 范围操作
+            sr1 = server.cdr_snap(sn_id, action="range", target=sn_t, indices=[1],
+                                  range_op="selection")
+            if no_error("cdr_snap(range.selection)", sr1):
+                check("范围可选中", sr1.get("count_after") == 1
+                      and sr1.get("shape_selected") == 1,
+                      f"count={sr1.get('count_after')} sel={sr1.get('shape_selected')}")
+            sr2 = server.cdr_snap(sn_id, action="range", target=sn_t, indices=[1],
+                                  range_op="auto_snap", auto_snap=True)
+            check("范围可设自动吸附", sr2.get("auto_snap") is True, str(sr2.get("auto_snap")))
+            sr3 = server.cdr_snap(sn_id, action="range", target=sn_t, indices=[1],
+                                  range_op="change_direction", angle=45.0)
+            if no_error("cdr_snap(range.change_direction)", sr3):
+                check("范围可改方向", float(sr3.get("angle") or 0) == 45.0,
+                      f"angle={sr3.get('angle')}")
+            sr4 = server.cdr_snap(sn_id, action="range", target=sn_t, indices=[1],
+                                  range_op="add", index=2)
+            check("范围可加点", sr4.get("added") is True and sr4.get("count_after") == 2,
+                  f"added={sr4.get('added')} count={sr4.get('count_after')}")
+            sr5 = server.cdr_snap(sn_id, action="range", target=sn_t, indices=[1],
+                                  range_op="remove", position=1)
+            check("范围可移除点", sr5.get("removed") is True,
+                  f"removed={sr5.get('removed')}")
+            sref = (server.cdr_snap(sn_id, action="info", target=sn_t, index=1)
+                    .get("reference"))
+            if sref:
+                sr6 = server.cdr_snap(sn_id, action="range", target=sn_t, indices=[1],
+                                      range_op="find", reference=sref)
+                check("范围可按引用查找", sr6.get("found") is True, str(sr6.get("found")))
+            # 按 GUID 反查用户吸附点
+            sinfo = server.cdr_snap(sn_id, action="info", target=sn_t, index=1)
+            suid = sinfo.get("id")
+            if suid:
+                su = server.cdr_snap(sn_id, action="user", target=sn_t, reference=suid)
+                if no_error("cdr_snap(user)", su):
+                    check("用户吸附点可按 ID 反查", su.get("id") == suid
+                          and su.get("type") == 1,
+                          f"id={su.get('id')} pos={su.get('position')}")
+            sdel = server.cdr_snap(sn_id, action="delete", target=sn_t, index=1)
+            if no_error("cdr_snap(delete)", sdel):
+                check("吸附点可删除", sdel.get("count") == 4, f"count={sdel.get('count')}")
+            sbad = server.cdr_snap(sn_id, action="info", target=sn_t, index=99)
+            check("越界 index 被拒绝", sbad.get("error") == "bad_argument",
+                  str(sbad.get("error")))
+        no_error("关闭吸附点测试文档", server.cdr_close(sn_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,
