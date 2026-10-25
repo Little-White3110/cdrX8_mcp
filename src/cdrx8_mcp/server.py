@@ -636,13 +636,18 @@ def cdr_shape_ops(document_id: str, op: str, target: dict | None = None,
 def cdr_align(document_id: str, horizontal: str = "none", vertical: str = "none",
               to: str = "selection", name: str | None = None,
               type_id: int | None = None, rect: dict | None = None,
+              x: float | None = None, y: float | None = None,
+              target2: dict | None = None,
               expected_revision: int | None = None, snapshot_token: str | None = None,
               page_index: int | None = None) -> dict:
     """对齐与分布。
 
     horizontal: none / left / center / right / space（等间距）
     vertical:   none / bottom / middle / top / space
-    to:         "selection"（相互对齐）或 "page"（对齐页面）
+    to:         "selection"（相互对齐）/ "page"（对齐页面）/
+                **原生范围对齐**："page_center"（页面中心）/ "grid"（网格）/
+                "point"（要对齐到的点，需 x/y）/ "shape"（参照对象，需 target2）/
+                "range"（参照对象组成的范围，需 target2）
     先用 name / type_id / rect 选出对象；都不给就用当前选择集。
     """
     def _run():
@@ -650,7 +655,7 @@ def cdr_align(document_id: str, horizontal: str = "none", vertical: str = "none"
         warnings = _check_view(sess, expected_revision, snapshot_token, doc)
         result = _com(lambda _b: ops.align_shapes(
             doc, page_index, horizontal=horizontal, vertical=vertical, to=to,
-            name=name, type_id=type_id, rect=rect,
+            name=name, type_id=type_id, rect=rect, x=x, y=y, target2=target2,
         ), label="cdr_align")
         return _commit(doc, sess, result, warnings)
 

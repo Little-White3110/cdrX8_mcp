@@ -6,10 +6,10 @@
 所有坐标统一 **毫米 / 页面左下角原点 / Y 轴向上**，每次变更都收成**一个原子 undo 步**。
 
 > **已在真机验证**：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）+ Python 3.11.9 64 位
-> - 单元测试 **68 项通过**
-> - 端到端联调（真实 CorelDRAW）**323/323 通过**
+> - 单元测试 **73 项通过**
+> - 端到端联调（真实 CorelDRAW）**336/336 通过**
 > - 能力边界来自对 `vgcoreauto.tlb` 的反解（196 个自动化类 / 1619 个方法）+ 逐项实跑
-> - 方法级覆盖 **49.4%**（主干 20 接口 62.3%），可用 `python scripts/coverage_audit.py` 复现
+> - 方法级覆盖 **50.7%**（主干 20 接口 64.5%），可用 `python scripts/coverage_audit.py` 复现
 > - 完整清单见 [docs/COVERAGE.md](docs/COVERAGE.md)
 
 ---
@@ -70,8 +70,8 @@ python -m cdrx8_mcp              # 启动 MCP 服务器（stdio）
 | `cdr_text` | 排版级：内容 / 字体 / 字号 / 粗斜体 / 下划线 / 对齐 / 大小写 / 项目符号 / 首字下沉 / 行距字距 / 段落缩进 / **制表位** / 前后插入 / 沿路径 / 自适应 / 转曲 / 艺术字↔段落字互转 / 段落内容读写与替换 / 文本区间 / 区间删除·复制·粘贴·拉直 / 读取全文·指定区间·导出纯文本 / **字体属性读取·断字设置读取·格式段列表·按格式查询区间（@font/@bold）** / OpenType 特性 |
 | `cdr_replace_text` | 全文档文字替换（底层用 X8 原生 `Page.TextReplace`） |
 | `cdr_select` | 按名字 / 类型 / 矩形框选，加入选择集；**可移除或清空选择集** |
-| `cdr_shape_ops` | **布尔与整形**：weld / trim / intersect / combine / group / ungroup / break_apart / to_curves / **outline_to_curves** / to_symbol / powerclip / fillet / chamfer / scallop / **step_repeat / distribute / boundary / perspective / separate / parallel_curves / rasterize / batch_outline_to_curves / fill_mode / pixel_aligned / range_boundary / envelope_from_shape / compare / project / unproject / to_document / extrude / lens / extrude_set / lens_set / effect_info / clear_effects / blend / blend_set** |
-| `cdr_align` | 对齐与分布（左中右 / 上下中 / 等间距，对齐对象或页面） |
+| `cdr_shape_ops` | **布尔与整形**：weld / trim / intersect / combine / group / ungroup / break_apart / to_curves / **outline_to_curves** / to_symbol / powerclip / fillet / chamfer / scallop / **step_repeat / distribute / boundary / perspective / separate / parallel_curves / rasterize / batch_outline_to_curves / fill_mode / pixel_aligned / range_boundary / envelope_from_shape / compare / project / unproject / to_document / extrude / lens / extrude_set / lens_set / effect_info / clear_effects / blend / blend_set / **unlock_all / ungroup_all / break_apart_ex / clear_effect / range_info / range_add / range_remove** |
+| `cdr_align` | 对齐与分布（左中右 / 上下中 / 等间距；`to=selection/page`，**以及原生范围对齐 `to=page_center/grid/point/shape/range`**） |
 | `cdr_find` | 按名字或类型查找（跨图层） |
 | `cdr_style` | **对象样式**：列出 / 从对象创建（fill·outline·character·paragraph）/ **基于已有样式派生** / 按名套用 / 改名 / 删除 / **读可读属性·改属性** / 列派生样式 / **样式表 .cdst 导入导出** / **颜色样式与颜色协调** |
 | `cdr_path` | 曲线/子路径级：长度面积 / 偏移轮廓（刀模线）/ **折线采样** / **追加圆·椭圆·矩形·三点弧·贝塞尔** / **节点精简** / **自焊接** / **路径等分** / **加节点·断开·移动子路径** / **点在形状内·曲线求交·取点取切向** / **参数取点·切向量·法向量·速度·交点·按坐标找节点/线段·反转方向·焊接子路径·去重叠** |
@@ -185,7 +185,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ---
 
-## X8 特有问题（111 条，全部实测）
+## X8 特有问题（114 条，全部实测）
 
 这些是 **X8 与 2024+ 的差异**，也是本项目存在的主要理由。
 
@@ -302,6 +302,9 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 | 109 | **`Outline.SetProperties` 不是不能用，而是参数必须给全** | 14 个形参里 int 位传 `None` 会 `TypeError: int() argument must be … not NoneType`；把实参全给对（对象可选位传 None、数值可选位传 0/0.0）后，宽度/颜色/线帽/连接/斜接全部生效 | `cdr_outline(action="set", changes={"use_set_properties":true,…})` |
 | 110 | **`Color.IsSimilar` 对同色返回 False** | 同一个 RGB 值分别建两个颜色对象，`IsSame`=True 但 `IsSimilar`=False | 判色用 `IsSame`；要数值差异用 `GetColorDistanceFrom` |
 | 111 | **`Color.UserAssign/UserAssignEx` 参数是窗口句柄** | 形参名 `ParentWindowHandle`，传颜色对象报 `int() argument must be … not IVGColor` —— 本质是弹「选择颜色」对话框 | **不暴露**（会卡住无人值守会话）；用 `*Assign` 分量直写代替 |
+| 112 | **`ShapeRange.UngroupAll/UngroupAllEx/UngroupEx` 是空操作** | 选一个组合体、页面 1 个对象，调完这三个方法页面对象数仍然是 1；只有 `Shape.Ungroup()` 能真解开 | `cdr_shape_ops(op="ungroup_all")` 已改成对整页组合体逐个 `Shape.Ungroup()` 递归解（实测 1→3，名字保留） |
+| 113 | **`ShapeRange.Sort` 的比较表达式没逆出来** | `"width"` / `"@1.width"` / `"s1.width < s2.width"` 全部报 `Identifier x is not a method of global/pair`；空串报 `参数 CompareExpression 不能为空字符串` | 不暴露排序；要 z 序用图层/层级操作 |
+| 114 | **`SetSizeEx`/`StretchEx` 会瞬间把内容放大几千毫米** | `SetSizeEx(0,0,60,40)` 后对象跑到 (3540,1560) 且尺寸比例失控；`StretchEx(0,0,100,50,1)` 把 20mm 的对象变成 2000mm+；`AllExcluding([shape])` 直接 TypeError | 三个都不暴露（参数语义未确认，风险高） |
 
 改代码前请先读 [`src/cdrx8_mcp/constants.py`](src/cdrx8_mcp/constants.py) 里的注释。
 
@@ -350,8 +353,8 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 ## 测试
 
 ```powershell
-python -m pytest -q                # 68 项纯逻辑测试，任何平台可跑
-python scripts/live_smoke.py       # 323 项端到端，需要 CorelDRAW X8
+python -m pytest -q                # 73 项纯逻辑测试，任何平台可跑
+python scripts/live_smoke.py       # 336 项端到端，需要 CorelDRAW X8
 python scripts/live_smoke.py --keep   # 保留文档方便肉眼看效果
 python scripts/coverage_audit.py   # 覆盖率审计（复现 README/COVERAGE 里的数字）
 ```

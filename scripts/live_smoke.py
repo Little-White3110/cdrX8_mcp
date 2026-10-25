@@ -2699,6 +2699,93 @@ def main() -> int:
                   str(obad.get("error")))
         no_error("关闭描边测试文档", server.cdr_close(ol_id))
 
+    # ---------------- 15am. 第三十三波：原生范围对齐 + 范围批量 ----------------
+    print("\n[15am] 第三十三波：原生范围对齐（AlignRangeTo*）与范围批量")
+    rg_doc = server.cdr_open(preset="A4")
+    if "document_id" in rg_doc:
+        rg_id = rg_doc["document_id"]
+        rgr = server.cdr_create(rg_id, [
+            {"type": "rectangle", "x": 10, "y": 10, "width": 20, "height": 10},
+            {"type": "rectangle", "x": 60, "y": 10, "width": 20, "height": 10},
+            {"type": "rectangle", "x": 110, "y": 10, "width": 20, "height": 10},
+        ])
+        if no_error("cdr_create(范围对齐测试)", rgr):
+            rg_names = [c.get("name") for c in rgr.get("created") or []]
+            for nm in rg_names:
+                server.cdr_select(rg_id, name=nm)
+            ap = server.cdr_align(rg_id, horizontal="left", vertical="top",
+                                  to="point", x=150.0, y=200.0)
+            if no_error("cdr_align(to=point)", ap):
+                check("可对齐到指定点", ap.get("aligned") == 3
+                      and ap.get("axes") == [1, 4], f"axes={ap.get('axes')}")
+            apc = server.cdr_align(rg_id, horizontal="center", to="page_center")
+            if no_error("cdr_align(to=page_center)", apc):
+                check("可对齐到页面中心", apc.get("aligned") == 3
+                      and apc.get("to") == "page_center", str(apc.get("axes")))
+            agr = server.cdr_align(rg_id, horizontal="left", to="grid")
+            if no_error("cdr_align(to=grid)", agr):
+                check("可对齐到网格", agr.get("native") is True, str(agr.get("axes")))
+            ash = server.cdr_align(rg_id, vertical="bottom", to="shape",
+                                   target2={"name": rg_names[0]})
+            if no_error("cdr_align(to=shape)", ash):
+                check("可对齐到参照对象", bool(ash.get("reference"))
+                      and ash.get("axes") == [8], f"ref={ash.get('reference')}")
+            arn = server.cdr_align(rg_id, horizontal="right", to="range",
+                                   target2={"name": rg_names[0]})
+            if no_error("cdr_align(to=range)", arn):
+                check("可对齐到参照范围", arn.get("axes") == [2], str(arn.get("axes")))
+            abad = server.cdr_align(rg_id, horizontal="left", to="point")
+            check("to=point 缺坐标被拒绝", abad.get("error") == "bad_argument",
+                  str(abad.get("error")))
+            ri = server.cdr_shape_ops(rg_id, op="range_info")
+            if no_error("cdr_shape_ops(range_info)", ri):
+                check("范围信息可读", ri.get("count") == 3
+                      and ri.get("type_ids") == [1, 1, 1]
+                      and ri.get("count_any_of_type") == 3
+                      and ri.get("exists_any_of_type") is True,
+                      f"count={ri.get('count')} ids={ri.get('type_ids')}")
+            rr = server.cdr_shape_ops(rg_id, op="range_remove",
+                                      other={"name": rg_names[0]})
+            if no_error("cdr_shape_ops(range_remove)", rr):
+                check("范围可移除成员", rr.get("count_after") == 2,
+                      f"{rr.get('count_before')}→{rr.get('count_after')}")
+            ra = server.cdr_shape_ops(rg_id, op="range_add", other={"name": rg_names[0]})
+            if no_error("cdr_shape_ops(range_add)", ra):
+                check("范围可加回成员", ra.get("count_after") == 3,
+                      f"{ra.get('count_before')}→{ra.get('count_after')}")
+            ul = server.cdr_shape_ops(rg_id, op="unlock_all")
+            if no_error("cdr_shape_ops(unlock_all)", ul):
+                check("范围可批量解锁", ul.get("count") == 3
+                      and ul.get("locked_after") == [False, False, False],
+                      f"locked={ul.get('locked_after')}")
+            ce = server.cdr_shape_ops(rg_id, op="clear_effect",
+                                      target={"name": rg_names[0]}, distance_a=5)
+            if no_error("cdr_shape_ops(clear_effect)", ce):
+                check("范围可清效果", ce.get("cleared") is True, str(ce.get("cleared")))
+            # 组合 → 整页递归解组（ShapeRange.UngroupAll 是空操作，见下）
+            server.cdr_select(rg_id, name=rg_names[1])
+            server.cdr_select(rg_id, name=rg_names[2])
+            gr = server.cdr_shape_ops(rg_id, op="group")
+            if no_error("cdr_shape_ops(group)", gr):
+                ua = server.cdr_shape_ops(rg_id, op="ungroup_all")
+                if no_error("cdr_shape_ops(ungroup_all)", ua):
+                    check("可递归解开整页组合体", (ua.get("groups_opened") or 0) >= 1
+                          and (ua.get("page_shapes") or 0) >= 3,
+                          f"opened={ua.get('groups_opened')} page={ua.get('page_shapes')}")
+            ins3 = server.cdr_inspect(rg_id)
+            shapes3 = ins3.get("shapes") or []
+            poly = next((s.get("name") for s in shapes3
+                         if s.get("name") and s.get("type") in ("curve", "polygon")), None)
+            if poly is None:
+                poly = next((s.get("name") for s in shapes3 if s.get("name")), None)
+            if poly:
+                bp = server.cdr_shape_ops(rg_id, op="break_apart_ex",
+                                          target={"name": poly})
+                if no_error("cdr_shape_ops(break_apart_ex)", bp):
+                    check("BreakApartEx 可用", (bp.get("count_before") or 0) >= 1,
+                          f"count={bp.get('count_before')} result={bp.get('result_count')}")
+        no_error("关闭范围测试文档", server.cdr_close(rg_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

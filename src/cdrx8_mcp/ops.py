@@ -4487,6 +4487,9 @@ SHAPE_OPS = (
     "extrude", "lens", "extrude_set", "lens_set", "effect_info", "clear_effects",
     # 第十七波：混合
     "blend", "blend_set",
+    # 第三十三波：范围级批量（解锁/全解组/炸开/清效果/范围查询/范围合并）
+    "unlock_all", "ungroup_all", "break_apart_ex", "clear_effect", "range_info",
+    "range_add", "range_remove",
 )
 
 
@@ -4686,6 +4689,88 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
             src = find_shape(doc, page, target or {})
             return {"op": op, "target": _s(lambda: str(src.Name)),
                     **_effect_info(src)}
+
+        if op in {"unlock_all", "ungroup_all", "break_apart_ex", "clear_effect",
+                  "range_info", "range_add", "range_remove"}:
+            with atomic(doc, label):
+                if target:
+                    try:
+                        doc.Selection().RemoveAll()
+                    except Exception:
+                        pass
+                    find_shape(doc, page, target).AddToSelection()
+                sr = selection_range(doc)
+                count = _n(lambda: int(sr.Count), 0) or 0
+                if count < 1:
+                    raise CdrBadArgument(
+                        f"{op} 需要先选中对象（可用 cdr_select），或用 target 指定一个对象")
+                if op == "range_info":
+                    ids = [_n(lambda i=i: int(sr.Item(i).Type), -1)
+                           for i in range(1, count + 1)]
+                    names = [_s(lambda i=i: str(sr.Item(i).Name))
+                             for i in range(1, count + 1)]
+                    probe = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+                    found = _s(lambda: sr.FindAnyOfType(probe))
+                    return {"op": op, "count": count, "names": names, "type_ids": ids,
+                            "count_any_of_type": _n(
+                                lambda: int(sr.CountAnyOfType(probe)), 0),
+                            "exists_any_of_type": bool(_s(
+                                lambda: bool(sr.ExistsAnyOfType(probe)), False)),
+                            "find_any_of_type": (
+                                _s(lambda: str(found.Name)) if found is not None else None),
+                            "index_of_target": (
+                                _n(lambda: int(sr.IndexOf(
+                                    find_shape(doc, page, target))), 0)
+                                if target else None)}
+                if op == "clear_effect":
+                    sr.ClearEffect(int(distance_a or 5))
+                    return {"op": op, "cleared": True, "effect_type": int(distance_a or 5),
+                            "count": count}
+                if op == "range_add" or op == "range_remove":
+                    if not other:
+                        raise CdrBadArgument(f"{op} 需要 other（另一个对象）")
+                    src = find_shape(doc, page, other)
+                    extra = _app_of(doc).CreateShapeRange()
+                    extra.Add(src)
+                    if op == "range_add":
+                        sr.AddRange(extra)
+                    else:
+                        sr.RemoveRange(extra)
+                    return {"op": op, "other": _s(lambda: str(src.Name)),
+                            "count_before": count,
+                            "count_after": _n(lambda: int(sr.Count), 0) or 0}
+                if op == "unlock_all":
+                    sr.Unlock()
+                    return {"op": op, "count": count,
+                            "locked_after": [bool(_s(lambda i=i: bool(sr.Item(i).Locked),
+                                                     False))
+                                             for i in range(1, count + 1)]}
+                if op == "ungroup_all":
+                    # 实测：ShapeRange.UngroupAll/UngroupAllEx/UngroupEx 都是空操作，
+                    # 只能对每个组合体调 Shape.Ungroup()（递归解开嵌套组合）。
+                    depth = 0
+                    seen: list = []
+                    for _idx, _li, _j, sh in _iter_page_shapes(page):
+                        guard = 0
+                        while int(_s(lambda sh=sh: int(sh.Type), -1)) == 7 and guard < 20:
+                            try:
+                                sh.Ungroup()
+                            except Exception:
+                                break
+                            guard += 1
+                            depth += 1
+                        seen.append(_s(lambda sh=sh: str(sh.Name)))
+                    return {"op": op, "groups_opened": depth,
+                            "page_shapes": _n(lambda: int(page.Shapes.Count), 0) or 0,
+                            "names": seen[:40],
+                            "note": "ShapeRange.UngroupAll 在 X8 是空操作，这里对整页"
+                                    "组合体逐个 Shape.Ungroup() 递归解开"}
+                # break_apart_ex
+                made = _s(lambda: sr.BreakApartEx())
+                return {"op": op, "count_before": count,
+                        "page_shapes": _n(lambda: int(page.Shapes.Count), 0) or 0,
+                        "result_count": (_n(lambda: int(made.Count), 0)
+                                         if made is not None else None)}
 
         shape = find_shape(doc, page, target or {})
 
@@ -4987,8 +5072,19 @@ def batch_modify(doc: Any, page_index: int | None, selector: dict, changes: dict
 def align_shapes(doc: Any, page_index: int | None = None, horizontal: str = "none",
                  vertical: str = "none", to: str = "selection", name: str | None = None,
                  type_id: int | None = None, rect: dict | None = None,
-                 spacing: bool = False) -> dict:
-    """对齐/分布。horizontal: none/left/center/right；vertical: none/bottom/middle/top。"""
+                 spacing: bool = False, x: float | None = None, y: float | None = None,
+                 target2: dict | None = None) -> dict:
+    """对齐/分布。horizontal: none/left/center/right；vertical: none/bottom/middle/top。
+
+    `to` 除了 `selection` / `page`，还支持 X8 原生的**范围对齐**（第三十三波实测）：
+      * `page_center`  AlignRangeToPageCenter
+      * `grid`         AlignRangeToGrid
+      * `point`        AlignRangeToPoint（要 x / y）
+      * `shape`        AlignRangeToShape（要 target2）
+      * `range`        AlignRangeToShapeRange（要 target2，用第二个对象建单元素范围）
+    这些原生方法一次只吃一个轴（`cdrAlignLeft=1 / Right=2 / HCenter=3 / Top=4 /
+    Bottom=8 / VCenter=12`），所以 horizontal/vertical 会被拆成两次调用。
+    """
     h_map = {"none": 0, "left": 1, "center": 2, "middle": 2, "right": 3,
              "space": 4, "distribute": 4}
     v_map = {"none": 0, "bottom": 1, "center": 2, "middle": 2, "top": 3,
@@ -5000,19 +5096,57 @@ def align_shapes(doc: Any, page_index: int | None = None, horizontal: str = "non
                              "vertical 取值 none/bottom/middle/top/space")
     if h == 0 and v == 0:
         raise CdrBadArgument("horizontal 与 vertical 不能同时为 none")
+    native = str(to).lower()
+    if native not in {"selection", "page", "page_center", "grid", "point", "shape", "range"}:
+        raise CdrBadArgument(
+            "to 取值 selection/page/page_center/grid/point/shape/range")
+    if native == "point" and (x is None or y is None):
+        raise CdrBadArgument("to=point 需要 x / y")
+    if native in {"shape", "range"} and not target2:
+        raise CdrBadArgument(f"to={native} 需要 target2（参照对象）")
+
+    # 原生范围对齐的轴枚举
+    native_axis = []
+    if h:
+        native_axis.append({1: 1, 2: 3, 3: 2, 4: 1}[h])  # left/HCenter/right
+    if v:
+        native_axis.append({1: 8, 2: 12, 3: 4}[v])       # bottom/VCenter/top
 
     with mm_units(doc):
         select_shapes(doc, page_index, name=name, type_id=type_id, rect=rect)
         sr = selection_range(doc)
         if int(sr.Count) < 1:
             raise CdrBadArgument("没有选中任何对象")
+        if native in {"selection", "page"}:
+            with atomic(doc, "cdr_align"):
+                sr.AlignAndDistribute(
+                    h, v,
+                    1 if native == "page" else 0,
+                    0, False, 0, 0.0, 0.0, None,
+                )
+            return {"aligned": int(sr.Count), "horizontal": h, "vertical": v, "to": native,
+                    "native": False}
+
+        page = _page(doc, page_index)
+        ref_shape = find_shape(doc, page, target2) if target2 else None
         with atomic(doc, "cdr_align"):
-            sr.AlignAndDistribute(
-                h, v,
-                1 if str(to).lower() == "page" else 0,
-                0, False, 0, 0.0, 0.0, None,
-            )
-        return {"aligned": int(sr.Count), "horizontal": h, "vertical": v, "to": to}
+            for axis in native_axis:
+                if native == "page_center":
+                    sr.AlignRangeToPageCenter(axis)
+                elif native == "grid":
+                    sr.AlignRangeToGrid(axis)
+                elif native == "point":
+                    sr.AlignRangeToPoint(axis, float(x), float(y))
+                elif native == "shape":
+                    sr.AlignRangeToShape(axis, ref_shape)
+                else:  # range
+                    ref_range = _app_of(doc).CreateShapeRange()
+                    ref_range.Add(ref_shape)
+                    sr.AlignRangeToShapeRange(axis, ref_range)
+        return {"aligned": int(sr.Count), "horizontal": h, "vertical": v, "to": native,
+                "native": True, "axes": native_axis,
+                "point": [float(x), float(y)] if native == "point" else None,
+                "reference": _s(lambda: str(ref_shape.Name)) if ref_shape is not None else None}
 
 
 # --------------------------------------------------------------------------- #
