@@ -4031,6 +4031,41 @@ def main() -> int:
                   f"profiles={pc58.get('context_profiles')}")
         no_error("关闭色彩工厂测试文档", server.cdr_close(f58_id))
 
+    # ---------------- 15bm. 第五十九波：点集 → 拟合曲线 / 追加点集 ----------------
+    print("\n[15bm] 第五十九波：IVGPointRange + CreateCurveFitToPoints / AppendSubpathFromPoints")
+    p59_doc = server.cdr_open(preset="A4")
+    if "document_id" in p59_doc:
+        p59_id = p59_doc["document_id"]
+        p59r = server.cdr_create(p59_id, [
+            {"type": "curve_segment", "x1": 0, "y1": 0, "x2": 40, "y2": 20},
+            {"type": "curve_segment", "x1": 0, "y1": 60, "x2": 20, "y2": 60},
+        ])
+        if no_error("cdr_create(点集拟合测试)", p59r):
+            p59S, p59T = [{"name": c["name"]} for c in p59r["created"]]
+            fit59 = server.cdr_path(p59_id, p59T, action="fit_to_points",
+                                    other=p59S,
+                                    params={"spacing": 5.0, "tolerance": 2.0})
+            if no_error("cdr_path(fit_to_points)", fit59):
+                check("点集可拟合曲线（CreateCurveFitToPoints）",
+                      fit59.get("type_id") == 3
+                      and (fit59.get("points") or 0) > 5,
+                      f"points={fit59.get('points')} nodes={fit59.get('nodes')}")
+            fit59b = server.cdr_path(p59_id, p59T, action="fit_to_points",
+                                     params={"points": [[0, 0], [10, 15], [20, 0],
+                                                        [30, 15], [40, 0]],
+                                             "with_cusps": True})
+            if no_error("cdr_path(fit_to_points with_cusps)", fit59b):
+                check("带尖点拟合可用（CreateCurveFitToPointsAndCusps）",
+                      fit59b.get("type_id") == 3, f"type={fit59b.get('type_id')}")
+            ap59 = server.cdr_path(p59_id, p59T, action="append_points",
+                                   other=p59S,
+                                   params={"spacing": 8.0, "mode": "fit"})
+            if no_error("cdr_path(append_points)", ap59):
+                check("点集可追加到曲线（AppendSubpath*Points）",
+                      (ap59.get("nodes_after") or 0) > (ap59.get("nodes_before") or 0),
+                      f"{ap59.get('nodes_before')} → {ap59.get('nodes_after')}")
+        no_error("关闭点集拟合测试文档", server.cdr_close(p59_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

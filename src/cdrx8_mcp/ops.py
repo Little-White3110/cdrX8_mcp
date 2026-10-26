@@ -2751,6 +2751,8 @@ PATH_ACTIONS = (
     "point_at_offset", "segment_at_offset",
     # 第五十六波：把曲线映射到另一条"骨架线"上（艺术笔映射）
     "map_to_stroke",
+    # 第五十九波：点集 → 拟合曲线 / 追加点集
+    "fit_to_points", "append_points",
 )
 
 
@@ -3063,6 +3065,70 @@ def path_ops(doc: Any, page_index: int | None, target: dict, action: str, *,
                         "first_segment": _n(lambda: int(srange.FirstSegment.Index)),
                         "last_segment": _n(lambda: int(srange.LastSegment.Index)),
                         **info()}
+            if act in {"fit_to_points", "append_points"}:
+                # 实测：IVGPointRange 可从 SubPath.GetEvenlySpacedPoints(间距, 缩放) 拿到，
+                # 也可用 AddPointXY 逐个补点；之后：
+                #   Document.CreateCurveFitToPoints(range, False, 容差) → 拟合曲线
+                #   Curve.AppendSubpathFromPoints(range, 闭合) / AppendSubpathFitToPoints(…)
+                spec = dict(params or {})
+                app = _app_of(doc)
+                points = spec.get("points")
+                rng = None
+                source_name = None
+                if other:
+                    stroke = find_shape(doc, page, other)
+                    sub = _s(lambda: stroke.Curve.SubPaths.Item(
+                        int(spec.get("subpath", 1))))
+                    if sub is None:
+                        raise CdrBadArgument("other 不是曲线对象")
+                    rng = sub.GetEvenlySpacedPoints(
+                        float(spec.get("spacing", 5.0)),
+                        bool(spec.get("scale_to_fit", True)))
+                    source_name = _s(lambda: str(stroke.Name))
+                if rng is None:
+                    if not points or len(points) < 2:
+                        raise CdrBadArgument(
+                            "fit_to_points 需要 other（取点来源）或 points=[[x,y],…]")
+                    rng = _make_point_range(app, points)
+                if spec.get("extra_points"):
+                    for pt in spec["extra_points"]:
+                        rng.AddPointXY(float(pt[0]), float(pt[1]))
+                if act == "fit_to_points":
+                    with atomic(doc, label):
+                        if spec.get("with_cusps"):
+                            # 带尖点数组的版本：尖点索引传空 tuple 即可
+                            made_curve = doc.CreateCurveFitToPointsAndCusps(
+                                rng, (), False, float(spec.get("tolerance", 3.0)))
+                        else:
+                            made_curve = doc.CreateCurveFitToPoints(
+                                rng, False, float(spec.get("tolerance", 3.0)))
+                        if made_curve is None:
+                            raise CdrComFailure("CreateCurveFitToPoints 返回空")
+                        made = _active_layer(page).CreateCurve(made_curve)
+                    if made is None:
+                        raise CdrComFailure("Layer.CreateCurve(拟合结果) 返回空")
+                    name = _ensure_name(made)
+                    return {"action": act, "shape": name,
+                            "points": _n(lambda: int(rng.Count), 0),
+                            "type_id": _n(lambda: int(made.Type)),
+                            "nodes": _n(lambda: int(made.Curve.Nodes.Count), 0),
+                            "bbox": _bbox(made), "from": source_name}
+                close_sub = bool(spec.get("close", False))
+                mode = str(spec.get("mode", "plain")).lower()
+                before = _node_count(curve)
+                with atomic(doc, label):
+                    if mode == "fit":
+                        curve.AppendSubpathFitToPoints(
+                            rng, False, float(spec.get("tolerance", 3.0)))
+                    elif mode == "cusps":
+                        curve.AppendSubpathFitToPointsAndCusps(
+                            rng, (), False, float(spec.get("tolerance", 3.0)))
+                    else:
+                        curve.AppendSubpathFromPoints(rng, close_sub)
+                return {"action": act, "mode": mode, "points": _n(
+                    lambda: int(rng.Count), 0),
+                    "nodes_before": before, "nodes_after": _node_count(curve),
+                    **info()}
             if act == "map_to_stroke":
                 # 实测：Curve.CreateCurveMappedToStroke(IVGSubPath, ScaleY, SelfWeld)
                 # 与 ...AndReferenceLine(IVGSubPath, IVGPoint, IVGPoint, ScaleY, SelfWeld)
@@ -7051,6 +7117,29 @@ def _text_structs(shape: Any) -> dict:
             "break_all_cap_words": bool(_s(lambda: bool(hp.BreakAllCapWords), False)),
         }
     return out
+
+
+def _make_point_range(app: Any, points: list) -> Any:
+    """把 [[x,y],…] 变成 IVGPointRange：先借用一条临时线的子路径取空范围再接 AddPointXY。"""
+    pts = [[float(p[0]), float(p[1])] for p in points]
+    if len(pts) < 2:
+        raise CdrBadArgument("需要至少 2 个点")
+    probe = app.ActiveDocument.ActiveLayer.CreateLineSegment(
+        pts[0][0], pts[0][1], pts[1][0], pts[1][1])
+    sub = probe.Curve.SubPaths.Item(1)
+    rng = sub.GetEvenlySpacedPoints(1.0, True)
+    # 清空后逐个补点
+    try:
+        rng.RemoveAll()
+    except Exception:
+        pass
+    for point in pts:
+        rng.AddPointXY(point[0], point[1])
+    try:
+        probe.Delete()
+    except Exception:
+        pass
+    return rng
 
 
 def _text_struct_dict(struct: Any, attrs: tuple) -> dict | None:
