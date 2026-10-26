@@ -2,7 +2,7 @@
 
 > 目的：证明"还有多少没探"。每一行要么有对应的工具，要么有实测失败证据。
 > 环境：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）/ Python 3.11.9 64 位
-> 最近更新：2026-10-27 第八十一波（立体化效果复制 / 数据字段详情）
+> 最近更新：2026-10-27 第八十二波（点集容器编辑 PointRange 补方法）
 
 ## 怎么得出这份清单
 
@@ -244,6 +244,7 @@
 > * 混合 **可用（第十七波）**：`CreateBlend` 传全参数且 `Path=None` 时成功；
 >   效果经 `Effects.Item(i).Blend`（IVGEffectBlend）读写 Steps/Spacing/Angle 等。
 > * 调色板查找/插入/默认 / 命名视图 / 数据字段重排 / B样条扩容 **可用（第七十七波）**：`Palette.FindColor/InsertColor/MakeDefault`、`Views.AddActiveView`、`DataField.Reorder`、`ControlPoints.Resize`。
+> * 点集容器编辑 **可用（第八十二波）**：`point_range_edit`（Reverse/AddPoints/InsertPoint/RemoveAdjacentDuplicates）与 `fit_to_points(reverse=true)`。
 > * 立体化效果复制 / 数据字段详情 **可用（第八十一波）**：`extrude_set(effect={"copy_from":…})`、`cdr_doc(datafield_info)`。
 > * OLE 对象只读清点 **可用（第八十波）**：`cdr_doc(ole_info)` 清点页面上的 Type 12 对象并读 IVGOLE 只读属性。
 > * 文本框多栏 **可用（第七十九波）**：`cdr_text(columns={"count":…,"widths":…,"gutters":…})`；`IVGTextFrame` 达 100%。
@@ -378,7 +379,7 @@
 
 ```powershell
 python -m pytest -q              # 93 项纯逻辑
-python scripts/live_smoke.py     # 559 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
+python scripts/live_smoke.py     # 561 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
 ```
 
 联调断言覆盖了上表所有 ✅ 项。反解脚本属于过程产物，已按要求放在 `tmp/` 并在完成时清理；
@@ -386,13 +387,13 @@ python scripts/live_smoke.py     # 559 项端到端（真实 CorelDRAW，**跑�
 
 ---
 
-## 六、量化覆盖率（2026-10-27 第八十一波实测）
+## 六、量化覆盖率（2026-10-27 第八十二波实测）
 
 方法：反解类型库拿到 196 个自动化类 / **1619** 个方法（已剔除 `QueryInterface` 等 COM 基础设施）；
 用 AST 扫描 `src/cdrx8_mcp/*.py`，收集所有 `.方法名(` 调用与 `setattr/getattr` 的属性名，
 与主干接口的方法名求交集。**注意：属性名（如 `curve.Nodes`）也会被计入**，所以本波数字含真实属性访问。
 
-**全局：1180 / 1619 = 72.9%**（21.2% → … → 72.9% → 本轮 72.9%）
+**全局：1185 / 1619 = 73.2%**（21.2% → … → 72.9% → 本轮 73.2%）
 **主干 20 接口：670 / 743 = 90.2%**
 
 复现命令：`python scripts/coverage_audit.py`（会临时展开类型库到 `tmp/gen_py`，跑完自动清理）
@@ -1649,6 +1650,20 @@ python -m pytest -q                       # 93 项纯 Python 单元测试
 
 > **第八十一波记录**：`CopyFrom` 复制后 `Depth` 读回 0.0/20.0 与源不一致 —— 说明 X8 的
 > `CopyFrom` 在属性读回上有延迟（要重新进入效果才有值），能力本身可用但结果解读要谨慎。
+
+## 七之八十一、第八十二波已接入（2026-10-27，点集容器编辑）
+
+| 能力 | 落地位置 | 实测 |
+|---|---|---|
+| **点序反转**（Reverse） | `cdr_shape_ops(op="point_range_edit", params={"reverse":true})` 及 `fit_to_points(params={"reverse":true})` | ✅ 首点从 (0,0) 变 (40,0) |
+| **追加点集**（AddPoints） | `point_range_edit(params={"append_from":…})` | ✅ 另一条曲线的点集整体并入（5→8 点，含去重） |
+| **按位插入**（InsertPoint） | 同上 `params={"insert_at":2}` | ✅ 在指定位置插入另一个 IVGPoint |
+| **去重**（RemoveAdjacentDuplicates） | 同上 `params={"remove_duplicates":true}` | ✅ 可调用 |
+
+> **第八十二波记录**：`AddPoint` / `InsertPoint` 的参数是**另一个 IVGPoint 对象**（不是坐标），
+> 与 `AddPoints` 要另一个 **IVGPointRange** 一致 —— 点集容器族的传参全是对象而非数值。
+> `DataFields.AddEx` / `TextTabPositions`（入口不在 Text 上）/ `HatchPattern`（不在 HatchFill 上）
+> 三族入口找不到或格式串不可用，留不可用清单。
 
 ## 七之二、仍未接入（第三轮候选）
 

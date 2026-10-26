@@ -4832,6 +4832,35 @@ def main() -> int:
                   f"count={df81.get('count')}")
         no_error("关闭第八十一波测试文档", server.cdr_close(x81_id))
 
+    # ---------------- 15cj. 第八十二波：点集容器编辑（PointRange 补方法） ----------------
+    print("\n[15cj] 第八十二波：PointRange.Reverse·AddPoint·InsertPoint·AddPoints·RemoveAdjacentDuplicates")
+    p82_doc = server.cdr_open(preset="A4")
+    if "document_id" in p82_doc:
+        p82_id = p82_doc["document_id"]
+        p82r = server.cdr_create(p82_id, [
+            {"type": "curve_segment", "x1": 0, "y1": 0, "x2": 40, "y2": 0},
+            {"type": "curve_segment", "x1": 0, "y1": 30, "x2": 20, "y2": 30},
+        ])
+        if no_error("cdr_create(点集编辑测试)", p82r):
+            pS, pT = [{"name": c["name"]} for c in p82r["created"]]
+            pe82 = server.cdr_shape_ops(p82_id, op="point_range_edit", other=pS,
+                                        params={"spacing": 10, "reverse": True,
+                                                "append_from": pT["name"],
+                                                "remove_duplicates": True})
+            if no_error("cdr_shape_ops(point_range_edit)", pe82):
+                check("点集容器可编辑（Reverse/AddPoints/RemoveAdjacentDuplicates）",
+                      {"reverse", "add_points", "remove_duplicates"}
+                      <= set(pe82.get("applied") or []),
+                      f"{pe82.get('count_before')} → {pe82.get('count_after')}")
+            fit82 = server.cdr_path(p82_id, pS, action="fit_to_points", other=pS,
+                                    params={"spacing": 10, "tolerance": 3,
+                                            "reverse": True})
+            if no_error("cdr_path(fit_to_points+reverse)", fit82):
+                check("拟合前可反转点序（PointRange.Reverse）",
+                      fit82.get("points") is not None,
+                      f"points={fit82.get('points')}")
+        no_error("关闭点集编辑测试文档", server.cdr_close(p82_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

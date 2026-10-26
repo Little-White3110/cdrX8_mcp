@@ -3772,6 +3772,9 @@ def path_ops(doc: Any, page_index: int | None, target: dict, action: str, *,
                 if spec.get("extra_points"):
                     for pt in spec["extra_points"]:
                         rng.AddPointXY(float(pt[0]), float(pt[1]))
+                if spec.get("reverse"):
+                    # 实测：IVGPointRange.Reverse() 可用
+                    rng.Reverse()
                 if act == "fit_to_points":
                     with atomic(doc, label):
                         if spec.get("with_cusps"):
@@ -3794,6 +3797,27 @@ def path_ops(doc: Any, page_index: int | None, target: dict, action: str, *,
                             "bbox": _bbox(made), "from": source_name}
                 close_sub = bool(spec.get("close", False))
                 mode = str(spec.get("mode", "plain")).lower()
+                if spec.get("reverse"):
+                    # 实测：IVGPointRange.Reverse() 可用（点序反转）
+                    rng.Reverse()
+                    applied.append("reverse")
+                if spec.get("append_from"):
+                    # 实测：AddPoints(另一个 IVGPointRange) / InsertPoint(序号, IVGPoint)
+                    src_shape = find_shape(doc, page, {"name": spec["append_from"]})
+                    src_sub = _s(lambda: src_shape.Curve.SubPaths.Item(1))
+                    if src_sub is not None:
+                        src_rng = _s(lambda: src_sub.GetEvenlySpacedPoints(
+                            float(spec.get("spacing", 10.0)), True))
+                        if spec.get("insert_at") is not None:
+                            rng.InsertPoint(int(spec["insert_at"]),
+                                            src_rng.Item(1))
+                            applied.append("insert_point")
+                        else:
+                            rng.AddPoints(src_rng)
+                            applied.append("add_points")
+                if spec.get("remove_duplicates"):
+                    rng.RemoveAdjacentDuplicates()
+                    applied.append("remove_duplicates")
                 before = _node_count(curve)
                 with atomic(doc, label):
                     if mode == "fit":
@@ -6715,6 +6739,8 @@ SHAPE_OPS = (
     "hatch_fill", "fountain_colors", "ellipse_geometry",
     # 第七十二波：包络效果对象（IVGEffectEnvelope）
     "envelope_object",
+    # 第八十二波：点集容器编辑（PointRange.Reverse/AddPoints/InsertPoint）
+    "point_range_edit",
     # 第七十四波：拉伸消失点共享
     "extrude_vp_share",
     # 第七十五波：批量斜切（含范围版）
@@ -7114,6 +7140,47 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
                     "keep_lines": bool(_s(lambda: bool(env.KeepLines), False)),
                     "corner_indices": _s(lambda: str(env.CornerIndices))[:60],
                     "applied": applied}
+        if op == "point_range_edit":
+            # 实测：IVGPointRange 的 Reverse / AddPoint(IVGPoint) / InsertPoint(序号, IVGPoint) /
+            # AddPoints(另一 range) / RemoveAdjacentDuplicates 都可用
+            spec = dict(params or {})
+            if not other:
+                raise CdrBadArgument("point_range_edit 需要 other（取点来源曲线）")
+            src_shape = find_shape(doc, page, other)
+            src_sub = _s(lambda: src_shape.Curve.SubPaths.Item(
+                int(spec.get("subpath", 1))))
+            if src_sub is None:
+                raise CdrBadArgument("other 不是曲线对象")
+            rng = _s(lambda: src_sub.GetEvenlySpacedPoints(
+                float(spec.get("spacing", 10.0)), bool(spec.get("scale_to_fit", True))))
+            applied = []
+            count_before = _n(lambda: int(rng.Count), 0) or 0
+            with atomic(doc, label):
+                if spec.get("reverse"):
+                    rng.Reverse()
+                    applied.append("reverse")
+                if spec.get("append_from"):
+                    add_shape = find_shape(doc, page, {"name": spec["append_from"]})
+                    add_sub = _s(lambda: add_shape.Curve.SubPaths.Item(1))
+                    if add_sub is not None:
+                        add_rng = _s(lambda: add_sub.GetEvenlySpacedPoints(
+                            float(spec.get("add_spacing", 10.0)), True))
+                        if spec.get("insert_at") is not None:
+                            rng.InsertPoint(int(spec["insert_at"]),
+                                            add_rng.Item(1))
+                            applied.append("insert_point")
+                        else:
+                            rng.AddPoints(add_rng)
+                            applied.append("add_points")
+                if spec.get("remove_duplicates"):
+                    rng.RemoveAdjacentDuplicates()
+                    applied.append("remove_duplicates")
+            count_after = _n(lambda: int(rng.Count), 0) or 0
+            return {"op": op, "count_before": count_before,
+                    "count_after": count_after, "applied": applied,
+                    "points": [[_round(_s(lambda i=i: float(rng.Item(i).x))),
+                                _round(_s(lambda i=i: float(rng.Item(i).y)))]
+                               for i in range(1, min(count_after, 12) + 1)]}
         if op in {"hatch_fill", "fountain_colors", "ellipse_geometry"}:
             source = find_shape(doc, page, target or {})
             spec = dict(params or {})

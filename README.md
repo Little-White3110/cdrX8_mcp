@@ -7,7 +7,7 @@
 
 > **已在真机验证**：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）+ Python 3.11.9 64 位
 > - 单元测试 **93 项通过**
-> - 端到端联调（真实 CorelDRAW）**559/559 通过**
+> - 端到端联调（真实 CorelDRAW）**561/561 通过**
 > - 能力边界来自对 `vgcoreauto.tlb` 的反解（196 个自动化类 / 1619 个方法）+ 逐项实跑
 > - 方法级覆盖 **71.8%**（主干 20 接口 90.2%），可用 `python scripts/coverage_audit.py` 复现
 > - 完整清单见 [docs/COVERAGE.md](docs/COVERAGE.md)
@@ -186,7 +186,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ---
 
-## X8 特有问题（165 条，全部实测）
+## X8 特有问题（166 条，全部实测）
 
 这些是 **X8 与 2024+ 的差异**，也是本项目存在的主要理由。
 
@@ -357,6 +357,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 | 163 | **立体化灯光是带索引的属性，`SetLight` 三参** | `LightPresent(i)` / `LightIntensity(i)` / `LightPosition(i)`（i=1~3）各自独立；`SetLight(索引, cdrLightPosition, 强度)` 第二参直接传 `LightPosition(索引)` 取回的对象；未开的灯 `LightIntensity(i)=-1`。`SetBevel(深度, 角度, 只显示斜角)` 一次设斜角 | 已封装 `cdr_shape_ops(extrude_set, effect={"light_index":…, "bevel_depth":…})`，返回 3 盏灯状态 |
 | 164 | **`TextFrame.SetColumns` 的三重约束** | ① `WidthsAndGutters` 要 `VARIANT(VT_ARRAY|VT_VARIANT)` 包装；② 数组是 **[宽×N, 间距×(N-1)] 交错**；③ **宽度和 + 间距和必须等于框宽**（不满足报「文本栏的宽度必须在 6.35 与 25400 之间」）。签名本身是 `SetColumns(NumColumns, EqualColumns, WidthsAndGutters)`，不是逐列参数 | 已封装 `cdr_text(columns={"count":…,"widths":…,"gutters":…})`；`IVGTextFrame` 5/5 全覆盖 |
 | 165 | **`shape.OLE` 在 txt 源 OLE 上报「存储空间不足」** | OLE 对象（Type 12）的 `shape.OLE` 依赖 OLE 存储格式，txt 源建的会报 0x800411EB；且 `Edit`/`Open`/`DoVerb` 都会弹窗口。`ModifyColorStyleColor` 调用不报错但不改色（空操作）。`IVGPalette.Colors()` **要带括号** | 已封装 `cdr_doc(ole_info)` 只读清点（可检测页面上有无 OLE 对象） |
+| 166 | **`PointRange` 点集族的传参全是对象** | `AddPoint(IVGPoint)` / `InsertPoint(序号, IVGPoint)` / `AddPoints(IVGPointRange)` 都不收坐标数值；`Reverse()` / `RemoveAdjacentDuplicates()` 零参可直接调。另 `TextTabPositions` 入口不在 `Text` 上、`HatchPattern` 不在 `HatchFill` 上、`DataFields.AddEx` 格式串不可用 | 已封装 `cdr_shape_ops(point_range_edit)`，`fit_to_points/append_points` 也支持 `reverse` |
 
 改代码前请先读 [`src/cdrx8_mcp/constants.py`](src/cdrx8_mcp/constants.py) 里的注释。
 
@@ -406,7 +407,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ```powershell
 python -m pytest -q                # 93 项逻辑测试，任何平台可跑
-python scripts/live_smoke.py       # 559 项端到端（跑前先确认没有残留 CorelDRW 进程）
+python scripts/live_smoke.py       # 561 项端到端（跑前先确认没有残留 CorelDRW 进程）
 python scripts/live_smoke.py --keep   # 保留文档方便肉眼看效果
 python scripts/coverage_audit.py   # 覆盖率审计（复现 README/COVERAGE 里的数字）
 ```
