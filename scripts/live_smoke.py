@@ -4321,6 +4321,57 @@ def main() -> int:
                   f"count={tsa66.get('count')}")
         no_error("关闭线型/工具属性测试文档", server.cdr_close(t66_id))
 
+    # ---------------- 15bu. 第六十七波：矩形圆角 / 克隆链 / 投影偏移 ----------------
+    print("\n[15bu] 第六十七波：Shape.Rectangle（圆角）·Shape.CloneLink·EffectDropShadow")
+    u67_doc = server.cdr_open(preset="A4")
+    if "document_id" in u67_doc:
+        u67_id = u67_doc["document_id"]
+        u67r = server.cdr_create(u67_id, [
+            {"type": "rectangle", "x": 0, "y": 0, "width": 40, "height": 30},
+            {"type": "ellipse", "x": 60, "y": 0, "width": 10, "height": 10},
+            {"type": "rectangle", "x": 0, "y": 60, "width": 20, "height": 10},
+        ])
+        if no_error("cdr_create(圆角/克隆测试)", u67r):
+            uR, uE, uS = [{"name": c["name"]} for c in u67r["created"]]
+            co67 = server.cdr_shape_ops(u67_id, op="corners", target=uR,
+                                        params={"radius": 5.0})
+            if no_error("cdr_shape_ops(corners radius)", co67):
+                check("矩形可按半径倒角（Rectangle.SetRadius）",
+                      "set_radius" in (co67.get("applied") or [])
+                      and (co67.get("max_radius") or 0) > 0,
+                      f"max={co67.get('max_radius')} "
+                      f"r={co67.get('radius_upper_left')}")
+            co67b = server.cdr_shape_ops(u67_id, op="corners", target=uR,
+                                         params={"roundness": 60})
+            if no_error("cdr_shape_ops(corners roundness)", co67b):
+                check("矩形可按圆度倒角（Rectangle.SetRoundness）",
+                      "set_roundness" in (co67b.get("applied") or []),
+                      str(co67b.get("applied")))
+            before67 = {s.get("name") for s in
+                        ((server.cdr_inspect(u67_id).get("shapes") or []))}
+            server.cdr_modify(u67_id, uE, {"clone": {"dx": 20, "dy": 0}})
+            after67 = {s.get("name") for s in
+                       ((server.cdr_inspect(u67_id).get("shapes") or []))}
+            clones67 = sorted(after67 - before67)
+            if clones67:
+                cl67 = server.cdr_shape_ops(u67_id, op="clone_links",
+                                            target={"name": clones67[0]},
+                                            params={"restore": True})
+                if no_error("cdr_shape_ops(clone_links)", cl67):
+                    check("克隆链接可恢复（CloneLink.RestoreAllLinks）",
+                          "restore_all_links" in (cl67.get("applied") or []),
+                          f"fill_linked={cl67.get('fill_linked')}")
+            server.cdr_modify(u67_id, uS, {"drop_shadow": {
+                "type": 0, "opacity": 50, "feather": 15, "offset_x": 5, "offset_y": 5}})
+            ds67 = server.cdr_shape_ops(u67_id, op="drop_shadow", target=uS,
+                                        params={"offset_x": 8, "offset_y": 8,
+                                                "opacity": 60})
+            if no_error("cdr_shape_ops(drop_shadow)", ds67):
+                check("投影偏移可改（EffectDropShadow.SetOffset）",
+                      ds67.get("offset") == [8.0, 8.0] and ds67.get("opacity") == 60,
+                      f"offset={ds67.get('offset')} opacity={ds67.get('opacity')}")
+        no_error("关闭圆角/克隆测试文档", server.cdr_close(u67_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

@@ -2,7 +2,7 @@
 
 > 目的：证明"还有多少没探"。每一行要么有对应的工具，要么有实测失败证据。
 > 环境：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）/ Python 3.11.9 64 位
-> 最近更新：2026-10-26 第六十六波（线型虚线段 / 自定义工具形状属性）
+> 最近更新：2026-10-26 第六十七波（矩形圆角 / 克隆链 / 投影偏移）
 
 ## 怎么得出这份清单
 
@@ -243,6 +243,7 @@
 >   `CreateFreeConnector` 报「未实现」；本机无符号库。
 > * 混合 **可用（第十七波）**：`CreateBlend` 传全参数且 `Path=None` 时成功；
 >   效果经 `Effects.Item(i).Blend`（IVGEffectBlend）读写 Steps/Spacing/Angle 等。
+> * 矩形圆角 / 克隆链 / 投影偏移 **可用（第六十七波）**：`Shape.Rectangle.SetRadius/SetRoundness`、`Shape.CloneLink.RestoreAllLinks`、`EffectDropShadow.SetOffset`。
 > * 线型虚线段 / 自定义工具形状属性 **可用（第六十六波）**：`OutlineStyles.Item(n)` 读`DashCount/DashLength/GapLength`、`CreateToolShapeAttributes()` 的 12 个 `Set*`。
 > * 视口缩放/混合效果/调色板管理/进度条 **可用（第六十五波）**：`ActiveWindow.ActiveView` 15 个缩放方法、`Shape.Effects.Item(1).Blend`、`Application.PaletteManager`、`Application.Status`。
 > * 标注/图框/辅助线/文本框链接 **可用（第六十四波）**：`Shape.Dimension`、`Shape.PowerClip`、`Shape.Guide`、`Text.Frames.Item(i).LinkTo/UnLink`。
@@ -363,7 +364,7 @@
 
 ```powershell
 python -m pytest -q              # 93 项纯逻辑
-python scripts/live_smoke.py     # 512 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
+python scripts/live_smoke.py     # 516 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
 ```
 
 联调断言覆盖了上表所有 ✅ 项。反解脚本属于过程产物，已按要求放在 `tmp/` 并在完成时清理；
@@ -371,14 +372,14 @@ python scripts/live_smoke.py     # 512 项端到端（真实 CorelDRAW，**跑�
 
 ---
 
-## 六、量化覆盖率（2026-10-26 第六十六波实测）
+## 六、量化覆盖率（2026-10-26 第六十七波实测）
 
 方法：反解类型库拿到 196 个自动化类 / **1619** 个方法（已剔除 `QueryInterface` 等 COM 基础设施）；
 用 AST 扫描 `src/cdrx8_mcp/*.py`，收集所有 `.方法名(` 调用与 `setattr/getattr` 的属性名，
 与主干接口的方法名求交集。**注意：属性名（如 `curve.Nodes`）也会被计入**，所以本波数字含真实属性访问。
 
-**全局：1096 / 1619 = 67.7%**（21.2% → … → 66.8% → 本轮 67.7%）
-**主干 20 接口：665 / 743 = 89.5%**（本轮新增全在**非主干**接口）
+**全局：1101 / 1619 = 68.0%**（21.2% → … → 67.7% → 本轮 68.0%）
+**主干 20 接口：666 / 743 = 89.6%**
 
 复现命令：`python scripts/coverage_audit.py`（会临时展开类型库到 `tmp/gen_py`，跑完自动清理）
 
@@ -407,7 +408,7 @@ python scripts/live_smoke.py     # 512 项端到端（真实 CorelDRAW，**跑�
 | **合计** | **743** | **665** | **89.5%** |
 
 > **怎么读这两个数**：
-> 1. 全局 **67.7%** 覆盖 1619 个方法（含变体与重复）；主干 20 接口 89.5%。
+> 1. 全局 **68.0%** 覆盖 1619 个方法（含变体与重复）；主干 20 接口 89.6%。
 > 2. 它是**方法/属性名匹配**的近似值，同名方法会跨接口误计。
 > 3. `IVGColor` 已到 **91%**：分量**写**走 `*Assign`，分量**读**走 `CorelScriptGetComponent`（`(5000+模型号, v1..v7)`）；纯 Python 只用于无 COM 场景的换算。
 > 4. 未调用方法多为变体（Wide/Ex/2/3 后缀）与事件订阅、CorelScriptTools/MathUtils。
@@ -1378,6 +1379,20 @@ python scripts/live_smoke.py     # 512 项端到端（真实 CorelDRAW，**跑�
 > 3. 审计脚本按名字匹配源码，动态 `getattr(attrs, name)(...)` 不会被计入 ——
 >    所以把 12 个 `Set*` 改成**显式调用**，既便于审计也便于阅读。
 
+## 七之六十六、第六十七波已接入（2026-10-26，矩形圆角 / 克隆链 / 投影偏移）
+
+| 能力 | 落地位置 | 实测 |
+|---|---|---|
+| **矩形倒角**（IVGRectangle 2 方法） | `cdr_shape_ops(op="corners", params={"radius":5})` / `{"roundness":60}` | ✅ `Shape.Rectangle` → `IVGRectangle`：`SetRadius` / `SetRoundness` 可用；`MaxRadius=15`、四角半径、`CornerType`、`EqualCorners` 可读 |
+| **克隆链接**（IVGCloneLink 1 方法） | `cdr_shape_ops(op="clone_links", params={"restore":true})` | ✅ `Shape.CloneLink` → `FillLinked/OutlineLinked/ShapeLinked/TransformLinked` 可读、`RestoreAllLinks()` 可调；`CloneParent` 可反查源对象 |
+| **投影偏移**（IVGEffectDropShadow 1 方法） | `cdr_shape_ops(op="drop_shadow", params={"offset_x":8,"offset_y":8,"opacity":60})` | ✅ `Shape.Effects.Item(1).DropShadow` → `SetOffset(8,8)` 生效（读回 8.0），`Opacity=60` 可写 |
+
+> **第六十七波附带修掉一个真 bug**：`cdr_modify(clone=…)` 生成的克隆体 **Name 与源对象完全相同**，
+> 导致按名字根本找不到克隆体（`inspect` 里会出现两个同名对象）。现在克隆后强制改名，
+> `clone_links` 这类"拿到克隆体"的操作才可用。
+> 另：`page.Grid` 不存在（网格仍走 `cdr_doc(grid/set_grid)`）、`shape.Symbol` 需要符号库形状，
+> `Style.Fill.SaveFill/LoadFill` 参数形态未通。
+
 ## 七之二、仍未接入（第三轮候选）
 
 | 能力 | 接口 | 为什么还没做 |
@@ -1404,11 +1419,11 @@ python scripts/live_smoke.py     # 512 项端到端（真实 CorelDRAW，**跑�
   自定义虚线、文档设置、文本区间编辑、自定义箭头、图案微调、文本格式查询、位图内容替换/链接、
   文档回滚、立体化/透镜/效果管理、位图特效命令串、混合、文档颜色转换、用户偏好 KV、OLE 嵌入、
   命名视图、网格设置、叠印、段落缩进、制表位、屏幕叠加层、应用/文档事件、导出/保存/导入选项、吸附点全家族、颜色对象分量、描边对象全量属性都已补上。
-* **方法级覆盖**：**全局 67.7%（1096/1619）**，主干 20 接口 89.5%（665/743）。
+* **方法级覆盖**：**全局 68.0%（1101/1619）**，主干 20 接口 89.6%（666/743）。
 * **明确不可用**：位图描摹、文本导入、点集数组建曲线、尺寸标注/连接线（MathUtils 点对象
   不可创建）、符号库、文件型图案/影线填充（本机无库）、曲线贴笔触、OpenDocumentAsCopy、
   HTML 兼容文本、断字写入、填充字符串、文本尺寸查询、灰度→RGB 转换、真实应用偏好读取、
   文本分栏（SetColumns 数组参数）。
-* **第六十六波新增**：线型虚线段读取（IVGOutlineStyle）、自定义工具形状属性（IVGToolShapeAttributes 100%）—— 全局覆盖到 67.7%。
+* **第六十七波新增**：矩形圆角（IVGRectangle）、克隆链（IVGCloneLink）、投影偏移（IVGEffectDropShadow）；并修复克隆体同名导致找不到的 bug。
 
 

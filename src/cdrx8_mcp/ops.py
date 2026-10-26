@@ -5942,7 +5942,12 @@ def _apply_changes(doc: Any, shape: Any, changes: dict) -> dict:
             new_shape = shape.Clone(float(c.get("dx", 5)), float(c.get("dy", -5)))
             applied.append("clone")
             if new_shape is not None:
-                new_name = _s(lambda: str(new_shape.Name))
+                # 克隆体的 Name 与源对象**完全相同**，必须强制改名，否则按名字找不到
+                new_name = f"{NAME_PREFIX}{_short_id()}"
+                try:
+                    new_shape.Name = new_name
+                except Exception:
+                    new_name = _ensure_name(new_shape)
         except Exception as exc:  # noqa: BLE001
             warnings.append(f"克隆失败：{exc}")
 
@@ -6229,6 +6234,8 @@ SHAPE_OPS = (
     "dimension_info", "dimension_set", "powerclip_extract", "guide_info", "guide_set",
     # 第六十五波：混合效果对象（IVGEffectBlend）
     "blend_effect",
+    # 第六十七波：矩形圆角 / 克隆链 / 投影偏移 / 效果子对象
+    "corners", "clone_links", "drop_shadow",
     # 第四十九波：按掩码复制属性
     "copy_props",
     # 第五十波：形状级斜切（SkewEx）
@@ -6535,6 +6542,72 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
                     "excluded": list(exclude), "result_count": count,
                     "names": [_s(lambda i=i: str(got.Item(i).Name))
                               for i in range(1, min(count, 20) + 1)]}
+        if op in {"corners", "clone_links", "drop_shadow"}:
+            # 实测入口：Shape.Rectangle（IVGRectangle）/ Shape.CloneLink（IVGCloneLink）/
+            # Shape.Effects.Item(1).DropShadow（IVGEffectDropShadow）
+            source = find_shape(doc, page, target or {})
+            spec = dict(params or {})
+            applied = []
+            if op == "corners":
+                rgn = _s(lambda: source.Rectangle)
+                if rgn is None:
+                    raise CdrBadArgument("目标不是矩形（没有 Rectangle 子对象）")
+                with atomic(doc, label):
+                    if spec.get("radius") is not None:
+                        rgn.SetRadius(float(spec["radius"]))
+                        applied.append("set_radius")
+                    if spec.get("roundness") is not None:
+                        rgn.SetRoundness(float(spec["roundness"]))
+                        applied.append("set_roundness")
+                return {"op": op, "applied": applied,
+                        "equal_corners": bool(_s(lambda: bool(rgn.EqualCorners), False)),
+                        "max_radius": _round(_s(lambda: float(rgn.MaxRadius))),
+                        "radius_upper_left": _round(
+                            _s(lambda: float(rgn.RadiusUpperLeft))),
+                        "corner_type": _n(lambda: int(rgn.CornerType))}
+            if op == "clone_links":
+                cl = _s(lambda: source.CloneLink)
+                if cl is None:
+                    raise CdrBadArgument("目标不是克隆对象（先用 clone 生成）")
+                with atomic(doc, label):
+                    if spec.get("restore"):
+                        cl.RestoreAllLinks()
+                        applied.append("restore_all_links")
+                return {"op": op, "applied": applied,
+                        "fill_linked": bool(_s(lambda: bool(cl.FillLinked), False)),
+                        "outline_linked": bool(_s(lambda: bool(cl.OutlineLinked), False)),
+                        "shape_linked": bool(_s(lambda: bool(cl.ShapeLinked), False)),
+                        "transform_linked": bool(
+                            _s(lambda: bool(cl.TransformLinked), False)),
+                        "parent": _s(lambda: str(cl.CloneParent.Name))}
+            # drop_shadow
+            effects = _s(lambda: source.Effects)
+            if effects is None or (_n(lambda: int(effects.Count), 0) or 0) < 1:
+                raise CdrBadArgument("目标没有效果（先用 cdr_modify 加投影）")
+            eff = _s(lambda: effects.Item(1))
+            sh = _s(lambda: eff.DropShadow) if eff is not None else None
+            if sh is None:
+                raise CdrBadArgument("该效果不是投影")
+            with atomic(doc, label):
+                if spec.get("offset_x") is not None or spec.get("offset_y") is not None:
+                    sh.SetOffset(float(spec.get("offset_x", 0.0)),
+                                 float(spec.get("offset_y", 0.0)))
+                    applied.append("set_offset")
+                for key, attr in (("opacity", "Opacity"), ("feather", "Feather"),
+                                  ("fade", "Fade"), ("type", "Type")):
+                    if key in spec:
+                        try:
+                            setattr(sh, attr, spec[key])
+                            applied.append(key)
+                        except Exception:
+                            continue
+            return {"op": op, "applied": applied,
+                    "offset": [_round(_s(lambda: float(sh.OffsetX))),
+                               _round(_s(lambda: float(sh.OffsetY)))],
+                    "opacity": _n(lambda: int(sh.Opacity)),
+                    "feather": _round(_s(lambda: float(sh.Feather))),
+                    "fade": _n(lambda: int(sh.Fade)),
+                    "type": _n(lambda: int(sh.Type))}
         if op == "blend_effect":
             # 实测：形状混合后 shape.Effects.Item(1).Blend 就是 IVGEffectBlend，
             # FuseStart / FuseEnd / Split 可用（CopyFrom 需要另一条有效混合）
