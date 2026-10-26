@@ -647,7 +647,7 @@ DOC_ACTIONS = ("info", "clear_selection", "clear_undo", "palette", "arrowhead",
                "set_color_profile", "palette_from", "windows",
                "outline_styles_save", "palette_find_color", "palette_insert_color",
                "palette_set_color", "palette_make_default", "views_add_active",
-               "datafield_reorder", "bspline_resize",
+               "datafield_reorder", "bspline_resize", "ole_info",
                "select_color_profile",
                "fountain_transform", "arrowhead_unnamed",
                # 第四十六波：CorelScriptTools（VBA 辅助对象）单位/数学/日期
@@ -853,11 +853,13 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
         color_count = _n(lambda: int(palette.ColorCount), 0)
         if not 1 <= ci <= color_count:
             raise CdrBadArgument(f"color_index 越界：{ci}（该调色板共 {color_count} 色）")
+        # 实测：palette.Color(ci) 与 palette.Colors().Item(ci) 等价，前者更直接
         color = palette.Color(ci)
         return {"action": act, "palette": _s(lambda: str(palette.Name)),
                 "palette_index": pi, "color_index": ci,
                 "color": _s(lambda: str(color.ToString())),
-                "name": _s(lambda: str(color.GetName())) or None}
+                "name": _s(lambda: str(color.GetName())) or None,
+                "colors_enumerable": True}
     if act == "palette_open_fixed":
         if palette_id is None:
             raise CdrBadArgument("palette_open_fixed 需要 palette_id（本机实测 3=PANTONE 匹配系统）")
@@ -1767,6 +1769,37 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
                 "profile": (chosen_name or "")[:60],
                 "readback": _s(lambda: str(ctx.ColorProfile(want_model).Name))[:60],
                 "rendering_intent": _n(lambda: int(ctx.RenderingIntent))}
+
+    if act == "ole_info":
+        # 实测：OLE 对象（Type 12）的 shape.OLE 返回 IVGOLE 只读族；
+        # 但 pywin32 在 txt 源上会报「存储溢出」，且 Edit/Open/DoVerb 会弹窗口 —— 只封装读
+        app = _app_of(doc)
+        page = _page(doc, page_index)
+        result = {"action": act, "shapes": []}
+        found = 0
+        for _i, _l, _j, sh in _iter_page_shapes(page):
+            if int(_s(lambda sh=sh: int(sh.Type), -1)) != 12:
+                continue
+            found += 1
+            ole = _s(lambda sh=sh: sh.OLE)
+            if ole is None:
+                result["shapes"].append({"name": _s(lambda sh=sh: str(sh.Name)),
+                                         "readable": False})
+                continue
+            result["shapes"].append({
+                "name": _s(lambda sh=sh: str(sh.Name)),
+                "readable": True,
+                "progid": (_s(lambda: str(ole.ProgID)) or "")[:40],
+                "short_name": _s(lambda: str(ole.ShortName))[:40],
+                "is_open": bool(_s(lambda: bool(ole.IsOpen), False)),
+                "is_in_place_active": bool(
+                    _s(lambda: bool(ole.IsInPlaceActive), False)),
+                "is_server_running": bool(
+                    _s(lambda: bool(ole.IsServerRunning), False)),
+                "modified": bool(_s(lambda: bool(ole.Modified), False)),
+            })
+        result["ole_count"] = found
+        return result
 
     if act == "tree_manager":
         # 实测：Document.TreeManager → IVGTreeManager

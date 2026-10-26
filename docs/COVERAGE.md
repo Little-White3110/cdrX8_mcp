@@ -2,7 +2,7 @@
 
 > 目的：证明"还有多少没探"。每一行要么有对应的工具，要么有实测失败证据。
 > 环境：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）/ Python 3.11.9 64 位
-> 最近更新：2026-10-27 第七十九波（文本框多栏 SetColumns 攻克）
+> 最近更新：2026-10-27 第八十波（OLE 对象只读清点）
 
 ## 怎么得出这份清单
 
@@ -244,6 +244,7 @@
 > * 混合 **可用（第十七波）**：`CreateBlend` 传全参数且 `Path=None` 时成功；
 >   效果经 `Effects.Item(i).Blend`（IVGEffectBlend）读写 Steps/Spacing/Angle 等。
 > * 调色板查找/插入/默认 / 命名视图 / 数据字段重排 / B样条扩容 **可用（第七十七波）**：`Palette.FindColor/InsertColor/MakeDefault`、`Views.AddActiveView`、`DataField.Reorder`、`ControlPoints.Resize`。
+> * OLE 对象只读清点 **可用（第八十波）**：`cdr_doc(ole_info)` 清点页面上的 Type 12 对象并读 IVGOLE 只读属性。
 > * 文本框多栏 **可用（第七十九波）**：`cdr_text(columns={"count":…,"widths":…,"gutters":…})`；`IVGTextFrame` 达 100%。
 > * 立体化灯光/斜角 **可用（第七十八波）**：`extrude_set` 支持 `light_index/light_intensity/bevel_depth/bevel_angle`，返回 3 盏灯的状态。
 > * 扭曲中心重设 **可用（第七十六波）**：`distort` 流程里自动调 `EffectDistortion.CenterDistortion()`。
@@ -376,7 +377,7 @@
 
 ```powershell
 python -m pytest -q              # 93 项纯逻辑
-python scripts/live_smoke.py     # 555 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
+python scripts/live_smoke.py     # 557 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
 ```
 
 联调断言覆盖了上表所有 ✅ 项。反解脚本属于过程产物，已按要求放在 `tmp/` 并在完成时清理；
@@ -384,13 +385,13 @@ python scripts/live_smoke.py     # 555 项端到端（真实 CorelDRAW，**跑�
 
 ---
 
-## 六、量化覆盖率（2026-10-27 第七十九波实测）
+## 六、量化覆盖率（2026-10-27 第八十波实测）
 
 方法：反解类型库拿到 196 个自动化类 / **1619** 个方法（已剔除 `QueryInterface` 等 COM 基础设施）；
 用 AST 扫描 `src/cdrx8_mcp/*.py`，收集所有 `.方法名(` 调用与 `setattr/getattr` 的属性名，
 与主干接口的方法名求交集。**注意：属性名（如 `curve.Nodes`）也会被计入**，所以本波数字含真实属性访问。
 
-**全局：1179 / 1619 = 72.8%**（21.2% → … → 72.8% → 本轮 72.8%）
+**全局：1180 / 1619 = 72.9%**（21.2% → … → 72.8% → 本轮 72.9%）
 **主干 20 接口：671 / 743 = 90.3%**
 
 复现命令：`python scripts/coverage_audit.py`（会临时展开类型库到 `tmp/gen_py`，跑完自动清理）
@@ -420,7 +421,7 @@ python scripts/live_smoke.py     # 555 项端到端（真实 CorelDRAW，**跑�
 | **合计** | **743** | **665** | **89.5%** |
 
 > **怎么读这两个数**：
-> 1. 全局 **72.8%** 覆盖 1619 个方法（含变体与重复）；主干 20 接口 90.3%。
+> 1. 全局 **72.9%** 覆盖 1619 个方法（含变体与重复）；主干 20 接口 90.3%。
 > 2. 它是**方法/属性名匹配**的近似值，同名方法会跨接口误计。
 > 3. `IVGColor` 已到 **91%**：分量**写**走 `*Assign`，分量**读**走 `CorelScriptGetComponent`（`(5000+模型号, v1..v7)`）；纯 Python 只用于无 COM 场景的换算。
 > 4. 未调用方法多为变体（Wide/Ex/2/3 后缀）与事件订阅、CorelScriptTools/MathUtils。
@@ -1623,6 +1624,20 @@ python -m pytest -q                       # 93 项纯 Python 单元测试
 > 3. **宽度和 + 间距和必须等于框宽**（不满足报「文本栏的宽度必须在 6.35 与 25400 之间」）。
 > 至此 `IVGTextFrame` **5/5 全覆盖**。
 > 另确认 `EffectEnvelope.CopyFromShape` 五参形态无论 CopyMode 取什么都报错 —— 留在不可用清单。
+
+## 七之七十九、第八十波已接入（2026-10-27，OLE 对象只读清点）
+
+| 能力 | 落地位置 | 实测 |
+|---|---|---|
+| **OLE 对象清点**（IVGOLE 只读族 6 属性） | `cdr_doc(action="ole_info")` | ✅ 遍历页面找 Type=12 的形状，读 `ProgID` / `ShortName` / `IsOpen` / `IsInPlaceActive` / `IsServerRunning` / `Modified`（无 OLE 对象时返回空数组，可用作检测） |
+
+> **第八十波记录（含一条死路）**：
+> 1. `shape.OLE` 在 **txt 源的 OLE 对象**上会报「存储空间不足」（pywin32 收窄问题）；
+>    且 `Edit` / `Open` / `DoVerb` 会弹窗口 —— 所以只封装只读清点，不暴露交互方法。
+> 2. `IVGPalette.Colors()` **要带括号调用**（返回 IVGPaletteColors 集合），
+>    `palette.Color(ci)` 直接取单色，两者都封装了。
+> 3. `Color.ModifyColorStyleColor` 调用不报错但也**不改变颜色**（与 `SetFontProperties` 同类的
+>    "空操作"），维持不暴露。
 
 ## 七之二、仍未接入（第三轮候选）
 

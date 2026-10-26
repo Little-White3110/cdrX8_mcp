@@ -4783,6 +4783,26 @@ def main() -> int:
                       f"widths={fr79.get('column_widths')}")
         no_error("关闭多栏测试文档", server.cdr_close(c79_id))
 
+    # ---------------- 15ch. 第八十波：OLE 对象只读清点 / 调色板颜色枚举确认 ----------------
+    print("\n[15ch] 第八十波：IVGOLE 只读清点（ole_info）·palette_color 枚举确认")
+    o80_doc = server.cdr_open(preset="A4")
+    if "document_id" in o80_doc:
+        o80_id = o80_doc["document_id"]
+        server.cdr_create(o80_id, [
+            {"type": "rectangle", "x": 0, "y": 0, "width": 30, "height": 20,
+             "fill": "#CC8844"}])
+        oi80 = server.cdr_doc(o80_id, action="ole_info")
+        if no_error("cdr_doc(ole_info)", oi80):
+            check("可清点页面上的 OLE 对象（ole_info）",
+                  oi80.get("ole_count") == 0 and isinstance(oi80.get("shapes"), list),
+                  f"count={oi80.get('ole_count')}")
+        pc80 = server.cdr_doc(o80_id, action="palette_color", palette_index=1,
+                              color_index=1)
+        if no_error("cdr_doc(palette_color)", pc80):
+            check("调色板颜色可枚举（palette.Color(i)）",
+                  bool(pc80.get("color")), str(pc80.get("color"))[:40])
+        no_error("关闭 OLE 测试文档", server.cdr_close(o80_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,
