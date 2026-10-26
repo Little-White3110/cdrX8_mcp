@@ -387,7 +387,8 @@ def save_as_copy(doc: Any, path: str, *, options: dict | None = None) -> dict:
     }
 
 
-VIEW_ACTIONS = ("refresh", "activate", "new_window", "to_screen", "to_document",
+VIEW_ACTIONS = ("refresh", "activate", "new_window", "overlay_handle",
+                "to_screen", "to_document",
                 "zoom_fit_page", "zoom_fit_width", "zoom_fit_height",
                 "zoom_all_objects", "zoom_selection", "actual_size", "zoom_in",
                 "zoom_out", "zoom_in_at_point", "set_view_point", "view_area",
@@ -461,6 +462,46 @@ def view_ops(doc: Any, action: str, *, x: float | None = None, y: float | None =
         return {"action": act, "zoom_before": before,
                 "zoom_after": _round(_s(lambda: float(view.Zoom))),
                 "view_type": _n(lambda: int(view.Type))}
+    if act == "overlay_handle":
+        # 实测：Application.CreateOnScreenHandle() → IVGOnScreenHandle；
+        # SetPosition / SetHandleColor / Show / Hide / UpdateHotTracking 可用，IsHotTracked 可读
+        spec = dict(params or {}) if "params" in dir() else {}
+        app = _app_of(doc)
+        handle = _s(lambda: app.CreateOnScreenHandle())
+        if handle is None:
+            raise CdrComFailure("CreateOnScreenHandle 返回空")
+        cx = float(x if x is not None else 10.0)
+        cy = float(y if y is not None else 10.0)
+        applied = []
+        with atomic(doc, "cdr_view:overlay_handle"):
+            try:
+                handle.SetPosition(cx, cy)
+                applied.append("set_position")
+            except Exception:
+                pass
+            try:
+                handle.SetHandleColor(int(color))
+                applied.append("set_handle_color")
+            except Exception:
+                pass
+            try:
+                handle.UpdateHotTracking(cx, cy)
+                applied.append("update_hot_tracking")
+            except Exception:
+                pass
+            try:
+                if spec.get("hide"):
+                    handle.Hide()
+                    applied.append("hide")
+                else:
+                    handle.Show()
+                    applied.append("show")
+            except Exception:
+                pass
+        return {"action": act, "position": [cx, cy],
+                "color": int(color),
+                "hot_tracked": bool(_s(lambda: bool(handle.IsHotTracked), False)),
+                "applied": applied}
     if act == "new_window":
         # 实测：Application.ActiveWindow.NewWindow() 可开新窗口（Document 上没有这个方法）
         win = _s(lambda: _app_of(doc).ActiveWindow.NewWindow())
@@ -564,6 +605,7 @@ DOC_ACTIONS = ("info", "clear_selection", "clear_undo", "palette", "arrowhead",
                "app_status", "palette_manager",
                "outline_style_dash", "tool_shape_attributes", "tree_manager",
                "set_color_profile", "palette_from", "windows",
+               "select_color_profile",
                "fountain_transform", "arrowhead_unnamed",
                # 第四十六波：CorelScriptTools（VBA 辅助对象）单位/数学/日期
                "script_tools")
@@ -1462,6 +1504,17 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
         out["note"] = ("CorelScriptTools 的值以 1/10000 mm 为单位：FromInches(1)=254000；"
                        "ASin 返回弧度；query+code_page 可做 Unicode↔ANSI 码页转换")
         return out
+    if act == "select_color_profile":
+        # 实测：IVGColorProfiles.SelectByName(名称) 可调用（找不到/不匹配时返回 False）
+        app = _app_of(doc)
+        profiles = _s(lambda: app.ColorManager.ColorProfiles)
+        if profiles is None:
+            raise CdrComFailure("取不到 ColorProfiles")
+        target_name = str(profile_name or "sRGB IEC61966-2.1")
+        ok = bool(_s(lambda: bool(profiles.SelectByName(target_name)), False))
+        return {"action": act, "requested": target_name, "ok": ok,
+                "count": _n(lambda: int(profiles.Count), 0)}
+
     if act in {"palette_from", "windows"}:
         app = _app_of(doc)
         if act == "palette_from":
@@ -6442,6 +6495,8 @@ SHAPE_OPS = (
     "corners", "clone_links", "drop_shadow",
     # 第七十一波：剖面线参数 / 渐变控制点 / 椭圆几何
     "hatch_fill", "fountain_colors", "ellipse_geometry",
+    # 第七十二波：包络效果对象（IVGEffectEnvelope）
+    "envelope_object",
     # 第四十九波：按掩码复制属性
     "copy_props",
     # 第五十波：形状级斜切（SkewEx）
@@ -6748,6 +6803,52 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
                     "excluded": list(exclude), "result_count": count,
                     "names": [_s(lambda i=i: str(got.Item(i).Name))
                               for i in range(1, min(count, 20) + 1)]}
+        if op == "envelope_object":
+            # 实测：Shape.CreateEnvelope(PresetIndex(1 基), Mode, KeepLines) 返回 IVGEffect；
+            # effect.Envelope 是 IVGEffectEnvelope，Select / CreateFrom / CopyFrom /
+            # CopyFromCurve 都可用（CopyFromShape 参数形态未通）
+            spec = dict(params or {})
+            source = find_shape(doc, page, target or {})
+            preset = int(spec.get("preset", 1))
+            applied = []
+            with atomic(doc, label):
+                eff = _s(lambda: source.CreateEnvelope(preset, int(spec.get("mode", 0)),
+                                                       bool(spec.get("keep_lines", True))))
+                env = None
+                if eff is not None:
+                    env = _s(lambda: eff.Envelope)
+                if env is None:
+                    effects = _s(lambda: source.Effects)
+                    if effects is not None and (_n(lambda: int(effects.Count), 0) or 0) > 0:
+                        env = _s(lambda: effects.Item(1).Envelope)
+                if env is None:
+                    raise CdrComFailure("取不到 Envelope 效果对象")
+                if spec.get("select") is not None:
+                    env.Select(int(spec["select"]))
+                    applied.append("select")
+                if other:
+                    src_shape = find_shape(doc, page, other)
+                    if spec.get("copy_from"):
+                        # 从另一个已带包络的对象复制效果（IVGEffectEnvelope.CopyFrom）
+                        src_eff = _s(lambda: src_shape.Effects.Item(1))
+                        src_env = _s(lambda: src_eff.Envelope) if src_eff is not None else None
+                        if src_env is not None:
+                            env.CopyFrom(src_env)
+                            applied.append("copy_from")
+                    elif spec.get("from_curve"):
+                        src_curve = _s(lambda: src_shape.Curve)
+                        if src_curve is not None:
+                            env.CopyFromCurve(src_curve, int(spec.get("mode", 0)),
+                                              bool(spec.get("keep_lines", True)), 0, ())
+                            applied.append("copy_from_curve")
+                    else:
+                        env.CreateFrom(src_shape)
+                        applied.append("create_from")
+            return {"op": op, "preset": preset,
+                    "mode": _n(lambda: int(env.Mode)),
+                    "keep_lines": bool(_s(lambda: bool(env.KeepLines), False)),
+                    "corner_indices": _s(lambda: str(env.CornerIndices))[:60],
+                    "applied": applied}
         if op in {"hatch_fill", "fountain_colors", "ellipse_geometry"}:
             source = find_shape(doc, page, target or {})
             spec = dict(params or {})

@@ -4525,6 +4525,44 @@ def main() -> int:
                       str(od71.get("applied")))
         no_error("关闭剖面线/渐变测试文档", server.cdr_close(h71_id))
 
+    # ---------------- 15bz. 第七十二波：屏幕手柄 / 包络效果对象 / 按名选配置文件 ----------------
+    print("\n[15bz] 第七十二波：IVGOnScreenHandle·IVGEffectEnvelope·ColorProfiles.SelectByName")
+    v72_doc = server.cdr_open(preset="A4")
+    if "document_id" in v72_doc:
+        v72_id = v72_doc["document_id"]
+        v72r = server.cdr_create(v72_id, [
+            {"type": "rectangle", "x": 0, "y": 0, "width": 20, "height": 10},
+            {"type": "rectangle", "x": 40, "y": 0, "width": 20, "height": 10},
+        ])
+        if no_error("cdr_create(包络/手柄测试)", v72r):
+            v72a, v72b = [{"name": c["name"]} for c in v72r["created"]]
+            oh72 = server.cdr_view(v72_id, action="overlay_handle", x=20, y=20,
+                                   color=0xFF0000)
+            if no_error("cdr_view(overlay_handle)", oh72):
+                check("屏幕手柄可用（IVGOnScreenHandle）",
+                      {"set_position", "set_handle_color",
+                       "update_hot_tracking"} <= set(oh72.get("applied") or []),
+                      str(oh72.get("applied")))
+            oh72b = server.cdr_view(v72_id, action="overlay_handle", x=10, y=10)
+            if no_error("cdr_view(overlay_handle hide)", oh72b):
+                check("屏幕手柄可显隐（Show/Hide）",
+                      "show" in (oh72b.get("applied") or []),
+                      str(oh72b.get("applied")))
+            ev72 = server.cdr_shape_ops(v72_id, op="envelope_object", target=v72a,
+                                       params={"preset": 1, "select": 1},
+                                       other=v72b)
+            if no_error("cdr_shape_ops(envelope_object)", ev72):
+                check("包络效果对象可操作（EffectEnvelope）",
+                      {"select", "create_from"} <= set(ev72.get("applied") or []),
+                      f"mode={ev72.get('mode')} applied={ev72.get('applied')}")
+            pf72 = server.cdr_doc(v72_id, action="select_color_profile",
+                                  profile_name="sRGB IEC61966-2.1")
+            if no_error("cdr_doc(select_color_profile)", pf72):
+                check("可按名称选择色彩配置文件（SelectByName）",
+                      "ok" in pf72 and (pf72.get("count") or 0) > 0,
+                      f"ok={pf72.get('ok')}")
+        no_error("关闭包络/手柄测试文档", server.cdr_close(v72_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

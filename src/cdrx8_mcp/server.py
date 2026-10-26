@@ -1249,7 +1249,7 @@ def cdr_view(document_id: str, action: str = "refresh",
              radius: float = 20.0, color: int = 0x0000FF,
              width: int = 2, target: dict | None = None,
              page_index: int | None = None) -> dict:
-    """视图/窗口操作。
+    """视图/窗口操作（overlay_handle 会新建一个屏幕手柄并显示）。
 
     action:
       refresh              强制重绘（导出前刷新、或改完看效果）

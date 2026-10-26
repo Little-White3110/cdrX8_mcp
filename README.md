@@ -7,9 +7,9 @@
 
 > **已在真机验证**：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）+ Python 3.11.9 64 位
 > - 单元测试 **93 项通过**
-> - 端到端联调（真实 CorelDRAW）**530/530 通过**
+> - 端到端联调（真实 CorelDRAW）**534/534 通过**
 > - 能力边界来自对 `vgcoreauto.tlb` 的反解（196 个自动化类 / 1619 个方法）+ 逐项实跑
-> - 方法级覆盖 **70.5%**（主干 20 接口 90.0%），可用 `python scripts/coverage_audit.py` 复现
+> - 方法级覆盖 **71.2%**（主干 20 接口 90.2%），可用 `python scripts/coverage_audit.py` 复现
 > - 完整清单见 [docs/COVERAGE.md](docs/COVERAGE.md)
 
 ---
@@ -186,7 +186,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ---
 
-## X8 特有问题（158 条，全部实测）
+## X8 特有问题（159 条，全部实测）
 
 这些是 **X8 与 2024+ 的差异**，也是本项目存在的主要理由。
 
@@ -350,6 +350,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 | 156 | **`StyleFill.SaveFill` 第二参是 `IVGFillMetadata` 对象；`TreeManager` 在 Document 上** | `SaveFill(path, True)` / `(path, 0)` 都报 `TypeError`，正确第二参是 `Application.CreateFillMetadata()` 造出来的元数据对象；`LoadFill` 同理。对象树入口是 `Document.TreeManager`（`Application` 上没有 `TreeManager`） | 已封装 `cdr_style(fill_file)` 与 `cdr_doc(tree_manager)`；`IVGExtrudeVanishingPoint.Share` 传另一消失点仍「类型不匹配」，不暴露 |
 | 157 | **UI 自动化整族因缺 GUID 不可达** | `Application.FrameWork`（ICUIFrameWork）→ `.Automation`（ICUIAutomation）能拿到对象，但所有方法都要**命令栏/菜单项 GUID**：`ICUICommandBar` 没有 `Guid` 属性，`GetActiveMenuItemGuid(i)` 在无菜单打开时返回空串。另 `ColorContext.SetColorProfile(模型号, 配置文件)` 要求**配置文件的 ColorModel 与模型号一致** | UI 自动化不暴露；色彩配置文件已封装 `cdr_doc(set_color_profile)`（自动按模型挑配置） |
 | 158 | **同一批 TLB 里 Get 类方法的参数风格不一致** | `IVGHatchFill.GetFillScale()` / `GetLineScale()` 是**零参**（传 `(0.0)` 会 TypeError），而 `IVGOutlineStyle.DashLength(i)` 要索引；`IVGEllipse.GetRadius()` 零参返回 `(x, y)` tuple。另 `Palettes.CreateFromSelection` 在选区里没有可取色对象时返回空，需退回整篇文档 | 已按"先试零参、再试带参"的写法封装 `hatch_fill` / `ellipse_geometry` / `palette_from` |
+| 159 | **`Shape.CreateEnvelope` 的 PresetIndex 是 1 基** | 传 0 报「参数 PresetIndex 超出范围」，传 1 才能建出包络；`effect.Envelope` 的 `Select(预设)` / `CreateFrom(形状)` / `CopyFrom(另一包络)` / `CopyFromCurve(曲线,…)` 都可用，但 `CopyFromShape` 的五参形态未通 | 已封装 `cdr_shape_ops(op="envelope_object")`；屏幕手柄走 `cdr_view(action="overlay_handle")` |
 
 改代码前请先读 [`src/cdrx8_mcp/constants.py`](src/cdrx8_mcp/constants.py) 里的注释。
 
@@ -399,7 +400,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ```powershell
 python -m pytest -q                # 93 项逻辑测试，任何平台可跑
-python scripts/live_smoke.py       # 530 项端到端（跑前先确认没有残留 CorelDRW 进程）
+python scripts/live_smoke.py       # 534 项端到端（跑前先确认没有残留 CorelDRW 进程）
 python scripts/live_smoke.py --keep   # 保留文档方便肉眼看效果
 python scripts/coverage_audit.py   # 覆盖率审计（复现 README/COVERAGE 里的数字）
 ```
