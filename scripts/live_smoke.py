@@ -4757,6 +4757,32 @@ def main() -> int:
                       f"depth={ext78.get('depth')}")
         no_error("关闭立体化测试文档", server.cdr_close(x78_id))
 
+    # ---------------- 15cf. 第七十九波：文本框多栏设置 ----------------
+    print("\n[15cf] 第七十九波：TextFrame.SetColumns（栏数/宽/间距交错数组）")
+    c79_doc = server.cdr_open(preset="A4")
+    if "document_id" in c79_doc:
+        c79_id = c79_doc["document_id"]
+        c79r = server.cdr_create(c79_id, [
+            {"type": "paragraph_text", "x": 0, "y": 0, "x2": 80, "y2": 60,
+             "text": "多栏测试"}])
+        if no_error("cdr_create(多栏测试)", c79r):
+            c79t = {"name": c79r["created"][0]["name"]}
+            sc79 = server.cdr_text(c79_id, c79t,
+                                   columns={"count": 2, "widths": [30, 30],
+                                            "gutters": [20]})
+            if no_error("cdr_text(set_columns)", sc79):
+                check("文本框可设多栏（SetColumns 交错数组）",
+                      sc79.get("columns") == 2
+                      and (sc79.get("widths") or []) == [30.0, 20.0],
+                      f"cols={sc79.get('columns')} widths={sc79.get('widths')}")
+            fi79 = server.cdr_text(c79_id, c79t, frame_info=True)
+            if no_error("cdr_text(frame_info)", fi79):
+                fr79 = (fi79.get("frames") or [{}])[0]
+                check("列宽读回一致",
+                      (fr79.get("column_widths") or [None])[0] == 30.0,
+                      f"widths={fr79.get('column_widths')}")
+        no_error("关闭多栏测试文档", server.cdr_close(c79_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

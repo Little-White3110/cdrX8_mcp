@@ -2,7 +2,7 @@
 
 > 目的：证明"还有多少没探"。每一行要么有对应的工具，要么有实测失败证据。
 > 环境：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）/ Python 3.11.9 64 位
-> 最近更新：2026-10-27 第七十八波（立体化灯光/斜角）
+> 最近更新：2026-10-27 第七十九波（文本框多栏 SetColumns 攻克）
 
 ## 怎么得出这份清单
 
@@ -244,6 +244,7 @@
 > * 混合 **可用（第十七波）**：`CreateBlend` 传全参数且 `Path=None` 时成功；
 >   效果经 `Effects.Item(i).Blend`（IVGEffectBlend）读写 Steps/Spacing/Angle 等。
 > * 调色板查找/插入/默认 / 命名视图 / 数据字段重排 / B样条扩容 **可用（第七十七波）**：`Palette.FindColor/InsertColor/MakeDefault`、`Views.AddActiveView`、`DataField.Reorder`、`ControlPoints.Resize`。
+> * 文本框多栏 **可用（第七十九波）**：`cdr_text(columns={"count":…,"widths":…,"gutters":…})`；`IVGTextFrame` 达 100%。
 > * 立体化灯光/斜角 **可用（第七十八波）**：`extrude_set` 支持 `light_index/light_intensity/bevel_depth/bevel_angle`，返回 3 盏灯的状态。
 > * 扭曲中心重设 **可用（第七十六波）**：`distort` 流程里自动调 `EffectDistortion.CenterDistortion()`。
 > * 批量斜切 / 渐变色标枚举 / 线型表保存 **可用（第七十五波）**：`ShapeRange.SkewEx`（range_skew）、`FountainColors.Item(i)` 枚举、`OutlineStyles.Save`。
@@ -375,7 +376,7 @@
 
 ```powershell
 python -m pytest -q              # 93 项纯逻辑
-python scripts/live_smoke.py     # 553 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
+python scripts/live_smoke.py     # 555 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
 ```
 
 联调断言覆盖了上表所有 ✅ 项。反解脚本属于过程产物，已按要求放在 `tmp/` 并在完成时清理；
@@ -383,14 +384,14 @@ python scripts/live_smoke.py     # 553 项端到端（真实 CorelDRAW，**跑�
 
 ---
 
-## 六、量化覆盖率（2026-10-27 第七十八波实测）
+## 六、量化覆盖率（2026-10-27 第七十九波实测）
 
 方法：反解类型库拿到 196 个自动化类 / **1619** 个方法（已剔除 `QueryInterface` 等 COM 基础设施）；
 用 AST 扫描 `src/cdrx8_mcp/*.py`，收集所有 `.方法名(` 调用与 `setattr/getattr` 的属性名，
 与主干接口的方法名求交集。**注意：属性名（如 `curve.Nodes`）也会被计入**，所以本波数字含真实属性访问。
 
-**全局：1178 / 1619 = 72.8%**（21.2% → … → 72.5% → 本轮 72.8%）
-**主干 20 接口：670 / 743 = 90.2%**
+**全局：1179 / 1619 = 72.8%**（21.2% → … → 72.8% → 本轮 72.8%）
+**主干 20 接口：671 / 743 = 90.3%**
 
 复现命令：`python scripts/coverage_audit.py`（会临时展开类型库到 `tmp/gen_py`，跑完自动清理）
 
@@ -419,7 +420,7 @@ python scripts/live_smoke.py     # 553 项端到端（真实 CorelDRAW，**跑�
 | **合计** | **743** | **665** | **89.5%** |
 
 > **怎么读这两个数**：
-> 1. 全局 **72.8%** 覆盖 1619 个方法（含变体与重复）；主干 20 接口 90.2%。
+> 1. 全局 **72.8%** 覆盖 1619 个方法（含变体与重复）；主干 20 接口 90.3%。
 > 2. 它是**方法/属性名匹配**的近似值，同名方法会跨接口误计。
 > 3. `IVGColor` 已到 **91%**：分量**写**走 `*Assign`，分量**读**走 `CorelScriptGetComponent`（`(5000+模型号, v1..v7)`）；纯 Python 只用于无 COM 场景的换算。
 > 4. 未调用方法多为变体（Wide/Ex/2/3 后缀）与事件订阅、CorelScriptTools/MathUtils。
@@ -1609,6 +1610,19 @@ python -m pytest -q                       # 93 项纯 Python 单元测试
 > `LightPosition(i)`，i=1~3），不是单一属性；`SetLight(索引, cdrLightPosition, 强度)`
 > 的第二个参数直接传 `ext.LightPosition(索引)` 取回的对象即可。
 > 之前 `ext.SetLight(1, 50, 60, 100)` 的 4 参形态是错的（那是我把坐标当参数传）。
+
+## 七之七十八、第七十九波已接入（2026-10-27，文本框多栏 SetColumns 攻克）
+
+| 能力 | 落地位置 | 实测 |
+|---|---|---|
+| **文本框多栏**（IVGTextFrame.SetColumns，**最后一项**） | `cdr_text(columns={"count":2,"widths":[30,30],"gutters":[20]})` | ✅ `SetColumns(栏数, 等栏, WidthsAndGutters)`：读回 ColumnCount=2、宽 [30,20]、间距 30 |
+
+> **第七十九波攻克**：`SetColumns` 卡了几十波，这次靠类型库反查 + 三个条件同时满足才通：
+> 1. `WidthsAndGutters` 要 **VARIANT 包 SAFEARRAY(VT_VARIANT)**（`win32com.client.VARIANT` 包装）；
+> 2. 数组内容是 **[宽×N, 间距×(N-1)] 交错**（2 栏 = 3 元素）；
+> 3. **宽度和 + 间距和必须等于框宽**（不满足报「文本栏的宽度必须在 6.35 与 25400 之间」）。
+> 至此 `IVGTextFrame` **5/5 全覆盖**。
+> 另确认 `EffectEnvelope.CopyFromShape` 五参形态无论 CopyMode 取什么都报错 —— 留在不可用清单。
 
 ## 七之二、仍未接入（第三轮候选）
 

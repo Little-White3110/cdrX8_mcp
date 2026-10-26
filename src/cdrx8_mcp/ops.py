@@ -8512,7 +8512,7 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
              range_struct: dict | None = None,
              link_to: dict | None = None, unlink: bool = False,
              make_html_compatible: bool | None = None,
-             frame_info: bool = False,
+             frame_info: bool = False, columns: dict | None = None,
              struct_info: bool = False,
              range_action: dict | None = None,
              label: str = "cdr_text") -> dict:
@@ -8533,7 +8533,7 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
                    range_paste, range_straighten, clear_tabs)) or bool(tab_stops) \
             or begin_edit or paragraph_format is not None \
             or link_to is not None or unlink or make_html_compatible is not None \
-            or frame_info
+            or frame_info or columns is not None
         if not mutating:
             # 纯读取 / 导出：不建 undo 组，也不改动文档
             result: dict = {"applied": [], "warnings": [],
@@ -8693,6 +8693,38 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
                 except Exception as exc:  # noqa: BLE001
                     warnings.append(f"复制文字属性失败：{exc}")
 
+            if columns is not None:
+                # 实测：TextFrame.SetColumns(NumColumns, EqualColumns, WidthsAndGutters)，
+                # WidthsAndGutters 是 **[宽×N, 间距×(N-1)] 交错数组**（VARIANT 包装），
+                # 且必须满足「宽度和 + 间距和 == 框宽」（否则报"文本栏的宽度必须…"）
+                spec = dict(columns)
+                n = int(spec.get("count", 2))
+                widths = [float(v) for v in (spec.get("widths") or [])]
+                gutters = [float(v) for v in (spec.get("gutters") or [])]
+                equal = bool(spec.get("equal", False))
+                frames = _s(lambda: shape.Text.Frames)
+                if frames is None:
+                    raise CdrComFailure("取不到 Text.Frames")
+                tf = _s(lambda: frames.Item(1))
+                if tf is None:
+                    raise CdrComFailure("取不到文本框架")
+                if equal or not widths:
+                    tf.SetColumns(n, True, None)
+                else:
+                    # WidthsAndGutters 是 VT_VARIANT 包 SAFEARRAY(VT_VARIANT)
+                    import pythoncom
+                    import win32com.client
+
+                    arr = win32com.client.VARIANT(
+                        pythoncom.VT_ARRAY | pythoncom.VT_VARIANT,
+                        widths + gutters)
+                    tf.SetColumns(n, False, [arr])
+                cols = _n(lambda: int(tf.ColumnCount), 0) or 0
+                return {"applied": ["set_columns"], "columns": cols,
+                        "widths": [_round(_s(lambda k=k: float(tf.ColumnWidth(k))))
+                                   for k in range(1, min(cols, 8) + 1)],
+                        "gutters": [_round(_s(lambda k=k: float(tf.ColumnGutter(k))))
+                                    for k in range(1, min(cols, 8) + 1)]}
             if frame_info:
                 # 实测：Text.Frames.Item(i) 是 IVGTextFrame，
                 # ColumnWidth(i) / ColumnGutter(i) 按列号读（SetColumns 需要 SAFEARRAY，暂不可用）
