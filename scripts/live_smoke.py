@@ -4162,6 +4162,41 @@ def main() -> int:
                       str(fs62.get("applied")))
         no_error("关闭副本/字体结构体测试文档", server.cdr_close(c62_id))
 
+    # ---------------- 15bq. 第六十三波：样式改父级 / 样式复制 ----------------
+    print("\n[15bq] 第六十三波：Style.SetBasedOn(名称串) / Style.Assign(样式)")
+    y63_doc = server.cdr_open(preset="A4")
+    if "document_id" in y63_doc:
+        y63_id = y63_doc["document_id"]
+        y63r = server.cdr_create(y63_id, [
+            {"type": "rectangle", "x": 0, "y": 0, "width": 20, "height": 10,
+             "fill": "#C80A0A"},
+            {"type": "rectangle", "x": 30, "y": 0, "width": 20, "height": 10,
+             "fill": "#0AC80A"},
+        ])
+        if no_error("cdr_create(样式测试)", y63r):
+            y63a, y63b = [{"name": c["name"]} for c in y63r["created"]]
+            server.cdr_style(y63_id, action="create", target=y63a,
+                             category="fill", style_name="P63")
+            server.cdr_style(y63_id, action="create", target=y63b,
+                             category="fill", style_name="C63")
+            # 先 assign 再 set_based_on —— 实测 SetBasedOn 之后样式的 Name 会变，
+            # 之后按名字就找不到了
+            as63 = server.cdr_style(y63_id, action="assign",
+                                    style_name="C63", based_on="P63")
+            if no_error("cdr_style(assign)", as63):
+                check("样式可相互复制（Style.Assign）",
+                      "primaryColor" in str(as63.get("definition")),
+                      str(as63.get("definition"))[:40])
+            sb63 = server.cdr_style(y63_id, action="set_based_on",
+                                    style_name="C63", based_on="P63")
+            if no_error("cdr_style(set_based_on)", sb63):
+                check("样式可改父级（SetBasedOn 传名称串）",
+                      sb63.get("applied") is True
+                      and sb63.get("based_on_name") == "P63",
+                      f"applied={sb63.get('applied')} "
+                      f"based_on={sb63.get('based_on_name')}")
+        no_error("关闭样式测试文档", server.cdr_close(y63_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

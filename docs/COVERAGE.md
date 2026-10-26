@@ -2,7 +2,7 @@
 
 > 目的：证明"还有多少没探"。每一行要么有对应的工具，要么有实测失败证据。
 > 环境：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）/ Python 3.11.9 64 位
-> 最近更新：2026-10-26 第六十二波（副本打开 / 字体结构体工厂 + 剩余项收敛审计）
+> 最近更新：2026-10-26 第六十三波（样式改父级 / 样式复制）
 
 ## 怎么得出这份清单
 
@@ -131,7 +131,7 @@
 | 连接线/符号库造不出来 | `Layer.CreateFreeConnector(x1,y1,x2,y2)` / `CreateSymbol(x,y,名,库)` / `Application.SymbolLibraries` | CreateFreeConnector 报「发生意外」；CreateSymbol 报「找不到该对象」；SymbolLibraries 直接 com_error（本机未装符号库） | 用两点直线/贝塞尔自绘连接线 |
 | 曲线信息数组接口不可用 | `Curve.PutCurveInfo(数组, 元素数)` | 传 tuple 报 `MemoryError: CreatingSafeArray`（pywin32 造不出该 SAFEARRAY）| 曲线信息读 `GetCurveInfo()` 即可 || Unicode 码页转换被 pywin32 弄坏 | `Application.ConvertToUnicode(串, 码页)` / `ConvertFromUnicode` | 传 GBK 字节串得到 `?D??`、传 "中文" 原样返回 —— API 期望 `char*`，pywin32 只给 BSTR，编码信息在边界就丢了 | 不封装；需要码页转换请用 Python 的 `bytes.decode("gbk")` || 变换矩阵对象造不出来 | `Shape.ApplyTransformMatrix` / `Curve.ApplyTransformMatrix` | 需要 `IVGTransformMatrix`，而它的工厂在 `IVGMathUtils` 上，`Application.MathUtils` 根本不存在（AttributeError，CLSID 未注册）| 矩阵变换改用 `Shape.SetMatrix` + `cdr_modify(affine=…)` || 范围删项会真删对象 | `ShapeRange.DeleteItem(1)` | 删完范围 Count 2→1，**页面对象数也从 2 变 1** | 只是想从范围里移除成员用 `range_remove`（`RemoveRange`），别用 DeleteItem || 文档级填充/描边工厂（字符串） | `Document.CreateFill("…")` / `CreateOutline("…")` | 传 CMYK/RGB 颜色串或 "UniformFill" 都只得到 **Type=0 / 宽度 0** 的空对象（字符串格式无效）| 填充/描边仍走 `cdr_modify` 或 `CreateUniformFill` |
 | 页面自定义命令 | `Page.CustomCommand("", "", [])` | 报「未装载此命令」| 不暴露 |
-| 样式改父级 | `Style.SetBasedOn(父样式对象)` | 传 None 报「未找到样式 None」；而用 `CreateStyleFromShape` 连续创建两个样式时 `Styles.Find("名字")` 会找不到，列表里只显示一个 `name=null` 的样式，所以 SetBasedOn 无法稳定验证 | 派生样式仍用 `cdr_style(action="create", based_on=…)`；`set_based_on` 未暴露 || 范围级属性复制 | `ShapeRange.CopyPropertiesFrom(shape, mask)` | 报 `com_error: 执行方法 coVGShape::CopyPropertiesFrom 时发生意外`（掩码 1|2|4）| 属性复制请逐个对象用 `cdr_modify(changes={"fill_from"/"outline_from"})` || BSpline / 自定义效果 | `Layer.CreateBSpline(Source)` / `Shape.CreateCustomEffect(id, …)` / `Shape.CreateCustomDistortion(id, …)` | BSpline 报「类型不匹配」（Source 不是 Curve）；两个自定义效果都报「未装载此效果」（需要先装插件效果）| `Layer.CreateBSpline` 暂不可用；自定义效果需安装对应插件，不暴露 |
+| 样式改父级 | `Style.SetBasedOn` | ~~不可用~~ **第六十三波纠正：可用** —— 参数是**名称字符串**（传样式对象才报类型不匹配）；另外同一对象同类别连续 `CreateStyleFromShape` 会互相覆盖，要换不同对象建 | 已封装 `cdr_style(action="set_based_on")` 与 `action="assign"` || 范围级属性复制 | `ShapeRange.CopyPropertiesFrom(shape, mask)` | 报 `com_error: 执行方法 coVGShape::CopyPropertiesFrom 时发生意外`（掩码 1|2|4）| 属性复制请逐个对象用 `cdr_modify(changes={"fill_from"/"outline_from"})` || 自定义效果 | `Shape.CreateCustomEffect(id, …)` / `Shape.CreateCustomDistortion(id, …)` | 都报「未装载此效果」（需要先装插件效果）| 需安装对应插件，不暴露；**BSpline 已在第五十三波打通**（`Document.CreateBSpline` + `InsertControlPoint` + `Layer.CreateBSpline(IVGBSpline)`）|
 | 数组入参（点集/形状集） | `Document.CreateCurveFitToPoints(Points, …)` / `Document.CreateCurveFromArray(Source, NumElements)` | 点集仍报 `TypeError: Python instance can not be converted to a COM object`；但 `CreateShapeRangeFromArray([shape,…])` **能接受 Python list**（传 1 个返回 Count=1）| 点集建曲线仍走逐点 AppendLineSegment || 叠印状态查询不对称 | `Shape.GetOverprintFillState()` / `GetOverprintOutlineState()` | 实测 outline 状态随开关变化（2→4），但 **fill 状态恒为 1**（开关前后都一样）；`RemoveFromContainer(1)` 报「参考的对象已不再存在」| 判断填充叠印请直接读布尔属性 `OverprintFill/OverprintOutline`（`cdr_shape_ops(op="overprint_state")` 一并返回）|| 矩阵平移量单位 | `Shape.SetMatrix(d11,d12,d21,d22,tx,ty)` / `GetMatrix` | 读回的初始矩阵 tx/ty 是 `-850000`、`-285000` 这类大数 —— X8 内部按 1/100000 单位存平移；写 `tx=5` 实际位移极小 | 矩阵读写本身精确（写什么读什么），但**不要拿它做毫米级平移**，平移请用 `cdr_modify(move=…)` || 调色板色/专色工厂 | `Application.CreatePaletteColor(name, index)` / `CreateSpotColor(name, tint, ?)` | 分别报「找不到颜色 PANTONE 185 C」「未找到颜色 MCP专色」—— 它们是从**已存在**的调色板/文档专色里取，不是新建 | 新建专色仍用 `cdr_doc(action="spot_color")`（CreateSpotColorByName + 已打开调色板） || 文字结构体写入 | `Text.FontProperties(frames, struct)` / `SpaceProperties(...)` 等 4 个 propget/putter | pywin32 里这些名字是**属性**：当方法调报 `TypeError: IVGStruct... object is not callable`；直接赋值（`text.FontProperties = struct`）不报错，但会把字号写成 1.17e-38 之类的垃圾值 | `Font/Space/Align/Hyphenation` 四个快照**只读**（`cdr_text(struct_info=true)`）；写字号/字体仍走 `cdr_text(font=…, size=…)` |
 | 文字区间下标版结构体 | `Text.FontPropertiesInRange(start,count,indexing)` | ~~字段全是垃圾~~ **第五十七波纠正：可用** —— 方法名没有 `Get` 前缀、且 `StartIndex` 必须 **1 基**；传 0 才得到 Size=0/Style=16 的假值 | 已封装 `cdr_text(range_struct={…})` || 节点连线 / 跨曲线接续 | `Node.ConnectWith(Target)` / `Node.ExtendSubPaths(Node2, JoinPaths)` | 两条**不同**开放曲线的末端节点互连，报「指定的节点必须在另一条曲线上」；`ExtendSubPaths` 报「无法连接曲线」—— 大概需要先在同一选择集里选中两条曲线 | 已提供同曲线内的 `cdr_node(action="join_nodes")`（实测 3→2 节点）|
 | 文字粗斜体 | `CreateArtisticText(..., Bold, Italic, …)` / `Text.Story.Bold` | **第三十四波纠正**：这两个形参是 `cdrTriState`（**true = -1**）。传 Python `True`（=1）不仅不生效，`Story.Bold = True` 还会把粗体**关掉**；下划线形参又是另一套枚举（1=有、0=无） | 已封装 `_tristate()` / `_underline()`；`cdr_create`、`cdr_modify`、`cdr_text` 全部改走这两个映射 |
@@ -243,6 +243,7 @@
 >   `CreateFreeConnector` 报「未实现」；本机无符号库。
 > * 混合 **可用（第十七波）**：`CreateBlend` 传全参数且 `Path=None` 时成功；
 >   效果经 `Effects.Item(i).Blend`（IVGEffectBlend）读写 Steps/Spacing/Angle 等。
+> * 样式改父级/复制 **可用（第六十三波）**：`Style.SetBasedOn(名称串)`、`Style.Assign(样式对象)`；`IVGStyle` 达 100%。
 > * 副本打开 / 字体结构体工厂 **可用（第六十二波）**：`OpenDocumentAsCopy(path, 选项)`、`CreateStructFontProperties()`。
 > * 中心定尺寸/拉伸/范围排除 **可用（第六十一波）**：`SetSizeEx(cx,cy,宽,高)`、`StretchEx(cx,cy,X倍数,Y倍数,缩放文字)`（**前两参是中心点**）、`AllExcluding(索引数组，1 基)`。
 > * 剖面线填充 **可用（第六十波）**：`ApplyHatchFill`（第 2 参必须是 int 序号）、`ApplyCustomHatchFill`（18 参）。
@@ -341,7 +342,6 @@
 * `IVGColorContext`：色彩配置、配置文件合并（交付环节）
 * `IVGFountainFill.GetTransformations`：读渐变变换矩阵（渐变微调已能改角度/平移/矩阵）
 * `IVGTraceSettings`：PowerTRACE 参数对象（Trace 本身不安全，不封装）
-* `IVGStyle` 的 `SetBasedOn` / `GetCopy` / `Assign`：派生已用 `CreateStyle(based_on)`，改父级暂未暴露
 * `Shape.CopyPropertiesFrom(Source, Properties)`：实测 1~15 都返回 True，但位掩码语义未逆向出来
 * `Curve.GetCurveInfo`：返回 `com_struct(PositionX, PositionY, ElementType, NodeType, Flags)` 数组，语义未完全确认
 * `Layer.PasteEx` / `PasteSpecial`：`PasteEx` 传 0 会 TypeError；`Paste` 已封装
@@ -360,7 +360,7 @@
 
 ```powershell
 python -m pytest -q              # 93 项纯逻辑
-python scripts/live_smoke.py     # 496 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
+python scripts/live_smoke.py     # 498 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
 ```
 
 联调断言覆盖了上表所有 ✅ 项。反解脚本属于过程产物，已按要求放在 `tmp/` 并在完成时清理；
@@ -368,14 +368,14 @@ python scripts/live_smoke.py     # 496 项端到端（真实 CorelDRAW，**跑�
 
 ---
 
-## 六、量化覆盖率（2026-10-26 第六十二波实测）
+## 六、量化覆盖率（2026-10-26 第六十三波实测）
 
 方法：反解类型库拿到 196 个自动化类 / **1619** 个方法（已剔除 `QueryInterface` 等 COM 基础设施）；
 用 AST 扫描 `src/cdrx8_mcp/*.py`，收集所有 `.方法名(` 调用与 `setattr/getattr` 的属性名，
 与主干接口的方法名求交集。**注意：属性名（如 `curve.Nodes`）也会被计入**，所以本波数字含真实属性访问。
 
-**全局：1037 / 1619 = 64.1%**（21.2% → … → 63.9% → 本轮 64.1%）
-**主干 20 接口：663 / 743 = 89.2%**
+**全局：1039 / 1619 = 64.2%**（21.2% → … → 64.1% → 本轮 64.2%）
+**主干 20 接口：665 / 743 = 89.5%**
 
 复现命令：`python scripts/coverage_audit.py`（会临时展开类型库到 `tmp/gen_py`，跑完自动清理）
 
@@ -399,12 +399,12 @@ python scripts/live_smoke.py     # 496 项端到端（真实 CorelDRAW，**跑�
 | `IVGColor` | 43 | 41 | **95%** |
 | `IVGOutline` | 8 | 7 | **88%** |
 | `IVGTransparency` | 8 | 7 | **88%** |
-| `IVGStyle` | 15 | 13 | **87%** |
+| `IVGStyle` | 15 | 15 | **100%** |
 | `IVGColorContext` | 6 | 5 | **83%** |
-| **合计** | **743** | **663** | **89.2%** |
+| **合计** | **743** | **665** | **89.5%** |
 
 > **怎么读这两个数**：
-> 1. 全局 64.1% 覆盖 1619 个方法（含变体与重复）；主干 20 接口 89.2%。
+> 1. 全局 64.2% 覆盖 1619 个方法（含变体与重复）；主干 20 接口 89.5%。
 > 2. 它是**方法/属性名匹配**的近似值，同名方法会跨接口误计。
 > 3. `IVGColor` 已到 **91%**：分量**写**走 `*Assign`，分量**读**走 `CorelScriptGetComponent`（`(5000+模型号, v1..v7)`）；纯 Python 只用于无 COM 场景的换算。
 > 4. 未调用方法多为变体（Wide/Ex/2/3 后缀）与事件订阅、CorelScriptTools/MathUtils。
@@ -1312,6 +1312,24 @@ python scripts/live_smoke.py     # 496 项端到端（真实 CorelDRAW，**跑�
 > **打开选项**参数（`CreateStructOpenOptions()` 即可）。另外本轮补上了「剩余 80 个未覆盖方法」的
 > 收敛审计表（见上一节），把每一类的不可用原因与实测证据固定下来。
 
+## 七之六十二、第六十三波已接入（2026-10-26，样式改父级 / 样式复制）
+
+| 能力 | 落地位置 | 实测 |
+|---|---|---|
+| **样式改父级** | `cdr_style(action="set_based_on", style_name="C", based_on="P")` | ✅ `Style.SetBasedOn("P")`：参数是**名称字符串**（传样式对象报类型不匹配），返回 True，`BasedOn.Name` 变 P |
+| **样式复制** | `cdr_style(action="assign", style_name="C", based_on="P")` | ✅ `Style.Assign(另一个 IVGStyle)`：属性拷过来，`ToString()` 定义串符合预期 |
+
+> **第六十三波纠正**：这两个方法很早以前被记成"不可用"，都是**传错类型**：
+> `SetBasedOn` 要的是**名称字符串**（当时传样式对象/None），`Assign` 要的是**样式对象**（当时传形状）。
+> 另外发现两条相关怪癖：
+> 1. `CreateStyleFromShape` 对**同一对象 + 同一类别**连续调用会互相覆盖（第二个样式建不上），
+>    必须换不同对象建；
+> 2. `SetBasedOn` 之后样式的 `Name` 会变，之后用原名字找不到 —— 冒烟里把 `assign`
+>    排在 `set_based_on` 之前。
+>
+> 另：`Text.ImportFromFile(path, 1, 0)` 实测**弹出模态导入框导致 COM 卡死（240 s 超时）**，
+> 已并入"严禁调用"清单。
+
 ## 七之二、仍未接入（第三轮候选）
 
 | 能力 | 接口 | 为什么还没做 |
@@ -1338,11 +1356,11 @@ python scripts/live_smoke.py     # 496 项端到端（真实 CorelDRAW，**跑�
   自定义虚线、文档设置、文本区间编辑、自定义箭头、图案微调、文本格式查询、位图内容替换/链接、
   文档回滚、立体化/透镜/效果管理、位图特效命令串、混合、文档颜色转换、用户偏好 KV、OLE 嵌入、
   命名视图、网格设置、叠印、段落缩进、制表位、屏幕叠加层、应用/文档事件、导出/保存/导入选项、吸附点全家族、颜色对象分量、描边对象全量属性都已补上。
-* **方法级覆盖**：全局 64.1%（1037/1619），主干 20 接口 89.2%（663/743）。
+* **方法级覆盖**：全局 64.2%（1039/1619），主干 20 接口 89.5%（665/743）。
 * **明确不可用**：位图描摹、文本导入、点集数组建曲线、尺寸标注/连接线（MathUtils 点对象
   不可创建）、符号库、文件型图案/影线填充（本机无库）、曲线贴笔触、OpenDocumentAsCopy、
   HTML 兼容文本、断字写入、填充字符串、文本尺寸查询、灰度→RGB 转换、真实应用偏好读取、
   文本分栏（SetColumns 数组参数）。
-* **第六十二波新增**：按副本打开（OpenDocumentAsCopy）、字体结构体工厂；并完成剩余 80 个未覆盖方法的收敛审计（六类归类 + 实测证据）。
+* **第六十三波新增**：样式改父级（SetBasedOn 名称串）、样式复制（Assign）；`IVGStyle` 达 100%；并把 `Text.ImportFromFile`（模态框卡死）并入严禁清单。
 
 

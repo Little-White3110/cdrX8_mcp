@@ -3786,19 +3786,26 @@ def node_ops(doc: Any, page_index: int | None, target: dict, action: str, *,
 STYLE_ACTIONS = ("list", "get", "create", "apply", "rename", "delete",
                  "set_property", "derived", "export_sheet", "import_sheet",
                  "color_styles", "create_color_styles", "override_props", "inherited",
-                 "get_property", "clear_property")
+                 "get_property", "clear_property", "set_based_on", "assign")
 STYLE_MUTATIONS = {"create", "apply", "rename", "delete", "set_property",
-                   "import_sheet", "create_color_styles"}
+                   "import_sheet", "create_color_styles", "set_based_on", "assign"}
 STYLE_CATEGORIES = ("fill", "outline", "character", "paragraph")
 
 
 def _find_style(doc: Any, name: str | None) -> Any:
+    """按名称找样式。实测 Styles.Find 对「刚用 CreateStyleFromShape 建的样式」可能返回空，
+    因此再加一层「遍历 Styles 比对 Name」的兜底。"""
     if not name:
         raise CdrBadArgument("需要 style_name")
     style = _s(lambda: doc.StyleSheet.Styles.Find(str(name)))
-    if style is None:
-        raise CdrBadArgument(f"未找到样式 {name!r}（可先用 action='list' 查看）")
-    return style
+    if style is not None:
+        return style
+    count = _n(lambda: int(doc.StyleSheet.Styles.Count), 0) or 0
+    for i in range(1, count + 1):
+        cand = _s(lambda i=i: doc.StyleSheet.Styles.Item(i))
+        if cand is not None and _s(lambda cand=cand: str(cand.Name)) == str(name):
+            return cand
+    raise CdrBadArgument(f"未找到样式 {name!r}（可先用 action='list' 查看）")
 
 
 def _style_dict(style: Any) -> dict:
@@ -3882,6 +3889,27 @@ def style_ops(doc: Any, page_index: int | None, action: str, *,
                     "readable_properties": _style_readable_props(style),
                     "derived": _style_derived(style),
                     "definition": (_s(lambda: str(style.ToString()), "") or "")[:1200]}
+        if act == "set_based_on":
+            # 实测：Style.SetBasedOn(父样式**名称字符串**) —— 传样式对象会「类型不匹配」
+            style = _find_style(doc, name)
+            if not based_on:
+                raise CdrBadArgument("set_based_on 需要 based_on（父样式名）")
+            ok = bool(_s(lambda: bool(style.SetBasedOn(str(based_on))), False))
+            parent = _s(lambda: style.BasedOn)
+            return {"action": act, **_style_dict(style), "parent_name": str(based_on),
+                    "applied": ok,
+                    "based_on_name": (_s(lambda: str(parent.Name))
+                                      if parent is not None else None)}
+        if act == "assign":
+            # 实测：Style.Assign(另一个 IVGStyle) 可用（拷属性，不改父级链）
+            style = _find_style(doc, name)
+            if not based_on:
+                raise CdrBadArgument("assign 需要 based_on（源样式名）")
+            src = _find_style(doc, based_on)
+            style.Assign(src)
+            return {"action": act, **_style_dict(style),
+                    "source": str(based_on),
+                    "definition": (_s(lambda: str(style.ToString()), "") or "")[:200]}
         if act == "override_props":
             # 实测 Style.GetOverridePropertyNames() 返回 ('primaryColor','secondaryColor')
             style = _find_style(doc, name)

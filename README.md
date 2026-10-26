@@ -7,9 +7,9 @@
 
 > **已在真机验证**：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）+ Python 3.11.9 64 位
 > - 单元测试 **93 项通过**
-> - 端到端联调（真实 CorelDRAW）**496/496 通过**
+> - 端到端联调（真实 CorelDRAW）**498/498 通过**
 > - 能力边界来自对 `vgcoreauto.tlb` 的反解（196 个自动化类 / 1619 个方法）+ 逐项实跑
-> - 方法级覆盖 **64.1%**（主干 20 接口 89.2%），可用 `python scripts/coverage_audit.py` 复现
+> - 方法级覆盖 **64.2%**（主干 20 接口 89.5%），可用 `python scripts/coverage_audit.py` 复现
 > - 完整清单见 [docs/COVERAGE.md](docs/COVERAGE.md)
 
 ---
@@ -73,7 +73,7 @@ python -m cdrx8_mcp              # 启动 MCP 服务器（stdio）
 | `cdr_shape_ops` | **布尔与整形**：weld / trim / intersect / combine / group / ungroup / break_apart / to_curves / **outline_to_curves** / to_symbol / powerclip / fillet / chamfer / scallop / **step_repeat / distribute / boundary / perspective / separate / parallel_curves / rasterize / batch_outline_to_curves / fill_mode / pixel_aligned / range_boundary / envelope_from_shape / compare / project / unproject / to_document / extrude / lens / extrude_set / lens_set / effect_info / clear_effects / blend / blend_set / **unlock_all / ungroup_all / break_apart_ex / clear_effect / range_info / range_add / range_remove / apply_fill（Fill 工厂批量上色）/ **matrix（矩阵读写）/ is_type / in_front_of / is_on_shape / distort（pushpull·twister·zipper）/ place_text（文字内嵌）/ duplicate_range · clone_range / **position_ex（9 个参考点）/ find_snap（按引用反查吸附点）/ linked（链接对象）/ rasterize_ex（带参位图化）/ overprint_state / **range_from_list（对象列表建范围）/ range_bitmap（整批位图化）/ range_outline（整批描边 14/15 参）/ copy_to_layer_range（复制到其它图层）/ align_to_range（对齐到形状范围）/ copy_props（按掩码复制属性）/ skew_ex（形状级斜切）/ set_size_ex（按中心定尺寸）/ stretch_ex（按中心拉伸）/ all_excluding（范围排除）/ range_outline_apply（整批套描边）/ ungroup_all·ungroup_all_ex·ungroup_ex（解组家族）/ sibling（同层相邻遍历）** |
 | `cdr_align` | 对齐与分布（左中右 / 上下中 / 等间距；`to=selection/page`，**以及原生范围对齐 `to=page_edge/page_center/grid/point/shape/range`**） |
 | `cdr_find` | 按名字或类型查找（跨图层） |
-| `cdr_style` | **对象样式**：列出 / 从对象创建（fill·outline·character·paragraph）/ **基于已有样式派生** / 按名套用 / 改名 / 删除 / **读可读属性·改属性** / 列派生样式 / **样式表 .cdst 导入导出** / **颜色样式与颜色协调** / **覆盖属性（override_props）·继承状态（inherited）·属性取值（get_property）·属性清除** |
+| `cdr_style` | **对象样式**：列出 / 从对象创建（fill·outline·character·paragraph）/ **基于已有样式派生** / 按名套用 / 改名 / 删除 / **读可读属性·改属性** / 列派生样式 / **样式表 .cdst 导入导出** / **颜色样式与颜色协调** / **覆盖属性（override_props）·继承状态（inherited）·属性取值（get_property）·属性清除** / **改父级（set_based_on：传名称串）·样式复制（assign）** |
 | `cdr_path` | 曲线/子路径级：长度面积 / 偏移轮廓（刀模线）/ **折线采样** / **追加圆·椭圆·矩形·三点弧·贝塞尔** / **节点精简** / **自焊接** / **路径等分** / **加节点·断开·移动子路径** / **点在形状内·曲线求交·取点取切向** / **参数取点·切向量·法向量·速度·交点·按坐标找节点/线段·反转方向·焊接子路径·去重叠** / **曲线合并（AppendCurve）·焊接（WeldWith）·命中判定·曲线副本·曲线结构信息·任意线段集合（segment_range）·追加曲线段（append_curve_segment）·抽出子路径（extract_subpath）·焊接落地（weld_to_shape）·按偏移取点（point_at_offset）·按偏移定位线段（segment_at_offset）·曲线映射到骨架线（map_to_stroke）·点集拟合曲线（fit_to_points）·追加点集（append_points：plain/fit/cusps）** |
 | `cdr_node` | **节点/线段级编辑（第五波打通）**：列节点·列线段 / 移动·选中·删除 / 圆角·倒角· scallop·平滑 / 拉伸·旋转·斜切·断开 / 加节点·断线 / 读写贝塞尔控制点 / 按坐标找节点与线段 / **前后邻居（Next·Previous）·节点间距·平均位置·末端节点合并·任意不连续节点集合（arbitrary：move/rotate/skew/stretch/autoreduce/smoothen/set_type/delete/fillet/chamfer/scallop）·**节点坐标搬运（copy_point：GetPoint/SetPoint）** |
 | `cdr_bitmap` | 位图：信息 / 转色彩模式（rgb·cmyk·gray·bw）/ **阈值二值化** / **调色板模式 0~9（9=自定义调色板）** / **双色调 0~3（可给 .cpd 预设）** / **取像素颜色** / 图像缓冲信息 / 重采样 / **扩边** / 裁剪 / **内容替换（SetImageData，支持色块/像素绘制）** / **位图特效命令串（ApplyBitmapEffect）** / **链接信息·重新加载·解析链接** / **调色板选项转换（paletted_options：颜色数·抖动·指定调色板）** / **剖面线填充（hatch，索引必须是整数）/ 自定义剖面线（hatch_custom 18 参）** |
@@ -186,7 +186,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ---
 
-## X8 特有问题（148 条，全部实测）
+## X8 特有问题（150 条，全部实测）
 
 这些是 **X8 与 2024+ 的差异**，也是本项目存在的主要理由。
 
@@ -340,6 +340,8 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 | 146 | **`GetMatrix` 也会让 `IsOnShape` 失效** | 之前只记了 SetMatrix；长跑里「先 GetMatrix 再 IsOnShape」会稳定返回 0（单独跑正常）。把命中判定挪到矩阵读取之前即恢复 | 冒烟里已把 `is_on_shape` 放到 `matrix` 之前；调用方若两者都用，注意这个顺序 |
 | 147 | **`SetSizeEx`/`StretchEx` 前两参是中心点；`AllExcluding` 要索引数组（1 基）** | 第 33 波把 `SetSizeEx`/`StretchEx` 判成「参数语义不明、会放大到离谱尺寸」，其实是把**中心点**当左上角传：`SetSizeEx(cx, cy, 宽, 高)`、`StretchEx(cx, cy, X倍数, Y倍数, 缩放文字)`。`AllExcluding([1])` 接受 Python list、索引 **1 基**（传 None 才报 TypeError） | 已封装 `cdr_shape_ops(op="set_size_ex"/"stretch_ex"，可加 use_range) / "all_excluding"` |
 | 148 | **`OpenDocumentAsCopy` 需要第二个「打开选项」参数** | 只传路径报 `TypeError`；加 `CreateStructOpenOptions()` 即可，返回的是**未命名副本**（`Name` = 未命名 -N、`FileName` 为空），内容与源文件一致 | 已封装 `cdr_open(path=…, as_copy=true)`；`CreateStructFontProperties()` 也能造可读结构体（但 `SetFontProperties` 写入无效） |
+| 149 | **`Style.SetBasedOn` 要名称串、`Style.Assign` 要样式对象** | `SetBasedOn(样式对象)` 报类型不匹配（传 None 报「未找到样式 None」）—— 参数其实是**名称字符串**；`Assign(形状)` 同样错，它要**另一个 IVGStyle**。另：同一对象同类别连续 `CreateStyleFromShape` 会互相覆盖；`SetBasedOn` 之后样式的 Name 会变 | 已封装 `cdr_style(action="set_based_on"/"assign")`；建样式请用不同对象 |
+| 150 | **`Text.ImportFromFile` 会弹模态框卡死** | `Text.ImportFromFile(path, 1, 0)` 调用后 240 s 未返回（模态导入对话框，COM 无法中断） | 🚫 严禁调用；要导入文本请读文件后用 `cdr_text(text=…)` |
 
 改代码前请先读 [`src/cdrx8_mcp/constants.py`](src/cdrx8_mcp/constants.py) 里的注释。
 
@@ -389,7 +391,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ```powershell
 python -m pytest -q                # 93 项逻辑测试，任何平台可跑
-python scripts/live_smoke.py       # 496 项端到端（跑前先确认没有残留 CorelDRW 进程）
+python scripts/live_smoke.py       # 498 项端到端（跑前先确认没有残留 CorelDRW 进程）
 python scripts/live_smoke.py --keep   # 保留文档方便肉眼看效果
 python scripts/coverage_audit.py   # 覆盖率审计（复现 README/COVERAGE 里的数字）
 ```
