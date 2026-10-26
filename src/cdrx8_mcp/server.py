@@ -1120,7 +1120,8 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
             grid_type: int | None = None,
             expected_revision: int | None = None, snapshot_token: str | None = None,
             page_index: int | None = None,
-            code_page: int | None = None) -> dict:
+            code_page: int | None = None,
+            color: str | None = None) -> dict:
     """文档级操作。
 
     action:
@@ -1219,7 +1220,7 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
                       grid_spacing_x=grid_spacing_x,
                       grid_spacing_y=grid_spacing_y,
                       grid_visible=grid_visible, grid_snap=grid_snap,
-                      grid_type=grid_type, code_page=code_page)
+                      grid_type=grid_type, code_page=code_page, color=color)
         if action == "info":
             return _com(lambda _b: ops.doc_ops(doc, "info", **kwargs), label="cdr_doc")
         if action in {"clear_selection", "units", "convert_units", "sample_color", "fonts",

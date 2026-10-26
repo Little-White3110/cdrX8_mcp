@@ -4682,6 +4682,49 @@ def main() -> int:
                       f"kind={ds76b.get('kind')}")
         no_error("关闭扭曲测试文档", server.cdr_close(d76_id))
 
+    # ---------------- 15cd2. 第七十七波：调色板查找插入 / 命名视图 / 数据字段重排 / B样条扩容 ----------------
+    print("\n[15cd2] 第七十七波：IVGPalette.FindColor·InsertColor·MakeDefault·Views.AddActiveView·TreeManager 族")
+    p77_doc = server.cdr_open(preset="A4")
+    if "document_id" in p77_doc:
+        p77_id = p77_doc["document_id"]
+        fc77 = server.cdr_doc(p77_id, action="palette_find_color",
+                              palette_index=1, color="TRUMATCH 1")
+        if no_error("cdr_doc(palette_find_color)", fc77):
+            check("调色板可按名查找（FindColor，未找到如实返回 0）",
+                  fc77.get("found_index") == 0 and "matched_color" in fc77,
+                  f"found={fc77.get('found_index')} "
+                  f"matched={str(fc77.get('matched_color'))[:24]}")
+        ins77 = server.cdr_doc(p77_id, action="palette_insert_color",
+                               palette_index=1, color="#00C800", color_index=1)
+        if no_error("cdr_doc(palette_insert_color)", ins77):
+            check("固定调色板插色失败自动转自定义（InsertColor）",
+                  ins77.get("fallback") == "custom_palette"
+                  and (ins77.get("color_count") or 0) >= 1,
+                  f"palette={ins77.get('palette')}")
+        md77 = server.cdr_doc(p77_id, action="palette_make_default", palette_index=1)
+        if no_error("cdr_doc(palette_make_default)", md77):
+            check("可设默认调色板（MakeDefault）",
+                  md77.get("made_default") is True,
+                  f"palette={md77.get('palette')}")
+        va77 = server.cdr_doc(p77_id, action="views_add_active", view_name="自动视图")
+        if no_error("cdr_doc(views_add_active)", va77):
+            check("当前视口可存为命名视图（Views.AddActiveView）",
+                  (va77.get("count") or 0) >= 1,
+                  f"count={va77.get('count')}")
+        df77 = server.cdr_doc(p77_id, action="datafield_reorder", color_index=1,
+                              value=2)
+        if no_error("cdr_doc(datafield_reorder)", df77):
+            check("数据字段可重排（DataField.Reorder）",
+                  df77.get("moved_to") == 2,
+                  f"field={df77.get('field')} → {df77.get('moved_to')}")
+        br77 = server.cdr_doc(p77_id, action="bspline_resize", color_index=4,
+                              value=6)
+        if no_error("cdr_doc(bspline_resize)", br77):
+            check("B 样条控制点可扩容（ControlPoints.Resize）",
+                  (br77.get("points_after") or 0) > (br77.get("points_before") or 0),
+                  f"{br77.get('points_before')} → {br77.get('points_after')}")
+        no_error("关闭第七十七波测试文档", server.cdr_close(p77_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

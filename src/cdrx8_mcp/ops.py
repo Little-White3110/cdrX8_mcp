@@ -645,7 +645,9 @@ DOC_ACTIONS = ("info", "clear_selection", "clear_undo", "palette", "arrowhead",
                "app_status", "palette_manager",
                "outline_style_dash", "tool_shape_attributes", "tree_manager",
                "set_color_profile", "palette_from", "windows",
-               "outline_styles_save",
+               "outline_styles_save", "palette_find_color", "palette_insert_color",
+               "palette_set_color", "palette_make_default", "views_add_active",
+               "datafield_reorder", "bspline_resize",
                "select_color_profile",
                "fountain_transform", "arrowhead_unnamed",
                # 第四十六波：CorelScriptTools（VBA 辅助对象）单位/数学/日期
@@ -667,6 +669,7 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
             metadata: dict | None = None, palette_name: str | None = None,
             palette_path: str | None = None, palette_colors: list | None = None,
             overwrite: bool = False, code_page: int | None = None,
+            color: str | None = None,
             field_name: str | None = None,
             field_format: str = "0", settings: dict | None = None,
             register: bool = False, copy_areas: list | None = None,
@@ -1545,6 +1548,71 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
         out["note"] = ("CorelScriptTools 的值以 1/10000 mm 为单位：FromInches(1)=254000；"
                        "ASin 返回弧度；query+code_page 可做 Unicode↔ANSI 码页转换")
         return out
+    if act in {"palette_find_color", "palette_insert_color", "palette_set_color",
+               "palette_make_default"}:
+        # 实测：IVGPalette 的 FindColor(返回索引 0=未找到) / MatchColor(返回匹配色) /
+        # InsertColor(色, 序号) / SetColor(序号, 色)（固定调色板报「无法修改」）/
+        # MakeDefault() 可用
+        app = _app_of(doc)
+        pi = int(palette_index if palette_index is not None else 1)
+        count = _n(lambda: int(app.Palettes.Count), 0) or 0
+        if not 1 <= pi <= count:
+            raise CdrBadArgument(f"palette_index 越界：{pi}（共 {count} 个调色板）")
+        palette = app.Palettes.Item(pi)
+        pal_name = _s(lambda: str(palette.Name))
+        if act == "palette_make_default":
+            palette.MakeDefault()
+            return {"action": act, "palette": pal_name, "made_default": True}
+        probe = None
+        if act != "palette_find_color":
+            probe = _color(doc, color if color is not None else "#FF0000")
+        if act == "palette_find_color":
+            # 实测：FindColor 要**颜色名字符串**（返回索引，0=未找到；
+            # 对 TRUMATCH 用常见名字试均返回 0 —— 按名查找基本不可用）；
+            # MatchColor 要 IVGColor（返回匹配到的颜色对象）
+            local_warnings = []
+            name_part = str(color or "#FF0000")
+            idx = _n(lambda: int(palette.FindColor(name_part)), 0)
+            if idx is None:
+                local_warnings.append(f"FindColor({name_part!r}) 不可解析（可能不是该调色板的有效颜色名）")
+                idx = 0
+            matched = _s(lambda: str(palette.MatchColor(probe).ToString())) or ""
+            return {"action": act, "palette": pal_name,
+                    "search": name_part, "found_index": idx, "found": idx > 0,
+                    "matched_color": matched[:44],
+                    "warnings": local_warnings}
+        if act == "palette_insert_color":
+            # 实测：InsertColor(序号, IVGColor) —— 序号在前、颜色对象在后；
+            # 固定调色板（TRUMATCH 等）会报「无法修改固定调色板」，
+            # 只有 Create(自定义) 出来的调色板才可插入
+            ci = int(color_index or 1)
+            try:
+                palette.InsertColor(ci, probe)
+            except Exception as exc:  # noqa: BLE001
+                # 退化：新建一个自定义调色板并插入（固定调色板一律不可修改）
+                uniq = f"MCP 插入 {ci} {_short_id()}"
+                custom = _s(lambda: app.Palettes.Create(uniq))
+                if custom is None:
+                    raise
+                custom.InsertColor(ci, probe)
+                return {"action": act, "palette": uniq,
+                        "inserted_at": ci, "fallback": "custom_palette",
+                        "color_count": _n(lambda: int(custom.ColorCount), 0)}
+            return {"action": act, "palette": pal_name, "inserted_at": ci,
+                    "color_count": _n(lambda: int(palette.ColorCount), 0),
+                    "note": "固定调色板会报「无法修改固定调色板」"}
+        # palette_set_color
+        ci = int(color_index or 1)
+        try:
+            palette.SetColor(ci, probe)
+            return {"action": act, "palette": pal_name, "set_index": ci,
+                    "color": _s(lambda: str(palette.Color(ci).ToString()))[:44]}
+        except Exception as exc:  # noqa: BLE001
+            return {"action": act, "palette": pal_name, "set_index": ci,
+                    "error_kind": "fixed_palette",
+                    "message": str(exc)[:80],
+                    "note": "固定调色板（OpenFixed 打开的）不可修改"}
+
     if act == "outline_styles_save":
         # 实测：Application.OutlineStyles.Save() 可把线型表存回用户配置
         styles = _s(lambda: _app_of(doc).OutlineStyles)
@@ -1627,6 +1695,44 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
             result["caption"] = (_s(lambda: str(found.Caption))
                                  if found is not None else None)
         return result
+
+    if act == "datafield_reorder":
+        # 实测：DataFields.Item(i).Reorder(新序号) 可调用
+        fields = _s(lambda: doc.DataFields)
+        if fields is None:
+            raise CdrComFailure("取不到 DataFields")
+        count = _n(lambda: int(fields.Count), 0) or 0
+        fi = int(color_index or 1)
+        new_pos = int(value if value is not None else 1)
+        if count < 1:
+            raise CdrBadArgument("文档没有数据字段（先 add_data_field）")
+        if not 1 <= fi <= count:
+            raise CdrBadArgument(f"字段序号越界：{fi}（共 {count} 个）")
+        field = fields.Item(fi)
+        name = _s(lambda: str(field.Name))
+        field.Reorder(new_pos)
+        return {"action": act, "field": name, "moved_from": fi,
+                "moved_to": new_pos, "count": count}
+    if act == "bspline_resize":
+        # 实测：BSpline.ControlPoints.Resize(n) 可把控制点数组扩容
+        bspline = _s(lambda: doc.CreateBSpline(int(color_index or 4), False))
+        cps = _s(lambda: bspline.ControlPoints)
+        before = _n(lambda: int(cps.Count), 0)
+        new_n = int(value if value is not None else (before or 4) + 2)
+        cps.Resize(new_n)
+        return {"action": act, "points_before": before,
+                "points_after": _n(lambda: int(cps.Count), 0),
+                "requested": new_n}
+
+    if act == "views_add_active":
+        # 实测：Document.Views.AddActiveView(名) 可把当前视口存为命名视图
+        views = _s(lambda: doc.Views)
+        if views is None:
+            raise CdrComFailure("取不到 Views")
+        vname = str(view_name or "自动视图")
+        view = _s(lambda: views.AddActiveView(vname))
+        return {"action": act, "view_name": (_s(lambda: str(view.Name)) or "")[:40],
+                "count": _n(lambda: int(views.Count), 0)}
 
     if act == "set_color_profile":
         # 实测：ColorContext.SetColorProfile(模型号, 配置文件) 可用，

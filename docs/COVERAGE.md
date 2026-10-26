@@ -2,7 +2,7 @@
 
 > 目的：证明"还有多少没探"。每一行要么有对应的工具，要么有实测失败证据。
 > 环境：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）/ Python 3.11.9 64 位
-> 最近更新：2026-10-27 第七十六波（扭曲中心重设）
+> 最近更新：2026-10-27 第七十七波（调色板查找插入默认 / 命名视图 / 数据字段重排 / B样条扩容）
 
 ## 怎么得出这份清单
 
@@ -243,6 +243,7 @@
 >   `CreateFreeConnector` 报「未实现」；本机无符号库。
 > * 混合 **可用（第十七波）**：`CreateBlend` 传全参数且 `Path=None` 时成功；
 >   效果经 `Effects.Item(i).Blend`（IVGEffectBlend）读写 Steps/Spacing/Angle 等。
+> * 调色板查找/插入/默认 / 命名视图 / 数据字段重排 / B样条扩容 **可用（第七十七波）**：`Palette.FindColor/InsertColor/MakeDefault`、`Views.AddActiveView`、`DataField.Reorder`、`ControlPoints.Resize`。
 > * 扭曲中心重设 **可用（第七十六波）**：`distort` 流程里自动调 `EffectDistortion.CenterDistortion()`。
 > * 批量斜切 / 渐变色标枚举 / 线型表保存 **可用（第七十五波）**：`ShapeRange.SkewEx`（range_skew）、`FountainColors.Item(i)` 枚举、`OutlineStyles.Save`。
 > * 拉伸消失点共享 / 窗口排列 **可用（第七十四波）**：`ext.VanishingPoint.Share(effect.Extrude)`、`Windows.Arrange`。
@@ -373,7 +374,7 @@
 
 ```powershell
 python -m pytest -q              # 93 项纯逻辑
-python scripts/live_smoke.py     # 544 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
+python scripts/live_smoke.py     # 550 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
 ```
 
 联调断言覆盖了上表所有 ✅ 项。反解脚本属于过程产物，已按要求放在 `tmp/` 并在完成时清理；
@@ -381,13 +382,13 @@ python scripts/live_smoke.py     # 544 项端到端（真实 CorelDRAW，**跑�
 
 ---
 
-## 六、量化覆盖率（2026-10-27 第七十六波实测）
+## 六、量化覆盖率（2026-10-27 第七十七波实测）
 
 方法：反解类型库拿到 196 个自动化类 / **1619** 个方法（已剔除 `QueryInterface` 等 COM 基础设施）；
 用 AST 扫描 `src/cdrx8_mcp/*.py`，收集所有 `.方法名(` 调用与 `setattr/getattr` 的属性名，
 与主干接口的方法名求交集。**注意：属性名（如 `curve.Nodes`）也会被计入**，所以本波数字含真实属性访问。
 
-**全局：1164 / 1619 = 71.9%**（21.2% → … → 71.8% → 本轮 71.9%）
+**全局：1173 / 1619 = 72.5%**（21.2% → … → 71.9% → 本轮 72.5%）
 **主干 20 接口：670 / 743 = 90.2%**
 
 复现命令：`python scripts/coverage_audit.py`（会临时展开类型库到 `tmp/gen_py`，跑完自动清理）
@@ -417,7 +418,7 @@ python scripts/live_smoke.py     # 544 项端到端（真实 CorelDRAW，**跑�
 | **合计** | **743** | **665** | **89.5%** |
 
 > **怎么读这两个数**：
-> 1. 全局 **71.9%** 覆盖 1619 个方法（含变体与重复）；主干 20 接口 90.2%。
+> 1. 全局 **72.5%** 覆盖 1619 个方法（含变体与重复）；主干 20 接口 90.2%。
 > 2. 它是**方法/属性名匹配**的近似值，同名方法会跨接口误计。
 > 3. `IVGColor` 已到 **91%**：分量**写**走 `*Assign`，分量**读**走 `CorelScriptGetComponent`（`(5000+模型号, v1..v7)`）；纯 Python 只用于无 COM 场景的换算。
 > 4. 未调用方法多为变体（Wide/Ex/2/3 后缀）与事件订阅、CorelScriptTools/MathUtils。
@@ -1576,6 +1577,24 @@ python -m pytest -q                       # 93 项纯 Python 单元测试
 > ops 里早已按对签名封装；本轮只是把 `CenterDistortion()` 补进 distort 流程。
 > 另：`IVGEffectDistortion.Zipper/PushPull` 属性读回会 TypeError（pywin32 类型收窄问题），
 > `ColorProfiles.SelectByName` 对已知精确名也返回 False（没选中就是没选中，如实返回）。
+
+## 七之七十六、第七十七波已接入（2026-10-27，调色板方法 / 视图 / 数据字段 / B样条控制点）
+
+| 能力 | 落地位置 | 实测 |
+|---|---|---|
+| **调色板按名查找**（IVGPalette.FindColor） | `cdr_doc(action="palette_find_color", palette_index=1, color="名字")` | ✅ 可调用；**对 TRUMATCH 常见名字一律返回 0**（按名查找基本不可用），warnings 如实提示 |
+| **调色板插色**（InsertColor） | `cdr_doc(action="palette_insert_color", palette_index=1, color="#00C800", color_index=1)` | ✅ `InsertColor(序号, IVGColor)`（序号在前！）；固定调色板报「无法修改固定调色板」时**自动退化到新建自定义调色板**并插入 |
+| **设默认调色板**（MakeDefault） | `cdr_doc(action="palette_make_default", palette_index=1)` | ✅ `MakeDefault()` 把 PANTONE 设为默认 |
+| **命名视图**（Views.AddActiveView） | `cdr_doc(action="views_add_active", view_name=…)` | ✅ 当前视口存为命名视图（Count 0→1） |
+| **数据字段重排**（DataField.Reorder） | `cdr_doc(action="datafield_reorder", color_index=1, value=2)` | ✅ `Reorder(新序号)`（实测字段 `Name` 1→2） |
+| **B 样条控制点扩容**（BSplineControlPoints.Resize） | `cdr_doc(action="bspline_resize", color_index=4, value=6)` | ✅ 控制点 4→6 |
+
+> **第七十七波记录**：
+> 1. `Palette.FindColor` / `InsertColor` 的参数形态完全不同：前者要**名字字符串**（且基本查不到），
+>    后者是**(序号, IVGColor)**、序号在前。
+> 2. 固定调色板（`OpenFixed` 打开的 TRUMATCH/PANTONE）一律**不可修改**；
+>    `InsertColor`/`SetColor` 失败时对 `InsertColor` 自动退化为新建自定义调色板。
+> 3. `Views.AddActiveView` / `DataField.Reorder` / `ControlPoints.Resize` 都是直通调用，一次通过。
 
 ## 七之二、仍未接入（第三轮候选）
 
