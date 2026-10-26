@@ -4659,6 +4659,29 @@ def main() -> int:
                       f"count={os75.get('count')}")
         no_error("关闭批量斜切测试文档", server.cdr_close(s75_id))
 
+    # ---------------- 15cd. 第七十六波：扭曲中心重设 ----------------
+    print("\n[15cd] 第七十六波：EffectDistortion.CenterDistortion（扭曲中心重设）")
+    d76_doc = server.cdr_open(preset="A4")
+    if "document_id" in d76_doc:
+        d76_id = d76_doc["document_id"]
+        d76r = server.cdr_create(d76_doc["document_id"], [
+            {"type": "rectangle", "x": 0, "y": 0, "width": 20, "height": 10}])
+        if no_error("cdr_create(扭曲测试)", d76r):
+            d76a = {"name": d76r["created"][0]["name"]}
+            ds76 = server.cdr_shape_ops(d76_id, op="distort", target=d76a,
+                                        params={"kind": "zipper", "amplitude": 20,
+                                                "frequency": 5})
+            if no_error("cdr_shape_ops(distort zipper)", ds76):
+                check("扭曲可创建并重设中心（CenterDistortion）",
+                      ds76.get("effects") == 1,
+                      f"effects={ds76.get('effects')} kind={ds76.get('kind')}")
+            ds76b = server.cdr_shape_ops(d76_id, op="distort", target=d76a,
+                                         params={"kind": "pushpull", "amplitude": 30})
+            if no_error("cdr_shape_ops(distort pushpull)", ds76b):
+                check("推拉扭曲也可用", ds76b.get("effects") is not None,
+                      f"kind={ds76b.get('kind')}")
+        no_error("关闭扭曲测试文档", server.cdr_close(d76_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

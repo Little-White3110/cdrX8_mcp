@@ -7544,6 +7544,13 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
                     else:
                         raise CdrBadArgument(
                             "distort 的 params.kind 可用 pushpull / twister / zipper")
+                # 实测：effect.Distortion.CenterDistortion() 可调用（把扭曲中心重设到对象中心）
+                try:
+                    dist_obj = _s(lambda: source.Effects.Item(1).Distortion)
+                    if dist_obj is not None:
+                        dist_obj.CenterDistortion()
+                except Exception:
+                    pass
                 return {"op": op, "kind": kind, "origin": [ox, oy],
                         "bbox_before": before, "bbox_after": _bbox(source),
                         "effects": _n(lambda: int(source.Effects.Count), 0)}
