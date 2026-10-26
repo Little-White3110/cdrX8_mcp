@@ -7,9 +7,9 @@
 
 > **已在真机验证**：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）+ Python 3.11.9 64 位
 > - 单元测试 **93 项通过**
-> - 端到端联调（真实 CorelDRAW）**494/494 通过**
+> - 端到端联调（真实 CorelDRAW）**496/496 通过**
 > - 能力边界来自对 `vgcoreauto.tlb` 的反解（196 个自动化类 / 1619 个方法）+ 逐项实跑
-> - 方法级覆盖 **63.9%**（主干 20 接口 89.0%），可用 `python scripts/coverage_audit.py` 复现
+> - 方法级覆盖 **64.1%**（主干 20 接口 89.2%），可用 `python scripts/coverage_audit.py` 复现
 > - 完整清单见 [docs/COVERAGE.md](docs/COVERAGE.md)
 
 ---
@@ -186,7 +186,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ---
 
-## X8 特有问题（147 条，全部实测）
+## X8 特有问题（148 条，全部实测）
 
 这些是 **X8 与 2024+ 的差异**，也是本项目存在的主要理由。
 
@@ -339,6 +339,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 | 145 | **`ApplyHatchFill` 的第 2 参必须是整数序号** | `Fill.ApplyHatchFill(库名, "ANGLE", …)` 报「发生意外」被判不可用；传 **int**（0/1/2/5/10/50…均可）、库名传空串即可 → `Fill.Type = 10`。`ApplyCustomHatchFill` 18 参的 Style 可传 None。`Document.HatchLibraries` 报错不影响填充 | 已封装 `cdr_modify(fill={"type":"hatch"/"hatch_custom"})` |
 | 146 | **`GetMatrix` 也会让 `IsOnShape` 失效** | 之前只记了 SetMatrix；长跑里「先 GetMatrix 再 IsOnShape」会稳定返回 0（单独跑正常）。把命中判定挪到矩阵读取之前即恢复 | 冒烟里已把 `is_on_shape` 放到 `matrix` 之前；调用方若两者都用，注意这个顺序 |
 | 147 | **`SetSizeEx`/`StretchEx` 前两参是中心点；`AllExcluding` 要索引数组（1 基）** | 第 33 波把 `SetSizeEx`/`StretchEx` 判成「参数语义不明、会放大到离谱尺寸」，其实是把**中心点**当左上角传：`SetSizeEx(cx, cy, 宽, 高)`、`StretchEx(cx, cy, X倍数, Y倍数, 缩放文字)`。`AllExcluding([1])` 接受 Python list、索引 **1 基**（传 None 才报 TypeError） | 已封装 `cdr_shape_ops(op="set_size_ex"/"stretch_ex"，可加 use_range) / "all_excluding"` |
+| 148 | **`OpenDocumentAsCopy` 需要第二个「打开选项」参数** | 只传路径报 `TypeError`；加 `CreateStructOpenOptions()` 即可，返回的是**未命名副本**（`Name` = 未命名 -N、`FileName` 为空），内容与源文件一致 | 已封装 `cdr_open(path=…, as_copy=true)`；`CreateStructFontProperties()` 也能造可读结构体（但 `SetFontProperties` 写入无效） |
 
 改代码前请先读 [`src/cdrx8_mcp/constants.py`](src/cdrx8_mcp/constants.py) 里的注释。
 
@@ -388,7 +389,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ```powershell
 python -m pytest -q                # 93 项逻辑测试，任何平台可跑
-python scripts/live_smoke.py       # 494 项端到端（跑前先确认没有残留 CorelDRW 进程）
+python scripts/live_smoke.py       # 496 项端到端（跑前先确认没有残留 CorelDRW 进程）
 python scripts/live_smoke.py --keep   # 保留文档方便肉眼看效果
 python scripts/coverage_audit.py   # 覆盖率审计（复现 README/COVERAGE 里的数字）
 ```

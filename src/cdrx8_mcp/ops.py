@@ -277,9 +277,15 @@ def create_document(app: Any, width: float | None, height: float | None,
     return doc
 
 
-def open_document(app: Any, path: str, options: dict | None = None) -> Any:
+def open_document(app: Any, path: str, options: dict | None = None,
+                  as_copy: bool = False) -> Any:
     """打开文档。`options` 走 `CreateStructOpenOptions + OpenDocumentEx`
-    （结构体成员实测只有 CodePage / ColorConversionOptions）。"""
+    （结构体成员实测只有 CodePage / ColorConversionOptions）。
+    `as_copy=True` 时走 `Application.OpenDocumentAsCopy(path, 打开选项)` ——
+    返回值是**未命名副本**（FileName 为空），内容与源文件一致。"""
+    if as_copy:
+        opts = app.CreateStructOpenOptions()
+        return app.OpenDocumentAsCopy(path, opts)
     if options:
         opts = app.CreateStructOpenOptions()
         if opts is None:
@@ -7599,6 +7605,18 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
                     else:
                         shape.Text.SetSpaceProperties(0, sp)
                         applied.append("space_struct")
+                if spec.get("report_font_struct"):
+                    # 实测：Application.CreateStructFontProperties() 可用；读回的是默认值
+                    fs = app.CreateStructFontProperties()
+                    applied.append("font_struct_factory")
+                    warnings.append(
+                        "CreateStructFontProperties 造出的结构体可读（Name/Size/Style/"
+                        "Underline），但 SetFontProperties(frames, 结构体) 对可见文本无效")
+                    try:
+                        warnings.append(f"默认字体结构体：Name={str(fs.Name)[:40]} "
+                                        f"Size={float(fs.Size)}")
+                    except Exception:
+                        pass
                 if any(k in spec for k in ("hyphenation", "hot_zone")):
                     hp = app.CreateStructHyphenationSettings()
                     if "hyphenation" in spec:

@@ -185,7 +185,8 @@ def cdr_open(path: str | None = None, width_mm: float | None = None,
              preset: str | None = None, template: str | None = None,
              include_graphics: bool = True,
              create_options: dict | None = None,
-             open_options: dict | None = None) -> dict:
+             open_options: dict | None = None,
+             as_copy: bool = False) -> dict:
     """打开已有 .cdr，或新建空白文档，或**从模板创建**。
 
     Args:
@@ -212,7 +213,7 @@ def cdr_open(path: str | None = None, width_mm: float | None = None,
             if tpl:
                 doc = app.CreateDocumentFromTemplate(tpl, bool(include_graphics))
             elif target:
-                doc = ops.open_document(app, target, open_options)
+                doc = ops.open_document(app, target, open_options, as_copy=as_copy)
             else:
                 doc = ops.create_document(app, width_mm, height_mm, orientation, preset,
                                           create_options)

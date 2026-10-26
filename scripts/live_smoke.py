@@ -4131,6 +4131,37 @@ def main() -> int:
                       f"{ex61.get('source_count')} → {ex61.get('result_count')}")
         no_error("关闭定尺寸测试文档", server.cdr_close(s61_id))
 
+    # ---------------- 15bp. 第六十二波：以副本打开 / 字体结构体工厂 ----------------
+    print("\n[15bp] 第六十二波：OpenDocumentAsCopy、CreateStructFontProperties")
+    c62_doc = server.cdr_open(preset="A4")
+    if "document_id" in c62_doc:
+        c62_id = c62_doc["document_id"]
+        c62r = server.cdr_create(c62_id, [
+            {"type": "rectangle", "x": 0, "y": 0, "width": 20, "height": 10},
+            {"type": "paragraph_text", "x": 20, "y": 20, "x2": 120, "y2": 60,
+             "text": "abc"},
+        ])
+        if no_error("cdr_create(副本/字体结构体测试)", c62r):
+            c62p = os.path.join(os.getcwd(), "tmp",
+                                f"w62src_{os.urandom(4).hex()}.cdr")
+            sv62 = server.cdr_save(c62_id, c62p)
+            if no_error("cdr_save(副本源)", sv62) and os.path.exists(c62p):
+                cp62 = server.cdr_open(path=c62p, as_copy=True)
+                if no_error("cdr_open(as_copy)", cp62) and cp62.get("document_id"):
+                    ins62 = server.cdr_inspect(cp62["document_id"])
+                    check("可按副本打开（OpenDocumentAsCopy）",
+                          len(ins62.get("shapes") or []) >= 1,
+                          f"shapes={len(ins62.get('shapes') or [])}")
+                    no_error("关闭副本文档", server.cdr_close(cp62["document_id"]))
+            c62t = {"name": c62r["created"][1]["name"]}
+            fs62 = server.cdr_text(c62_id, c62t,
+                                   paragraph_format={"report_font_struct": True})
+            if no_error("cdr_text(report_font_struct)", fs62):
+                check("字体结构体工厂可读（CreateStructFontProperties）",
+                      "font_struct_factory" in (fs62.get("applied") or []),
+                      str(fs62.get("applied")))
+        no_error("关闭副本/字体结构体测试文档", server.cdr_close(c62_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

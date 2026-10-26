@@ -2,7 +2,7 @@
 
 > 目的：证明"还有多少没探"。每一行要么有对应的工具，要么有实测失败证据。
 > 环境：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）/ Python 3.11.9 64 位
-> 最近更新：2026-10-26 第六十一波（中心定尺寸 / 中心拉伸 / 范围排除）
+> 最近更新：2026-10-26 第六十二波（副本打开 / 字体结构体工厂 + 剩余项收敛审计）
 
 ## 怎么得出这份清单
 
@@ -17,7 +17,7 @@
 
 | 接口 | 方法数 | 覆盖情况 |
 |---|---:|---|
-| `IVGApplication` | 82 | 已用：CreateDocument / **CreateDocumentFromTemplate** / OpenDocument / 全套 Create*Color（**第三十五波补齐 HSB/CMY/BW/YIQ/Fixed/CreateColor/CreateColorEx**）/ CreateShapeRange / CreateStructExportOptions / CreateStructImportOptions / **CreateStructSaveAsOptions** / **CreateStructFontProperties** / OutlineStyles（含 **AddStyle/Save**）/ ArrowHeads / Version / Path / Documents / **ColorManager / ActiveTool / ActiveToolStateGuid / RegisterUserApplicationPreference / GetApplicationPreferenceValue / SetApplicationPreferenceValue / CreateOnScreenText / CreateOnScreenCurve / CreateOnScreenHandle** / **FontList / ForceUpdateFontTable / Palettes（含 OpenFixed / Create / Item） / CreateDuotone / CreateSpotColorByName / CreatePatternCanvas / PatternCanvases / GetSupportedOpenTypeFeatures / CheckPlatformVersion / IsUILanguageAvailable / CreateRect / ConvertUnits / ConvertToUnicode / ConvertFromUnicode / CreateProperties**；OpenDocumentAsCopy 参数 TypeError；**第三十八波**：`CreateStructCreateOptions` + `CreateDocumentEx`（一次定名称/页宽/页高/分辨率）、`CreateStructOpenOptions` + `OpenDocumentEx`（打开选项只有 CodePage/ColorConversionOptions）；**第四十一波**：`CreateNodeRange`（配合 `Add` 凑**不连续**节点集合，支持 Move/Rotate/Skew/Stretch/AutoReduce/Smoothen/SetType/Delete/Fillet/Chamfer/Scallop/CreateSelection/GetBoundingBox）、`CreateSegmentRange`（任意线段集合：SetType/AddNode/CreateSelection/RemoveAll/FirstSegment·LastSegment）；**第四十三波**：`CreateStructPaletteOptions`（NumColors/DitherType/PaletteType/Importance/Lightness/TargetColor/Palette）、`CreateStructPasteOptions`（只有 ColorConversionOptions）；**第四十六波**：`CorelScriptTools()` 返回 `ICorelScriptTools`（VBA 辅助对象），`FromInches/ToInches/FromPoints/ToPoints/ASin/BuildDate/FindFirstFolder` 可用；**第五十一波**：`CreateStructAlignProperties` / `CreateStructSpaceProperties` / `CreateStructHyphenationSettings` 三个工厂造出的结构体可直接喂给对应 `Set*Properties`；`ConvertToUnicode` / `ConvertFromUnicode` 实测被 pywin32 的 BSTR 转换弄坏（见不可用清单）；**第五十八波（纠正）**：`CreatePaletteColor(调色板 GUID, 序号)` / `CreateSpotColor(调色板 GUID, 专色ID, Tint)` **是"造色"不是"取色"**（GUID 传对即可）；`CreateColorContext2(配置名串, RenderingIntent, BlendingColorModel)` 与 `CreateProofColorSettings(配置名, RenderingIntent, 保留颜色值)` 也可用 —— **这两个 API 的 RenderingIntent 有效范围是 1~4**（传 0 才报越界）|
+| `IVGApplication` | 82 | 已用：CreateDocument / **CreateDocumentFromTemplate** / OpenDocument / 全套 Create*Color（**第三十五波补齐 HSB/CMY/BW/YIQ/Fixed/CreateColor/CreateColorEx**）/ CreateShapeRange / CreateStructExportOptions / CreateStructImportOptions / **CreateStructSaveAsOptions** / **CreateStructFontProperties** / OutlineStyles（含 **AddStyle/Save**）/ ArrowHeads / Version / Path / Documents / **ColorManager / ActiveTool / ActiveToolStateGuid / RegisterUserApplicationPreference / GetApplicationPreferenceValue / SetApplicationPreferenceValue / CreateOnScreenText / CreateOnScreenCurve / CreateOnScreenHandle** / **FontList / ForceUpdateFontTable / Palettes（含 OpenFixed / Create / Item） / CreateDuotone / CreateSpotColorByName / CreatePatternCanvas / PatternCanvases / GetSupportedOpenTypeFeatures / CheckPlatformVersion / IsUILanguageAvailable / CreateRect / ConvertUnits / ConvertToUnicode / ConvertFromUnicode / CreateProperties**；OpenDocumentAsCopy 参数 TypeError；**第三十八波**：`CreateStructCreateOptions` + `CreateDocumentEx`（一次定名称/页宽/页高/分辨率）、`CreateStructOpenOptions` + `OpenDocumentEx`（打开选项只有 CodePage/ColorConversionOptions）；**第四十一波**：`CreateNodeRange`（配合 `Add` 凑**不连续**节点集合，支持 Move/Rotate/Skew/Stretch/AutoReduce/Smoothen/SetType/Delete/Fillet/Chamfer/Scallop/CreateSelection/GetBoundingBox）、`CreateSegmentRange`（任意线段集合：SetType/AddNode/CreateSelection/RemoveAll/FirstSegment·LastSegment）；**第四十三波**：`CreateStructPaletteOptions`（NumColors/DitherType/PaletteType/Importance/Lightness/TargetColor/Palette）、`CreateStructPasteOptions`（只有 ColorConversionOptions）；**第四十六波**：`CorelScriptTools()` 返回 `ICorelScriptTools`（VBA 辅助对象），`FromInches/ToInches/FromPoints/ToPoints/ASin/BuildDate/FindFirstFolder` 可用；**第五十一波**：`CreateStructAlignProperties` / `CreateStructSpaceProperties` / `CreateStructHyphenationSettings` 三个工厂造出的结构体可直接喂给对应 `Set*Properties`；`ConvertToUnicode` / `ConvertFromUnicode` 实测被 pywin32 的 BSTR 转换弄坏（见不可用清单）；**第五十八波（纠正）**：`CreatePaletteColor(调色板 GUID, 序号)` / `CreateSpotColor(调色板 GUID, 专色ID, Tint)` **是"造色"不是"取色"**（GUID 传对即可）；`CreateColorContext2(配置名串, RenderingIntent, BlendingColorModel)` 与 `CreateProofColorSettings(配置名, RenderingIntent, 保留颜色值)` 也可用 —— **这两个 API 的 RenderingIntent 有效范围是 1~4**（传 0 才报越界）；**第六十二波**：`CreateStructFontProperties()` 可造可读（但 `SetFontProperties` 写入无效）、`OpenDocumentAsCopy(path, 打开选项)` 返回**未命名副本**（FileName 为空、内容一致）|
 | `IVGApplicationEvents` | 24 | **新打通（第二十六波）**：通过生成的 `DIVGApplicationEvents` 连接点 sink 订阅；实测捕获 WindowActivate / DocumentNew / DocumentClose / SelectionChange / DocumentBeforeSave / DocumentAfterSave / DocumentBeforeExport / DocumentAfterExport / Start / PluginCommand；`ApplicationEvent` 高频忽略 |
 | `IVGDocumentEvents` | 28 | **新打通（第二十七波）**：每个文档挂 `DIVGDocumentEvents` sink；捕获 ShapeCreate/Delete/Move/Transform/Distort/Change、LayerCreate/Delete/Activate/Change、PageCreate/Delete/Activate/Change、SelectionChange、Before/AfterSave、Before/AfterExport |
 | `IVGDocument` | 78 | 已用：Unit / Pages / AddPages / DeletePages / ActivePage / ActiveLayer / Selection / Save·SaveAs / ExportEx / ExportBitmap(不适用) / PublishToPDF / Undo / Redo / Begin·EndCommandGroup / FileName / Dirty / Name / StyleSheet / **Metadata / DataFields / ColorContext / ConvertToColorContext / Revert / Views / CreateView** / **设置：EditAcrossLayers / ApplyToDuplicate / CurvePrecision / Resolution / ReferencePoint / ShapeEnumDirection / TextFormatter / WorldScale / FacingPages / FirstPageOnRightSide / Layout / Unit / DrawingOriginX·Y / PreserveSelection** / **Keywords·Notes（可写，读需走 Metadata）** / **ToUnits / FromUnits / SampleColorAtPoint / SampleColorInArea / ShowAllHiddenObjects / SetLayout / Repeat / CreateImage / CreateColorStyles / InsertPages / HatchLibraries / SaveStyleSheet / LoadStyleSheet / CreateFill / CreateOutline（字符串格式无效）**；**第三十五波**：`AddPagesEx` / `InsertPagesEx`（定尺寸加页/插页）、`CreateArrowHead2/Ex/Ex2`（命名箭头）、`ResolveAllBitmapsLinks`、`SaveSettings`/`RestoreSettings`/`ResetSettings`（设置快照，调用无异常、可见效果未确认）、`CreateColor`（在 Application 上）/ `CreateUniformFill`；**第三十八波**：`CreateUniformFill(IVGColor)` 造填充对象 + `ShapeRange.ApplyFill` 批量上色、`CreateArrowHead2(Curve, Name)` 命名箭头；**第四十二波**：`CreateShapeRangeFromArray`、`ConvertToBitmapEx`（范围）、`AssignColorContext`、`SaveStyleSheetAsDefault`、`CreateArrowHeadEx` / `CreateArrowHeadEx2` / `CreateArrowHeadOptions`；**第四十三波**：`Export(FileName, Filter, Range, Options, PaletteOptions)`、`ExportBitmap(16 参，返回 ICorelExportFilter，必须 Finish())`；**第五十一波**：`CreateArrowHeadEx`（无名箭头，Name 为空）与已用的 Ex2 并存（`arrowhead_unnamed`）；**第五十三波**：`CreateBSpline(控制点数, 闭合)` → `IVGBSpline`（配合 `InsertControlPoint(序号, x, y, Clamped)`，**两端必须 Clamped=True**）；**第五十九波**：`CreateCurveFitToPoints(IVGPointRange, False, 容差)` / `CreateCurveFitToPointsAndCusps(点集, 尖点数组, False, 容差)` —— 点集拟合曲线的入口 |
@@ -243,6 +243,7 @@
 >   `CreateFreeConnector` 报「未实现」；本机无符号库。
 > * 混合 **可用（第十七波）**：`CreateBlend` 传全参数且 `Path=None` 时成功；
 >   效果经 `Effects.Item(i).Blend`（IVGEffectBlend）读写 Steps/Spacing/Angle 等。
+> * 副本打开 / 字体结构体工厂 **可用（第六十二波）**：`OpenDocumentAsCopy(path, 选项)`、`CreateStructFontProperties()`。
 > * 中心定尺寸/拉伸/范围排除 **可用（第六十一波）**：`SetSizeEx(cx,cy,宽,高)`、`StretchEx(cx,cy,X倍数,Y倍数,缩放文字)`（**前两参是中心点**）、`AllExcluding(索引数组，1 基)`。
 > * 剖面线填充 **可用（第六十波）**：`ApplyHatchFill`（第 2 参必须是 int 序号）、`ApplyCustomHatchFill`（18 参）。
 > * 点集拟合/追加 **可用（第五十九波）**：`IVGPointRange`（来自 `SubPath.GetEvenlySpacedPoints`）+ `CreateCurveFitToPoints(AndCusps)` / `AppendSubpath*Points`；Python list 不是它要的类型。
@@ -359,7 +360,7 @@
 
 ```powershell
 python -m pytest -q              # 93 项纯逻辑
-python scripts/live_smoke.py     # 494 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
+python scripts/live_smoke.py     # 496 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
 ```
 
 联调断言覆盖了上表所有 ✅ 项。反解脚本属于过程产物，已按要求放在 `tmp/` 并在完成时清理；
@@ -367,14 +368,14 @@ python scripts/live_smoke.py     # 494 项端到端（真实 CorelDRAW，**跑�
 
 ---
 
-## 六、量化覆盖率（2026-10-26 第六十一波实测）
+## 六、量化覆盖率（2026-10-26 第六十二波实测）
 
 方法：反解类型库拿到 196 个自动化类 / **1619** 个方法（已剔除 `QueryInterface` 等 COM 基础设施）；
 用 AST 扫描 `src/cdrx8_mcp/*.py`，收集所有 `.方法名(` 调用与 `setattr/getattr` 的属性名，
 与主干接口的方法名求交集。**注意：属性名（如 `curve.Nodes`）也会被计入**，所以本波数字含真实属性访问。
 
-**全局：1035 / 1619 = 63.9%**（21.2% → … → 63.4% → 本轮 63.9%）
-**主干 20 接口：661 / 743 = 89.0%**
+**全局：1037 / 1619 = 64.1%**（21.2% → … → 63.9% → 本轮 64.1%）
+**主干 20 接口：663 / 743 = 89.2%**
 
 复现命令：`python scripts/coverage_audit.py`（会临时展开类型库到 `tmp/gen_py`，跑完自动清理）
 
@@ -383,12 +384,12 @@ python scripts/live_smoke.py     # 494 项端到端（真实 CorelDRAW，**跑�
 | `IVGShape` | 123 | 114 | **93%** |
 | `IVGShapeRange` | 125 | 116 | **93%** |
 | `IVGSubPath` | 38 | 37 | **97%** |
-| `IVGDocument` | 74 | 59 | **80%** |
+| `IVGDocument` | 74 | 60 | **81%** |
 | `IVGPage` | 21 | 20 | **95%** |
 | `IVGCurve` | 36 | 33 | **92%** |
 | `IVGLayer` | 49 | 42 | **86%** |
 | `IVGTextRange` | 31 | 30 | **97%** |
-| `IVGApplication` | 78 | 56 | **72%** |
+| `IVGApplication` | 78 | 57 | **73%** |
 | `IVGText` | 29 | 25 | **86%** |
 | `IVGNode` | 18 | 16 | **89%** |
 | `IVGBitmap` | 15 | 14 | **93%** |
@@ -400,10 +401,10 @@ python scripts/live_smoke.py     # 494 项端到端（真实 CorelDRAW，**跑�
 | `IVGTransparency` | 8 | 7 | **88%** |
 | `IVGStyle` | 15 | 13 | **87%** |
 | `IVGColorContext` | 6 | 5 | **83%** |
-| **合计** | **743** | **661** | **89.0%** |
+| **合计** | **743** | **663** | **89.2%** |
 
 > **怎么读这两个数**：
-> 1. 全局 63.9% 覆盖 1619 个方法（含变体与重复）；主干 20 接口 89.0%。
+> 1. 全局 64.1% 覆盖 1619 个方法（含变体与重复）；主干 20 接口 89.2%。
 > 2. 它是**方法/属性名匹配**的近似值，同名方法会跨接口误计。
 > 3. `IVGColor` 已到 **91%**：分量**写**走 `*Assign`，分量**读**走 `CorelScriptGetComponent`（`(5000+模型号, v1..v7)`）；纯 Python 只用于无 COM 场景的换算。
 > 4. 未调用方法多为变体（Wide/Ex/2/3 后缀）与事件订阅、CorelScriptTools/MathUtils。
@@ -1286,6 +1287,31 @@ python scripts/live_smoke.py     # 494 项端到端（真实 CorelDRAW，**跑�
 > 现在看清了 —— **前两个参数是中心点 (CenterX, CenterY)**。当时把中心当成左上角坐标传，
 > 自然算出离谱的尺寸。`AllExcluding` 之前传 `None` 报 TypeError，其实它要**索引数组**（1 基，Python list 就行）。
 
+## 七之六十、收敛审计：剩余未覆盖方法的最终归类（2026-10-26）
+
+> 主干 20 接口还有 **80 个**方法未覆盖。下面按「为什么还没接」把它们一次性归类，
+> 每条都附实测结论 —— 这份表就是后续想再推进时的清单。
+
+| 归类 | 方法 | 实测结论 |
+|---|---|---|
+| **VBA / 插件体系**（安全不接） | `Application.Evaluate`、`InitializeVBA`、`ImportWorkspace`、`Quit`、`AddPluginCommand`、`RemovePluginCommand`、`RegisterToolShape`、`RegisterToolState`、`StartTemporaryToolState`、`UnregisterToolState`、`AdviseEvents`、`UnadviseEvents`、`Shape.Evaluate`、`Shape.CustomCommand`、`Page.CustomCommand`、`Document.CustomCommand` | 前 4 个是求值/初始化/导入工作区/退出进程；`Add/RemovePluginCommand` **300 s 卡死**；`Register*ToolState` 报类型不匹配；`CustomCommand` 报「未装载此命令」/「发生意外」；`AdviseEvents` 要事件接收器 |
+| **会挂起 / 弹窗**（严禁） | `Document.GetUserArea`、`Document.GetUserClick`、`Document.InteractiveImport`、`Document.InteractiveImportWithContentIdentifier`、`Document.PrintOut`、`Document.PrintColorProof`、`Text.ImportFromFile`、`Text.MakeHTMLCompatible`、`Fill/Outline/Transparency/Color.UserAssign(Ex)` | `GetUserArea`/`GetUserClick` **20 s 挂起**；打印/导入/用户取色都会弹模态框 |
+| **需要载荷（数组/对象）造不出来** | `Document.CreateCurveFromArray`、`Curve.CreateSubPathFromArray`、`Curve.PutCurveInfo`、`SubPath.PutCurveInfo`、`Shape.ApplyTransformMatrix`、`Curve.ApplyTransformMatrix`、`Document.CreateFill`、`Document.CreateOutline` | 数组类报 `MemoryError: CreatingSafeArray`；`CreateCurveFromArray` **无返回**；矩阵对象只能由 `Application.MathUtils` 造，而它不存在；`CreateFill/CreateOutline` 传任何字符串都得到 `Type=0` 空对象 |
+| **需要外部资源** | `Bitmap.Trace`、`Layer.CreateSymbol`、`Application.SymbolLibraries`、`Layer.CreateCustomShape`、`Layer.CreateToolShape`、`Layer.CreateOLEObject`、`Layer.PasteSpecial`、`Shape.CreateCustomEffect`、`Shape.CreateCustomDistortion`、`Style.Assign`、`Style.SetBasedOn` | 符号库/自定义工具形状/自定义效果都需要本机没装的插件或库；`Style.SetBasedOn` 因 `CreateStyleFromShape` 连续建样式后 `Styles.Find` 找不到而无法稳定验证 |
+| **语义不可核实（调用不报错但无可见效果）** | `Document.LogCreateShape`、`Document.LogCreateShapeRange`、`Document.ReplaceContentByIdentifier`、`Text.SetFontProperties`、`Text.SetFontPropertiesInRange`、`Shape.RemoveFromContainer`、`Shape.ReplaceWith`、`Shape.CompareToEx`、`Shape.GetToolShapeGuid`、`Shape.ModifyToolShapeProperties`、`StyleSheet` 相关 | 例如 `SetFontProperties` 不报错但 `Story.Size/Font` 不变；`ReplaceWith` 报「需要虚拟形状」；`RemoveFromContainer` 调用无异常但页面对象数不变 |
+| **类型库常量（不是方法）** | `cdrMixedDouble` / `cdrMixedLong` / `cdrMixedSingle` | 类型库枚举常量，无调用面 |
+
+## 七之六十一、第六十二波已接入（2026-10-26，副本打开 / 字体结构体工厂）
+
+| 能力 | 落地位置 | 实测 |
+|---|---|---|
+| **按副本打开** | `cdr_open(path=…, as_copy=true)` | ✅ `Application.OpenDocumentAsCopy(path, 打开选项)`：返回**未命名副本**（`FileName` 为空、`Name` 为「未命名 -N」），但内容与源文件一致（检查到 shapes=2） |
+| **字体结构体工厂** | `cdr_text(paragraph_format={"report_font_struct": true})` | ✅ `Application.CreateStructFontProperties()` 可造可读（Name/Size/Style/Underline），同时在 warnings 里如实标注「`SetFontProperties` 写入对可见文本无效」 |
+
+> **第六十二波记录**：`OpenDocumentAsCopy` 之前报 `TypeError`，是因为只传了路径 —— 它需要第二个
+> **打开选项**参数（`CreateStructOpenOptions()` 即可）。另外本轮补上了「剩余 80 个未覆盖方法」的
+> 收敛审计表（见上一节），把每一类的不可用原因与实测证据固定下来。
+
 ## 七之二、仍未接入（第三轮候选）
 
 | 能力 | 接口 | 为什么还没做 |
@@ -1312,11 +1338,11 @@ python scripts/live_smoke.py     # 494 项端到端（真实 CorelDRAW，**跑�
   自定义虚线、文档设置、文本区间编辑、自定义箭头、图案微调、文本格式查询、位图内容替换/链接、
   文档回滚、立体化/透镜/效果管理、位图特效命令串、混合、文档颜色转换、用户偏好 KV、OLE 嵌入、
   命名视图、网格设置、叠印、段落缩进、制表位、屏幕叠加层、应用/文档事件、导出/保存/导入选项、吸附点全家族、颜色对象分量、描边对象全量属性都已补上。
-* **方法级覆盖**：全局 63.9%（1035/1619），主干 20 接口 89.0%（661/743）。
+* **方法级覆盖**：全局 64.1%（1037/1619），主干 20 接口 89.2%（663/743）。
 * **明确不可用**：位图描摹、文本导入、点集数组建曲线、尺寸标注/连接线（MathUtils 点对象
   不可创建）、符号库、文件型图案/影线填充（本机无库）、曲线贴笔触、OpenDocumentAsCopy、
   HTML 兼容文本、断字写入、填充字符串、文本尺寸查询、灰度→RGB 转换、真实应用偏好读取、
   文本分栏（SetColumns 数组参数）。
-* **第六十一波新增**：按中心定尺寸/拉伸（SetSizeEx/StretchEx，含范围版）、范围排除（AllExcluding）；`IVGShape`/`IVGShapeRange` 双双到 93%。
+* **第六十二波新增**：按副本打开（OpenDocumentAsCopy）、字体结构体工厂；并完成剩余 80 个未覆盖方法的收敛审计（六类归类 + 实测证据）。
 
 
