@@ -2,7 +2,7 @@
 
 > 目的：证明"还有多少没探"。每一行要么有对应的工具，要么有实测失败证据。
 > 环境：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）/ Python 3.11.9 64 位
-> 最近更新：2026-10-26 第五十九波（点集 → 拟合曲线 / 追加点集）
+> 最近更新：2026-10-26 第六十波（剖面线填充 / GetMatrix 与 IsOnShape 干扰）
 
 ## 怎么得出这份清单
 
@@ -25,7 +25,7 @@
 | `IVGLayer` | 50 | 已用：Create*（矩形/椭圆/多边形/螺旋/网格/线/贝塞尔/艺术字/段落字/参考线/**角度参考线**/**位图 CreateBitmap·CreateBitmap2**/**OLE 文件 CreateOLEObjectFromFile**/**矩形造形 CreateRectangleRect·CreateEllipseRect**（第三十四波）/**曲线段 CreateCurveSegment**（第三十四波））/ Import / ImportEx / CreateCurve / Activate / Delete / MoveAbove / **MoveBelow / GetAbove / GetBelow / Paste / FindShape** / Visible / Editable / Printable / Master / **IsGuidesLayer（属性，不是方法）**；**第三十八波**：完整参数形态 `CreateRectangle(left,top,right,bottom,4 圆角)` / `CreateEllipse(left,top,right,bottom,起止角,pie)` / `CreatePolygon(left,top,right,bottom,sides,subpaths,complexity,star,starComplexity,maxComplexity)`；**第四十一波**：`CreateBitmap2(x,y,w,h,Image,Alpha)` 与 `CreateBitmapRect(IVGRect,Image,Alpha)`（都要 IVGImage + Alpha=None）；**第四十三波**：`PasteEx(IVGStructPasteOptions)`（返回 ShapeRange）；**第四十七波**：`CreateArtisticTextWide` / `CreateParagraphTextWide`（显式语言/字符集）、`ImportEx(FileName, Filter, Options)`；**第五十三波**：`CreateBSpline(IVGBSpline)` —— 拿到 `Document.CreateBSpline` 造好的样条定义后落成 **Type 21** 的样条对象（`ConvertToCurves` 后变 Type 3）；**第五十五波**：`CreateConnector(起, 止)` / `CreateConnectorEx(类型, 起, 止)` / `CreateRightAngleConnector(起, 止, 圆角)` → **Type 19** 连接器；`CreateLinearDimension(22 参)` / `CreateAngularDimension(18 参)` → **Type 14** 标注（端点用 `Application.CreateSnapPoint(x, y)` 造，返回 IVGSnapPoint）|
 | `IVGShape` | 124 | 已用：几何 / Fill / Outline / Transparency / Locked / Name / Type / GetBoundingBox / Duplicate / Clone / Delete / **层级 / StepAndRepeat / Distribute / CreateBoundary / CreatePerspective / Separate / CreateEnvelopeFromCurve / CreateEnvelopeFromShape / CompareTo / CreateSelection / RemoveFromSelection / IsOnShape / Copy / Cut / CopyToLayer / MoveToLayer / Project / Unproject / CreateDocumentFrom / CreateExtrude / CreateLens / CreateBlend / OverprintFill / OverprintOutline / OverprintBitmap** / ConvertToCurves / ConvertToSymbol / Weld·Trim·Intersect / AddToPowerClip / CreateDropShadow·Contour·Envelope / AlignToPage·AlignToShape / Fillet·Chamfer·Scallop / Group / Ungroup / BreakApart / Combine；**第三十九波**：`GetMatrix` / `SetMatrix`（[d11,d12,d21,d22,tx,ty]，读回精确；tx/ty 是 X8 内部单位）、`IsTypeAnyOf`（传 list[int] 可用）、`IsOnShape`（2=内部 / 1=边界 / 0=外部）、`OrderIsInFrontOf`、`PlaceTextInside`、`DuplicateAsRange` / `CloneAsRange`、**扭曲三件套 `CreatePushPullDistortion` / `CreateTwisterDistortion` / `CreateZipperDistortion`**；**第四十波**：`GetPositionEx` / `SetPositionEx`（cdrReferencePoint 1~9 定位）、`FindSnapPoint(ReferenceData)`、`GetLinkedShapes(LinkType)`、`ConvertToBitmapEx(8 参)`、`GetOverprintFillState` / `GetOverprintOutlineState`；**第四十八波**：`CopyToLayerAsRange(layer)`（复制到指定图层并返回范围）、`AlignToShapeRange(alignType, range, textOrigin)`（对齐到另一批对象）；**第四十九波**：`CopyPropertiesFrom(源对象, 掩码)` 在**形状级**可用（掩码 4/8/15 会复制填充，1/2 不影响填充；范围级同名方法仍报错）；**第五十波**：`SkewEx(angleX, angleY, cx, cy)` 形状级斜切可用（`ApplyTransformMatrix` 仍不可用：`Application.MathUtils` 不存在，_造型不了矩阵对象_）；**第五十四波（纠正）**：`GetNext(方向)` / `GetPrevious(方向)` **可用**（各取 1 个参数，返回同层相邻 IVGShape；之前记的「`Shape.Next` 是 3 参 propget」说的是另一个属性）；`Ungroup` 也确认生效 |
 | `IVGShapeRange` | 131 | 已用：Group / Combine / AlignAndDistribute / ApplyFountainFill / SetOutlineProperties(不适用，改属性直写) / ConvertToCurves / Add / Count / **CreateParallelCurves / ConvertToBitmap / ConvertOutlineToObject / CreateBoundary / SetFillMode / SetPixelAlignedRendering / ApplyFill / ApplyOutline / CreateDocumentFrom**；**第三十三波**：`AlignRangeToPage` / **PageCenter / Grid / Point / Shape / ShapeRange**、`AddRange` / `RemoveRange`、`Unlock`、`BreakApartEx`、`ClearEffect`、`IndexOf` / `CountAnyOfType` / `ExistsAnyOfType` / `FindAnyOfType`、`GetPositionEx` / `SetPositionEx` / `RotateEx` / `SkewEx`；**空操作/不可用**：`UngroupAll`·`UngroupAllEx`·`UngroupEx`（实测调完对象数不变）、`Sort`（比较表达式语法未逆出）、`AllExcluding`（TypeError）、`SetSizeEx`/`StretchEx`（参数语义不明且会放大到离谱尺寸）；**第四十二波**：`Document.CreateShapeRangeFromArray([shape,…])` **接受 Python list**（配 `Exists` 校验），`ConvertToBitmapEx(8 参)` 整批位图化；**第四十七波**：`SetOutlineProperties`（14 参）/ `SetOutlinePropertiesEx`（15 参，含 Justification）可与 `Shape.Outline.SetProperties(Ex)` 一样全参调用；`AlignRangeToPage(cdrAlignType)` 直接对齐页边；`DeleteItem(i)` 会**连文档里的对象一起删**（已记入陷阱）；**第五十三波**：`ApplyOutline(IVGOutline)` —— 用一个描边对象整批覆盖范围内所有对象（`Outline.GetCopy()` 再改宽度即可）；**第五十四波（重要纠正）**：`UngroupAll()` / `UngroupAllEx()` / `UngroupEx()` **三个都真实生效**（之前的「空操作」结论是测量方式错了）——`UngroupAll` 无返回，`UngroupAllEx`/`UngroupEx` 返回 ShapeRange；实测组合体解开后页面对象数 1→2/1→3 |
-| `IVGFill` | 13 | 已用：ApplyUniformFill / ApplyFountainFill / ApplyTextureFill / **ApplyPatternFill（内存 PatternCanvas 可用；文件型 Pattern 仍需图像文件）** / ApplyPostscriptFill / ApplyNoFill / **GetCopy / CompareWith**；Hatch 需本机 Hatch 库（本机为空） |
+| `IVGFill` | 13 | 已用：ApplyUniformFill / ApplyFountainFill / ApplyTextureFill / **ApplyPatternFill（内存 PatternCanvas 可用；文件型 Pattern 仍需图像文件）** / ApplyPostscriptFill / ApplyNoFill / **GetCopy / CompareWith**；Hatch 需本机 Hatch 库（本机为空）；**第六十波（纠正）**：`ApplyHatchFill(库名, HatchNameOrIndex, 背景色, …)` 与 `ApplyCustomHatchFill`（18 参）**都可用** —— 之前判不可用是因为`HatchNameOrIndex` 传了字符串，**它必须是 int 序号**；`Document.HatchLibraries` 仍报错但填充本身不依赖它 |
 | `IVGOutline` | 15 | **第三十二波补齐（13/15）**：Width / Color / **Style（可赋自定义线型）** / StartArrow·EndArrow / LineCaps / LineJoin / BehindFill / ScaleWithShape / SetNoOutline / **NibStretch / NibAngle / MiterLimit / Justification**（可读写）/ **GetCopy / CopyAssign / CompareWith / ConvertToObject / SetProperties（14 参全实参可用）**；`PenWidth` 恒 0（派生）、`DashDotLength` 写入不生效、`ToString/StringAssign` 在 pywin32 包装类里不存在；**第四十五波**：`SetPropertiesEx`（15 参，多一个 Justification）实测可用 |
 | `IVGOutlineStyle` / `IVGOutlineStyles` | 6 / 6 | **新打通（第十一波）**：`CreateOutlineStyle(dash,gap[,dash,gap,…])` 生成虚拟线型（Index=-1），`OutlineStyles.AddStyle(virtual)` 注册后得到可用 Index，赋给 `Outline.Style` 即生效；`Save()` 可持久化 |
 | `IVGDataFields` / `IVGDataField` / `IVGDataItems` | 8 / 18 / 4 | **新打通（第十一波）**：`DataFields.Add(Name,"0")`、`IsPresent/Item`、`Shape.ObjectData.Add(DataField, Value)`、`DataItem.Value/FormattedValue` 可读写（对象级持久化数据字段） |
@@ -243,6 +243,7 @@
 >   `CreateFreeConnector` 报「未实现」；本机无符号库。
 > * 混合 **可用（第十七波）**：`CreateBlend` 传全参数且 `Path=None` 时成功；
 >   效果经 `Effects.Item(i).Blend`（IVGEffectBlend）读写 Steps/Spacing/Angle 等。
+> * 剖面线填充 **可用（第六十波）**：`ApplyHatchFill`（第 2 参必须是 int 序号）、`ApplyCustomHatchFill`（18 参）。
 > * 点集拟合/追加 **可用（第五十九波）**：`IVGPointRange`（来自 `SubPath.GetEvenlySpacedPoints`）+ `CreateCurveFitToPoints(AndCusps)` / `AppendSubpath*Points`；Python list 不是它要的类型。
 > * 调色板/专色工厂 **可用（第五十八波）**：`CreatePaletteColor(GUID, 序号)`、`CreateSpotColor(GUID, 专色ID, Tint)`；`CreateColorContext2` / `CreateProofColorSettings` 的 RenderingIntent **1~4**。
 > * 文字区间结构体 **可用（第五十七波）**：`FontPropertiesInRange` 等四个读、`Set*PropertiesInRange` 三个写；**方法名无 Get 前缀、StartIndex 1 基**。
@@ -357,7 +358,7 @@
 
 ```powershell
 python -m pytest -q              # 93 项纯逻辑
-python scripts/live_smoke.py     # 489 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
+python scripts/live_smoke.py     # 491 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
 ```
 
 联调断言覆盖了上表所有 ✅ 项。反解脚本属于过程产物，已按要求放在 `tmp/` 并在完成时清理；
@@ -365,14 +366,14 @@ python scripts/live_smoke.py     # 489 项端到端（真实 CorelDRAW，**跑�
 
 ---
 
-## 六、量化覆盖率（2026-10-26 第五十九波实测）
+## 六、量化覆盖率（2026-10-26 第六十波实测）
 
 方法：反解类型库拿到 196 个自动化类 / **1619** 个方法（已剔除 `QueryInterface` 等 COM 基础设施）；
 用 AST 扫描 `src/cdrx8_mcp/*.py`，收集所有 `.方法名(` 调用与 `setattr/getattr` 的属性名，
 与主干接口的方法名求交集。**注意：属性名（如 `curve.Nodes`）也会被计入**，所以本波数字含真实属性访问。
 
-**全局：1023 / 1619 = 63.2%**（21.2% → … → 62.8% → 本轮 63.2%）
-**主干 20 接口：652 / 743 = 87.8%**
+**全局：1027 / 1619 = 63.4%**（21.2% → … → 63.2% → 本轮 63.4%）
+**主干 20 接口：656 / 743 = 88.3%**
 
 复现命令：`python scripts/coverage_audit.py`（会临时展开类型库到 `tmp/gen_py`，跑完自动清理）
 
@@ -390,7 +391,7 @@ python scripts/live_smoke.py     # 489 项端到端（真实 CorelDRAW，**跑�
 | `IVGText` | 29 | 25 | **86%** |
 | `IVGNode` | 18 | 16 | **89%** |
 | `IVGBitmap` | 15 | 14 | **93%** |
-| `IVGFill` | 12 | 9 | **75%** |
+| `IVGFill` | 12 | 11 | **92%** |
 | `IVGWindow` | 8 | 8 | **100%** |
 | `IVGFountainFill` | 6 | 6 | **100%** |
 | `IVGColor` | 43 | 41 | **95%** |
@@ -398,10 +399,10 @@ python scripts/live_smoke.py     # 489 项端到端（真实 CorelDRAW，**跑�
 | `IVGTransparency` | 8 | 7 | **88%** |
 | `IVGStyle` | 15 | 13 | **87%** |
 | `IVGColorContext` | 6 | 5 | **83%** |
-| **合计** | **743** | **652** | **87.8%** |
+| **合计** | **743** | **656** | **88.3%** |
 
 > **怎么读这两个数**：
-> 1. 全局 63.2% 覆盖 1619 个方法（含变体与重复）；主干 20 接口 87.8%。
+> 1. 全局 63.4% 覆盖 1619 个方法（含变体与重复）；主干 20 接口 88.3%。
 > 2. 它是**方法/属性名匹配**的近似值，同名方法会跨接口误计。
 > 3. `IVGColor` 已到 **91%**：分量**写**走 `*Assign`，分量**读**走 `CorelScriptGetComponent`（`(5000+模型号, v1..v7)`）；纯 Python 只用于无 COM 场景的换算。
 > 4. 未调用方法多为变体（Wide/Ex/2/3 后缀）与事件订阅、CorelScriptTools/MathUtils。
@@ -1256,6 +1257,21 @@ python scripts/live_smoke.py     # 489 项端到端（真实 CorelDRAW，**跑�
 > 直接返回它，再配合 `AddPointXY` / `RemoveAll` 就能随意造点集 ——
 > 于是 `CreateCurveFitToPoints`、`AppendSubpathFitToPoints(AndCusps)` 一并打通。
 
+## 七之五十八、第六十波已接入（2026-10-26，剖面线填充）
+
+| 能力 | 落地位置 | 实测 |
+|---|---|---|
+| **剖面线填充** | `cdr_modify(changes={"fill":{"type":"hatch","index":1,"back":"#FFFFFF"}})` | ✅ `Fill.ApplyHatchFill(库名, 序号, 背景色, …)` → `Fill.Type = 10`（索引 0/1/2/5/10/50 都可） |
+| **自定义剖面线** | `cdr_modify(changes={"fill":{"type":"hatch_custom","angle":45,"spacing":3,"width":0.6}})` | ✅ `ApplyCustomHatchFill` 18 参（Style 可传 None）→ `Fill.Type = 10` |
+
+> **第六十波纠正**：`ApplyHatchFill` 第 2 个参数 `HatchNameOrIndex` **必须传整数序号**，
+> 传字符串会报「发生意外」—— 这就是第 34 波判"剖面线不可用"的原因
+> （当时看 `Document.HatchLibraries` 为空就放弃，其实填充不依赖那个集合）。
+>
+> **另一个实测坑（本轮排查花了两次全量冒烟）**：`Shape.GetMatrix` 之后再调
+> `Shape.IsOnShape`，长跑里会返回 0（单独跑却正常）。把命中判定挪到矩阵读取**之前**即恢复 ——
+> 也就是之前记的「SetMatrix 会使 IsOnShape 失效」要扩展为 **GetMatrix 也会**（至少在某些状态下）。
+
 ## 七之二、仍未接入（第三轮候选）
 
 | 能力 | 接口 | 为什么还没做 |
@@ -1282,11 +1298,11 @@ python scripts/live_smoke.py     # 489 项端到端（真实 CorelDRAW，**跑�
   自定义虚线、文档设置、文本区间编辑、自定义箭头、图案微调、文本格式查询、位图内容替换/链接、
   文档回滚、立体化/透镜/效果管理、位图特效命令串、混合、文档颜色转换、用户偏好 KV、OLE 嵌入、
   命名视图、网格设置、叠印、段落缩进、制表位、屏幕叠加层、应用/文档事件、导出/保存/导入选项、吸附点全家族、颜色对象分量、描边对象全量属性都已补上。
-* **方法级覆盖**：**全局 63.2%（1023/1619）**，主干 20 接口 87.8%（652/743）。
+* **方法级覆盖**：全局 63.4%（1027/1619），主干 20 接口 88.3%（656/743）。
 * **明确不可用**：位图描摹、文本导入、点集数组建曲线、尺寸标注/连接线（MathUtils 点对象
   不可创建）、符号库、文件型图案/影线填充（本机无库）、曲线贴笔触、OpenDocumentAsCopy、
   HTML 兼容文本、断字写入、填充字符串、文本尺寸查询、灰度→RGB 转换、真实应用偏好读取、
   文本分栏（SetColumns 数组参数）。
-* **第五十九波新增**：点集拟合曲线与点集追加（IVGPointRange 全链路）；`IVGCurve` 到 92%、`IVGDocument` 到 80%。
+* **第六十波新增**：剖面线填充（ApplyHatchFill / ApplyCustomHatchFill）；`IVGFill` 到 92%；并记录了 GetMatrix 与 IsOnShape 的干扰关系。
 
 

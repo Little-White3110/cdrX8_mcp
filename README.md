@@ -7,9 +7,9 @@
 
 > **已在真机验证**：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）+ Python 3.11.9 64 位
 > - 单元测试 **93 项通过**
-> - 端到端联调（真实 CorelDRAW）**489/489 通过**
+> - 端到端联调（真实 CorelDRAW）**491/491 通过**
 > - 能力边界来自对 `vgcoreauto.tlb` 的反解（196 个自动化类 / 1619 个方法）+ 逐项实跑
-> - 方法级覆盖 **63.2%**（主干 20 接口 87.8%），可用 `python scripts/coverage_audit.py` 复现
+> - 方法级覆盖 **63.4%**（主干 20 接口 88.3%），可用 `python scripts/coverage_audit.py` 复现
 > - 完整清单见 [docs/COVERAGE.md](docs/COVERAGE.md)
 
 ---
@@ -76,7 +76,7 @@ python -m cdrx8_mcp              # 启动 MCP 服务器（stdio）
 | `cdr_style` | **对象样式**：列出 / 从对象创建（fill·outline·character·paragraph）/ **基于已有样式派生** / 按名套用 / 改名 / 删除 / **读可读属性·改属性** / 列派生样式 / **样式表 .cdst 导入导出** / **颜色样式与颜色协调** / **覆盖属性（override_props）·继承状态（inherited）·属性取值（get_property）·属性清除** |
 | `cdr_path` | 曲线/子路径级：长度面积 / 偏移轮廓（刀模线）/ **折线采样** / **追加圆·椭圆·矩形·三点弧·贝塞尔** / **节点精简** / **自焊接** / **路径等分** / **加节点·断开·移动子路径** / **点在形状内·曲线求交·取点取切向** / **参数取点·切向量·法向量·速度·交点·按坐标找节点/线段·反转方向·焊接子路径·去重叠** / **曲线合并（AppendCurve）·焊接（WeldWith）·命中判定·曲线副本·曲线结构信息·任意线段集合（segment_range）·追加曲线段（append_curve_segment）·抽出子路径（extract_subpath）·焊接落地（weld_to_shape）·按偏移取点（point_at_offset）·按偏移定位线段（segment_at_offset）·曲线映射到骨架线（map_to_stroke）·点集拟合曲线（fit_to_points）·追加点集（append_points：plain/fit/cusps）** |
 | `cdr_node` | **节点/线段级编辑（第五波打通）**：列节点·列线段 / 移动·选中·删除 / 圆角·倒角· scallop·平滑 / 拉伸·旋转·斜切·断开 / 加节点·断线 / 读写贝塞尔控制点 / 按坐标找节点与线段 / **前后邻居（Next·Previous）·节点间距·平均位置·末端节点合并·任意不连续节点集合（arbitrary：move/rotate/skew/stretch/autoreduce/smoothen/set_type/delete/fillet/chamfer/scallop）·**节点坐标搬运（copy_point：GetPoint/SetPoint）** |
-| `cdr_bitmap` | 位图：信息 / 转色彩模式（rgb·cmyk·gray·bw）/ **阈值二值化** / **调色板模式 0~9（9=自定义调色板）** / **双色调 0~3（可给 .cpd 预设）** / **取像素颜色** / 图像缓冲信息 / 重采样 / **扩边** / 裁剪 / **内容替换（SetImageData，支持色块/像素绘制）** / **位图特效命令串（ApplyBitmapEffect）** / **链接信息·重新加载·解析链接** / **调色板选项转换（paletted_options：颜色数·抖动·指定调色板）** |
+| `cdr_bitmap` | 位图：信息 / 转色彩模式（rgb·cmyk·gray·bw）/ **阈值二值化** / **调色板模式 0~9（9=自定义调色板）** / **双色调 0~3（可给 .cpd 预设）** / **取像素颜色** / 图像缓冲信息 / 重采样 / **扩边** / 裁剪 / **内容替换（SetImageData，支持色块/像素绘制）** / **位图特效命令串（ApplyBitmapEffect）** / **链接信息·重新加载·解析链接** / **调色板选项转换（paletted_options：颜色数·抖动·指定调色板）** / **剖面线填充（hatch，索引必须是整数）/ 自定义剖面线（hatch_custom 18 参）** |
 | `cdr_rect` | **矩形对象（IVGRect）**：读派生值 / 平移 / 四边外扩内缩 / 并 / 交 / 点包含 / 复制；**按矩形造形**（CreateRectangleRect 带四角圆角、CreateEllipseRect 带角度/扇形） |
 | `cdr_color` | **颜色运算**：解析成 HEX/RGB/CMYK/Gray/HLS/Lab、转换、两色混合（纯 Python）；**X8 颜色对象**：`object_info` / `object_name` / `object_compare`（IsSame·IsSimilar·距离）/ `object_blend`（原地混合）/ `object_copy` / `object_string_assign` / `object_convert`（8 种模型原地转换）/ `object_fixed`（USER·TRU·PAN_PROC）/ `object_assign`（分量直写，含套版色·固定调色板 fixed·脚本式 script）/ **`object_model`（HSB·CMY·BW·YIQ·Fixed·CreateColorEx 工厂）/ `object_from_string`（颜色串造色）/ `object_palette`（按调色板 GUID 取专色）/ `object_invalidate` / **`object_components`（CorelScriptGetComponent 读分量）/ `object_convert_palette`（转指定调色板）/ `object_modify_style_color`（ModifyColorStyleColor）/ `object_palette_factory`（CreatePaletteColor）/ `object_from_spot`（CreateSpotColor）** |
 | `cdr_doc` | **文档级**：概况 / 清空选择集 / 清撤销栈 / **登记调色板** / **用曲线生成自定义箭头（可登记全局箭头库）/ 命名箭头（CreateArrowHead2）** / **单位换算** / **取色（点/区域）** / **字体列表** / **调色板列表·取色·固定调色板打开·颜色枚举·专色创建·自定义调色板创建** / **图案画布创建（含区域变换）** / **纹理库列表** / **文档元数据读写·本地化元数据** / **数据字段·对象数据·色彩管理·线型样式·叠印读取** / **文档设置读写** / **应用信息·文档回滚** / **色彩配置文件·文档颜色转换** / **用户偏好 KV** / **命名视图** / **网格设置** / **应用/文档事件队列** / **显示隐藏对象** / **页面版式** / **重复上一操作**  / **COM 单位换算（convert_units）** / **文档设置快照（save_settings·restore_settings·reset_settings，实验性）** / **解析全部位图链接（resolve_links）** / **指派色彩上下文（assign_color_context）** / **样式表设为默认（stylesheet_default）** / **命名箭头变体（arrowhead_ex）** / **颜色上下文深操作（color_context_info/copy/merge）** / **渐变变换矩阵（fountain_transform）** / **CorelScriptTools 辅助对象（script_tools）** / **色彩上下文工厂（color_context_create）** / **打样设置（proof_color_settings）** |
@@ -186,7 +186,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ---
 
-## X8 特有问题（144 条，全部实测）
+## X8 特有问题（146 条，全部实测）
 
 这些是 **X8 与 2024+ 的差异**，也是本项目存在的主要理由。
 
@@ -336,6 +336,8 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 | 142 | **文字 `*InRange` 结构体：方法名无 `Get` 前缀 + StartIndex 1 基** | 第 37 波判它们"字段全是垃圾"其实是两个错叠加：正确写法是 `Text.FontPropertiesInRange(start, count, indexing)`（没有 `Get` 前缀，`GetFontPropertiesInRange` 根本不存在）；且 `StartIndex` **从 1 开始**（传 0 才返回 `Size=0 / Style=16` 的假值）。写入端 `Set*PropertiesInRange` 同样 1 基。另外 `SetFontProperties(frames, 结构体)` 不报错但对可见文本**无效** | 已封装 `cdr_text(range_struct={…})` 与 `paragraph_format={"range_start":1,…}` |
 | 143 | **色彩上下文/打样的 `RenderingIntent` 是 1~4；调色板工厂第一参是 GUID** | `CreateColorContext2(名称串, intent, model)` 与 `CreateProofColorSettings(名称, intent, bool)` 的 `RenderingIntent` **有效范围 1~4**（传 0 报「超出范围」，第 18 波就是这样判死的）；`CreatePaletteColor`/`CreateSpotColor` 第一参要**调色板 GUID**（之前传名字被判「取色不是新建」）。`CreateSpotColor` 还需要含专色的调色板 | 已封装 `color_context_create` / `proof_color_settings` / `object_palette_factory` / `object_from_spot` |
 | 144 | **点集参数要的是 `IVGPointRange` 对象，不是 Python list** | `Curve.AppendSubpathFromPoints(list)` 报 `TypeError: Python instance can not be converted`，一直被判"数组入参不可用"。其实参数类型是 `IVGPointRange`，而它**有现成来源**：`SubPath.GetEvenlySpacedPoints(间距, 缩放)` 直接返回，`AddPointXY`/`RemoveAll` 可随意造点集。拿到后 `CreateCurveFitToPoints(AndCusps)`、`AppendSubpath*Points` 全部可用 | 已封装 `cdr_path(action="fit_to_points"/"append_points")` |
+| 145 | **`ApplyHatchFill` 的第 2 参必须是整数序号** | `Fill.ApplyHatchFill(库名, "ANGLE", …)` 报「发生意外」被判不可用；传 **int**（0/1/2/5/10/50…均可）、库名传空串即可 → `Fill.Type = 10`。`ApplyCustomHatchFill` 18 参的 Style 可传 None。`Document.HatchLibraries` 报错不影响填充 | 已封装 `cdr_modify(fill={"type":"hatch"/"hatch_custom"})` |
+| 146 | **`GetMatrix` 也会让 `IsOnShape` 失效** | 之前只记了 SetMatrix；长跑里「先 GetMatrix 再 IsOnShape」会稳定返回 0（单独跑正常）。把命中判定挪到矩阵读取之前即恢复 | 冒烟里已把 `is_on_shape` 放到 `matrix` 之前；调用方若两者都用，注意这个顺序 |
 
 改代码前请先读 [`src/cdrx8_mcp/constants.py`](src/cdrx8_mcp/constants.py) 里的注释。
 
@@ -385,7 +387,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ```powershell
 python -m pytest -q                # 93 项逻辑测试，任何平台可跑
-python scripts/live_smoke.py       # 489 项端到端（跑前先确认没有残留 CorelDRW 进程）
+python scripts/live_smoke.py       # 491 项端到端（跑前先确认没有残留 CorelDRW 进程）
 python scripts/live_smoke.py --keep   # 保留文档方便肉眼看效果
 python scripts/coverage_audit.py   # 覆盖率审计（复现 README/COVERAGE 里的数字）
 ```

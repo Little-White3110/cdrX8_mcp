@@ -3182,10 +3182,8 @@ def main() -> int:
             ma, mb, mt, mm = [c["name"] for c in mr["created"]]
             mA, mB, mT, mM = ({"name": ma}, {"name": mb}, {"name": mt},
                               {"name": mm})
-            mtx = server.cdr_shape_ops(m_id, op="matrix", target=mA)
-            if no_error("cdr_shape_ops(matrix read)", mtx):
-                check("形状矩阵可读（6 元素）",
-                      len(mtx.get("matrix") or []) == 6, str(mtx.get("matrix")))
+            # 注意顺序：GetMatrix 之后再调 IsOnShape 可能失效（实测在长跑里会返回 0），
+            # 所以命中判定放在矩阵读取之前
             ins_shape = server.cdr_shape_ops(m_id, op="is_on_shape", target=mA,
                                              x=30, y=130)
             edge_shape = server.cdr_shape_ops(m_id, op="is_on_shape", target=mA,
@@ -3194,6 +3192,10 @@ def main() -> int:
                   ins_shape.get("hit_state") == 2
                   and edge_shape.get("hit_state") == 1,
                   f"in={ins_shape.get('hit_state')} edge={edge_shape.get('hit_state')}")
+            mtx = server.cdr_shape_ops(m_id, op="matrix", target=mA)
+            if no_error("cdr_shape_ops(matrix read)", mtx):
+                check("形状矩阵可读（6 元素）",
+                      len(mtx.get("matrix") or []) == 6, str(mtx.get("matrix")))
             mset = server.cdr_shape_ops(m_id, op="matrix", target=mM,
                                         params={"matrix": [1, 0, 0, 1, 0, 0]})
             if no_error("cdr_shape_ops(matrix set)", mset):
@@ -4065,6 +4067,30 @@ def main() -> int:
                       (ap59.get("nodes_after") or 0) > (ap59.get("nodes_before") or 0),
                       f"{ap59.get('nodes_before')} → {ap59.get('nodes_after')}")
         no_error("关闭点集拟合测试文档", server.cdr_close(p59_id))
+
+    # ---------------- 15bn. 第六十波：剖面线填充（按序号 / 自定义） ----------------
+    print("\n[15bn] 第六十波：Fill.ApplyHatchFill / ApplyCustomHatchFill")
+    h60_doc = server.cdr_open(preset="A4")
+    if "document_id" in h60_doc:
+        h60_id = h60_doc["document_id"]
+        h60r = server.cdr_create(h60_id, [
+            {"type": "rectangle", "x": 0, "y": 0, "width": 40, "height": 30}])
+        if no_error("cdr_create(剖面线测试)", h60r):
+            h60a = {"name": h60r["created"][0]["name"]}
+            fh60 = server.cdr_modify(h60_id, h60a, {
+                "fill": {"type": "hatch", "index": 1, "back": "#FFFFFF"}})
+            if no_error("cdr_modify(fill=hatch)", fh60):
+                check("剖面线填充可用（ApplyHatchFill，索引必须是整数）",
+                      "fill:hatch" in (fh60.get("applied") or []),
+                      str(fh60.get("applied")))
+            fhc60 = server.cdr_modify(h60_id, h60a, {
+                "fill": {"type": "hatch_custom", "angle": 45, "spacing": 3.0,
+                         "width": 0.6}})
+            if no_error("cdr_modify(fill=hatch_custom)", fhc60):
+                check("自定义剖面线可用（ApplyCustomHatchFill 18 参）",
+                      "fill:hatch_custom" in (fhc60.get("applied") or []),
+                      str(fhc60.get("applied")))
+        no_error("关闭剖面线测试文档", server.cdr_close(h60_id))
 
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")

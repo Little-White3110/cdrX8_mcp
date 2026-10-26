@@ -4827,6 +4827,36 @@ def apply_fill(doc: Any, shape: Any, spec: Any) -> str:
         shape.Fill.ApplyTextureFill(str(spec.get("name", "")), str(spec.get("library", "")))
         return "texture"
 
+    if isinstance(spec, dict) and spec.get("type") == "hatch":
+        # 实测：Fill.ApplyHatchFill(库名, HatchNameOrIndex, 背景色, 随形变换, 随形缩放,
+        # 世界坐标, FillScale, LineScale, FillAngle, FillSkew)。
+        # **HatchNameOrIndex 必须是 int**（传字符串报「发生意外」）
+        shape.Fill.ApplyHatchFill(
+            str(spec.get("library", "") or ""), int(spec.get("index", 1)),
+            _color(doc, spec.get("back", "#FFFFFF")),
+            bool(spec.get("transform_with_shape", True)),
+            bool(spec.get("scale_lines_with_shape", True)),
+            bool(spec.get("use_world_coordinates", False)),
+            float(spec.get("fill_scale", 1.0)), float(spec.get("line_scale", 1.0)),
+            float(spec.get("fill_angle", 0.0)), float(spec.get("fill_skew", 0.0)))
+        return "hatch"
+
+    if isinstance(spec, dict) and spec.get("type") == "hatch_custom":
+        # 实测：Fill.ApplyCustomHatchFill(18 参) 可用，Style 可传 None
+        shape.Fill.ApplyCustomHatchFill(
+            float(spec.get("angle", 45.0)), float(spec.get("spacing", 2.0)),
+            float(spec.get("shift", 0.0)), float(spec.get("origin_x", 0.0)),
+            float(spec.get("origin_y", 0.0)), float(spec.get("width", 0.5)),
+            _color(doc, spec.get("color", "#000000")), None,
+            float(spec.get("dashdot_length", 0.0)), float(spec.get("pen_width", 0.3)),
+            _color(doc, spec.get("back", "#FFFFFF")),
+            bool(spec.get("transform_with_shape", True)),
+            bool(spec.get("scale_lines_with_shape", True)),
+            bool(spec.get("use_world_coordinates", False)),
+            float(spec.get("fill_scale", 1.0)), float(spec.get("line_scale", 1.0)),
+            float(spec.get("fill_angle", 45.0)), float(spec.get("fill_skew", 0.0)))
+        return "hatch_custom"
+
     if isinstance(spec, dict) and spec.get("type") == "postscript":
         # 实测可用：按 PostScript 底纹索引填充
         shape.Fill.ApplyPostscriptFill(int(spec.get("index", 1)))
