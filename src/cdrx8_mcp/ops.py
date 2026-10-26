@@ -5703,7 +5703,8 @@ SHAPE_OPS = (
     # 第十七波：混合
     "blend", "blend_set",
     # 第三十三波：范围级批量（解锁/全解组/炸开/清效果/范围查询/范围合并）
-    "unlock_all", "ungroup_all", "break_apart_ex", "clear_effect", "range_info",
+    "unlock_all", "ungroup_all", "ungroup_all_ex", "ungroup_ex", "break_apart_ex",
+    "clear_effect", "range_info",
     "range_add", "range_remove",
     # 第三十八波：用 Document.CreateUniformFill + ShapeRange.ApplyFill 上色
     "apply_fill",
@@ -5720,6 +5721,8 @@ SHAPE_OPS = (
     "copy_to_layer_range", "align_to_range",
     # 第五十三波：把某个对象的描边整批套到范围
     "range_outline_apply",
+    # 第五十四波：同层相邻对象遍历（GetNext / GetPrevious）
+    "sibling",
     # 第四十九波：按掩码复制属性
     "copy_props",
     # 第五十波：形状级斜切（SkewEx）
@@ -5984,6 +5987,32 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
                     "api": used,
                     "first_width": _round(_s(lambda: float(first.Outline.Width)))
                     if first is not None else None}
+        if op == "sibling":
+            # 实测：Shape.GetNext(方向) / GetPrevious(方向) 返回 IVGShape（同级对象）
+            spec = dict(params or {})
+            direction = str(spec.get("direction", "next")).lower()
+            source = find_shape(doc, page, target or {})
+            arg = 0
+            got = None
+            chain: list = []
+            steps = max(1, min(int(spec.get("steps", 1)), 50))
+            cur = source
+            for _ in range(steps):
+                try:
+                    got = (cur.GetNext(arg) if direction == "next"
+                           else cur.GetPrevious(arg))
+                except Exception:
+                    got = None
+                if got is None:
+                    break
+                chain.append(_s(lambda g=got: str(g.Name)))
+                cur = got
+            return {"op": op, "direction": direction, "steps": steps,
+                    "found": got is not None,
+                    "names": chain,
+                    "last_type": (_n(lambda: int(got.Type))
+                                  if got is not None else None),
+                    "last_bbox": _bbox(got) if got is not None else None}
         if op == "range_outline_apply":
             # 实测：ShapeRange.ApplyOutline(Outline) —— 用一个描边对象整批覆盖范围内所有对象
             if not other:
@@ -6302,7 +6331,8 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
             return {"op": op, "target": _s(lambda: str(src.Name)),
                     **_effect_info(src)}
 
-        if op in {"unlock_all", "ungroup_all", "break_apart_ex", "clear_effect",
+        if op in {"unlock_all", "ungroup_all", "ungroup_all_ex", "ungroup_ex",
+                  "break_apart_ex", "clear_effect",
                   "range_info", "range_add", "range_remove"}:
             with atomic(doc, label):
                 if target:
@@ -6357,9 +6387,41 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
                             "locked_after": [bool(_s(lambda i=i: bool(sr.Item(i).Locked),
                                                      False))
                                              for i in range(1, count + 1)]}
-                if op == "ungroup_all":
-                    # 实测：ShapeRange.UngroupAll/UngroupAllEx/UngroupEx 都是空操作，
-                    # 只能对每个组合体调 Shape.Ungroup()（递归解开嵌套组合）。
+                if op in {"ungroup_all", "ungroup_all_ex", "ungroup_ex"}:
+                    # 第五十四波纠正：三个方法**都真实生效**（之前"空操作"是测量方式错了）。
+                    # UngroupAll → 无返回；UngroupAllEx / UngroupEx → 返回 ShapeRange。
+                    # 选中的若是组合体内部的对象（Type≠7），改对整个页面上的组合体动手
+                    sel_has_group = False
+                    for _k in range(1, (_n(lambda: int(sr.Count), 0) or 0) + 1):
+                        if int(_s(lambda _k=_k: int(sr.Item(_k).Type), -1)) == 7:
+                            sel_has_group = True
+                            break
+                    if not sel_has_group:
+                        groups = [sh for _i, _l, _j, sh in _iter_page_shapes(page)
+                                  if int(_s(lambda sh=sh: int(sh.Type), -1)) == 7]
+                        if groups:
+                            sr = _app_of(doc).CreateShapeRange()
+                            for sh in groups:
+                                try:
+                                    sr.Add(sh)
+                                except Exception:
+                                    continue
+                    with atomic(doc, label):
+                        before = _n(lambda: int(page.Shapes.Count), 0) or 0
+                        made = None
+                        if op == "ungroup_all":
+                            sr.UngroupAll()
+                        elif op == "ungroup_all_ex":
+                            made = _s(lambda: sr.UngroupAllEx())
+                        else:
+                            made = _s(lambda: sr.UngroupEx())
+                        after = _n(lambda: int(page.Shapes.Count), 0) or 0
+                    return {"op": op, "page_shapes_before": before,
+                            "page_shapes_after": after,
+                            "unwrapped": max(after - before, 0),
+                            "result_count": (_n(lambda: int(made.Count), 0)
+                                             if made is not None else None)}
+                if False:
                     depth = 0
                     seen: list = []
                     for _idx, _li, _j, sh in _iter_page_shapes(page):

@@ -2762,16 +2762,19 @@ def main() -> int:
                                       target={"name": rg_names[0]}, distance_a=5)
             if no_error("cdr_shape_ops(clear_effect)", ce):
                 check("范围可清效果", ce.get("cleared") is True, str(ce.get("cleared")))
-            # 组合 → 整页递归解组（ShapeRange.UngroupAll 是空操作，见下）
+            # 组合 → 解组（第五十四波纠正：ShapeRange.UngroupAll 其实真实生效）
             server.cdr_select(rg_id, name=rg_names[1])
             server.cdr_select(rg_id, name=rg_names[2])
             gr = server.cdr_shape_ops(rg_id, op="group")
             if no_error("cdr_shape_ops(group)", gr):
                 ua = server.cdr_shape_ops(rg_id, op="ungroup_all")
                 if no_error("cdr_shape_ops(ungroup_all)", ua):
-                    check("可递归解开整页组合体", (ua.get("groups_opened") or 0) >= 1
-                          and (ua.get("page_shapes") or 0) >= 3,
-                          f"opened={ua.get('groups_opened')} page={ua.get('page_shapes')}")
+                    check("可解开组合体（UngroupAll 真实生效）",
+                          (ua.get("page_shapes_after") or 0)
+                          > (ua.get("page_shapes_before") or 0)
+                          and (ua.get("unwrapped") or 0) >= 1,
+                          f"{ua.get('page_shapes_before')} → "
+                          f"{ua.get('page_shapes_after')}")
             ins3 = server.cdr_inspect(rg_id)
             shapes3 = ins3.get("shapes") or []
             poly = next((s.get("name") for s in shapes3
@@ -3853,6 +3856,50 @@ def main() -> int:
                       aop.get("first_width") == 4.0 and (aop.get("count") or 0) >= 2,
                       f"width={aop.get('first_width')} count={aop.get('count')}")
         no_error("关闭 B 样条测试文档", server.cdr_close(b53_id))
+
+    # ---------------- 15bh. 第五十四波：同级对象遍历 / 解组家族 ----------------
+    print("\n[15bh] 第五十四波：Shape.GetNext/GetPrevious、UngroupAll/UngroupAllEx/UngroupEx")
+    g54_doc = server.cdr_open(preset="A4")
+    if "document_id" in g54_doc:
+        g54_id = g54_doc["document_id"]
+        g54r = server.cdr_create(g54_id, [
+            {"type": "rectangle", "x": 0, "y": 0, "width": 10, "height": 10},
+            {"type": "rectangle", "x": 20, "y": 0, "width": 10, "height": 10},
+            {"type": "rectangle", "x": 40, "y": 0, "width": 10, "height": 10},
+        ])
+        if no_error("cdr_create(解组测试)", g54r):
+            h1, h2, h3 = [c["name"] for c in g54r["created"]]
+            sib = server.cdr_shape_ops(g54_id, op="sibling",
+                                       target={"name": h1},
+                                       params={"direction": "next", "steps": 2})
+            if no_error("cdr_shape_ops(sibling next)", sib):
+                check("可遍历同层相邻对象（GetNext/GetPrevious）",
+                      sib.get("found") is True and len(sib.get("names") or []) == 2,
+                      f"names={sib.get('names')}")
+            sib2 = server.cdr_shape_ops(g54_id, op="sibling",
+                                        target={"name": h3},
+                                        params={"direction": "previous"})
+            if no_error("cdr_shape_ops(sibling previous)", sib2):
+                check("可反向遍历同层对象",
+                      sib2.get("found") is True
+                      and len(sib2.get("names") or []) == 1,
+                      f"names={sib2.get('names')}")
+            server.cdr_select(g54_id, name=h1)
+            server.cdr_select(g54_id, name=h2)
+            server.cdr_shape_ops(g54_id, op="group")
+            g54ins = server.cdr_inspect(g54_id)
+            groups54 = [s["name"] for s in (g54ins.get("shapes") or [])
+                        if s.get("type") == "group"]
+            if groups54:
+                server.cdr_select(g54_id, name=groups54[0])
+                uae = server.cdr_shape_ops(g54_id, op="ungroup_all_ex")
+                if no_error("cdr_shape_ops(ungroup_all_ex)", uae):
+                    check("可递归解组（UngroupAllEx 真实生效）",
+                          (uae.get("page_shapes_after") or 0)
+                          > (uae.get("page_shapes_before") or 0),
+                          f"{uae.get('page_shapes_before')} → "
+                          f"{uae.get('page_shapes_after')}")
+        no_error("关闭解组测试文档", server.cdr_close(g54_id))
 
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")

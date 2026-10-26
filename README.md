@@ -7,9 +7,9 @@
 
 > **已在真机验证**：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）+ Python 3.11.9 64 位
 > - 单元测试 **93 项通过**
-> - 端到端联调（真实 CorelDRAW）**471/471 通过**
+> - 端到端联调（真实 CorelDRAW）**474/474 通过**
 > - 能力边界来自对 `vgcoreauto.tlb` 的反解（196 个自动化类 / 1619 个方法）+ 逐项实跑
-> - 方法级覆盖 **61.2%**（主干 20 接口 83.6%），可用 `python scripts/coverage_audit.py` 复现
+> - 方法级覆盖 **61.7%**（主干 20 接口 84.7%），可用 `python scripts/coverage_audit.py` 复现
 > - 完整清单见 [docs/COVERAGE.md](docs/COVERAGE.md)
 
 ---
@@ -70,7 +70,7 @@ python -m cdrx8_mcp              # 启动 MCP 服务器（stdio）
 | `cdr_text` | 排版级：内容 / 字体 / 字号 / 粗斜体 / 下划线 / 对齐 / 大小写 / 项目符号 / 首字下沉 / 行距字距 / 段落缩进 / **制表位** / 前后插入 / 沿路径 / 自适应 / 转曲 / 艺术字↔段落字互转 / 段落内容读写与替换 / 文本区间 / 区间删除·复制·粘贴·拉直 / 读取全文·指定区间·导出纯文本 / **字体属性读取·断字设置读取·格式段列表·按格式查询区间（@font/@bold）** / OpenType 特性 / **四个结构体快照（struct_info：字体·间距·对齐·断字）** / **区间宽接口（range_action：插入·替换·折叠·重设·判等·包含·行距）** / **进入编辑态（begin_edit）** / **结构体工厂写段落格式（paragraph_format：对齐·缩进·字距·行距·连字符）** |
 | `cdr_replace_text` | 全文档文字替换（底层用 X8 原生 `Page.TextReplace`） |
 | `cdr_select` | 按名字 / 类型 / 矩形框选，加入选择集；**可移除或清空选择集** |
-| `cdr_shape_ops` | **布尔与整形**：weld / trim / intersect / combine / group / ungroup / break_apart / to_curves / **outline_to_curves** / to_symbol / powerclip / fillet / chamfer / scallop / **step_repeat / distribute / boundary / perspective / separate / parallel_curves / rasterize / batch_outline_to_curves / fill_mode / pixel_aligned / range_boundary / envelope_from_shape / compare / project / unproject / to_document / extrude / lens / extrude_set / lens_set / effect_info / clear_effects / blend / blend_set / **unlock_all / ungroup_all / break_apart_ex / clear_effect / range_info / range_add / range_remove / apply_fill（Fill 工厂批量上色）/ **matrix（矩阵读写）/ is_type / in_front_of / is_on_shape / distort（pushpull·twister·zipper）/ place_text（文字内嵌）/ duplicate_range · clone_range / **position_ex（9 个参考点）/ find_snap（按引用反查吸附点）/ linked（链接对象）/ rasterize_ex（带参位图化）/ overprint_state / **range_from_list（对象列表建范围）/ range_bitmap（整批位图化）/ range_outline（整批描边 14/15 参）/ copy_to_layer_range（复制到其它图层）/ align_to_range（对齐到形状范围）/ copy_props（按掩码复制属性）/ skew_ex（形状级斜切）/ range_outline_apply（整批套描边）** |
+| `cdr_shape_ops` | **布尔与整形**：weld / trim / intersect / combine / group / ungroup / break_apart / to_curves / **outline_to_curves** / to_symbol / powerclip / fillet / chamfer / scallop / **step_repeat / distribute / boundary / perspective / separate / parallel_curves / rasterize / batch_outline_to_curves / fill_mode / pixel_aligned / range_boundary / envelope_from_shape / compare / project / unproject / to_document / extrude / lens / extrude_set / lens_set / effect_info / clear_effects / blend / blend_set / **unlock_all / ungroup_all / break_apart_ex / clear_effect / range_info / range_add / range_remove / apply_fill（Fill 工厂批量上色）/ **matrix（矩阵读写）/ is_type / in_front_of / is_on_shape / distort（pushpull·twister·zipper）/ place_text（文字内嵌）/ duplicate_range · clone_range / **position_ex（9 个参考点）/ find_snap（按引用反查吸附点）/ linked（链接对象）/ rasterize_ex（带参位图化）/ overprint_state / **range_from_list（对象列表建范围）/ range_bitmap（整批位图化）/ range_outline（整批描边 14/15 参）/ copy_to_layer_range（复制到其它图层）/ align_to_range（对齐到形状范围）/ copy_props（按掩码复制属性）/ skew_ex（形状级斜切）/ range_outline_apply（整批套描边）/ ungroup_all·ungroup_all_ex·ungroup_ex（解组家族）/ sibling（同层相邻遍历）** |
 | `cdr_align` | 对齐与分布（左中右 / 上下中 / 等间距；`to=selection/page`，**以及原生范围对齐 `to=page_edge/page_center/grid/point/shape/range`**） |
 | `cdr_find` | 按名字或类型查找（跨图层） |
 | `cdr_style` | **对象样式**：列出 / 从对象创建（fill·outline·character·paragraph）/ **基于已有样式派生** / 按名套用 / 改名 / 删除 / **读可读属性·改属性** / 列派生样式 / **样式表 .cdst 导入导出** / **颜色样式与颜色协调** / **覆盖属性（override_props）·继承状态（inherited）·属性取值（get_property）·属性清除** |
@@ -186,7 +186,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ---
 
-## X8 特有问题（138 条，全部实测）
+## X8 特有问题（139 条，全部实测）
 
 这些是 **X8 与 2024+ 的差异**，也是本项目存在的主要理由。
 
@@ -330,6 +330,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 | 136 | **连接器 / 符号库 / 曲线信息数组都造不出来** | `Layer.CreateFreeConnector(x1,y1,x2,y2)` 报「发生意外」；`CreateSymbol(x,y,名,库)` 报「找不到该对象」；`Application.SymbolLibraries` 直接 com_error（本机未装符号库）；`Curve.PutCurveInfo(tuple, n)` 报 `MemoryError: CreatingSafeArray` | 连接线用两点直线/贝塞尔自绘；符号用 `cdr_shapes` 植物件；曲线信息用 `GetCurveInfo()` |
 | 137 | **`GetPointPositionAt` 的偏移类型是 0/1 而不是枚举名** | `SubPath.GetPointPositionAt(0, 0, 偏移, 类型)`：类型 **0 = 绝对长度（mm）**、**1 = 归一化 0~1**；前两个入参被忽略，返回 `(X, Y)` | 已封装 `cdr_path(point_at_offset, params={"offset":…,"normalized":true})` |
 | 138 | **`Layer.CreateBSpline` 要的是 `IVGBSpline` 不是 Curve** | 第 32 波把它判成「类型不匹配」是因为传了 `Curve`。正确链路：`Document.CreateBSpline(点数, 闭合)` → `bs.InsertControlPoint(序号, x, y, Clamped)`（**首尾必须 Clamped=True**，否则报 「An end point's Clamped must be true」）→ `Layer.CreateBSpline(bs)` 得到 Type **21**，`ConvertToCurves()` 后变 Type 3 | 已封装 `cdr_create(type="bspline", points=…, to_curves=…)`；`SHAPE_TYPES` 补了 `21: "bspline"` |
+| 139 | **解组家族不是空操作，`GetNext/GetPrevious` 也不是那个 3 参属性** | 第 30 波把 `ShapeRange.UngroupAll/UngroupAllEx/UngroupEx` 判成空操作，其实是**拿组合体内部对象**去解组（自然没反应）；对组合体本身调用三者都生效（页码 1→2 / 1→3）。`Shape.GetNext(方向)`、`GetPrevious(方向)` 各只要 1 个参数就返回同层相邻对象，与之前记的「`Shape.Next` 是 3 参 propget」是两个不同成员 | 已封装 `cdr_shape_ops(op="ungroup_all"/"ungroup_all_ex"/"ungroup_ex"/"sibling")` |
 
 改代码前请先读 [`src/cdrx8_mcp/constants.py`](src/cdrx8_mcp/constants.py) 里的注释。
 
@@ -379,7 +380,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ```powershell
 python -m pytest -q                # 93 项逻辑测试，任何平台可跑
-python scripts/live_smoke.py       # 471 项端到端，需要 CorelDRAW X8
+python scripts/live_smoke.py       # 474 项端到端，需要 CorelDRAW X8
 python scripts/live_smoke.py --keep   # 保留文档方便肉眼看效果
 python scripts/coverage_audit.py   # 覆盖率审计（复现 README/COVERAGE 里的数字）
 ```
