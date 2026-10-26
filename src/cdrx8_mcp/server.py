@@ -412,7 +412,8 @@ def cdr_text(document_id: str, target: dict, text: str | None = None,
              page_index: int | None = None,
              begin_edit: bool = False,
              paragraph_format: dict | None = None,
-             range_struct: dict | None = None) -> dict:
+             range_struct: dict | None = None,
+             link_to: dict | None = None, unlink: bool = False) -> dict:
     """文字的排版级操作。
 
     内容与类型：text / contents（段落文本整体替换）/ find / replace_old+replace_new /
@@ -479,7 +480,7 @@ def cdr_text(document_id: str, target: dict, text: str | None = None,
             find_query=find_query, runs=runs,
             struct_info=struct_info, range_action=range_action,
             begin_edit=begin_edit, paragraph_format=paragraph_format,
-            range_struct=range_struct,
+            range_struct=range_struct, link_to=link_to, unlink=unlink,
         ), label="cdr_text")
         if not mutating:
             return result

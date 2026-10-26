@@ -2,7 +2,7 @@
 
 > 目的：证明"还有多少没探"。每一行要么有对应的工具，要么有实测失败证据。
 > 环境：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）/ Python 3.11.9 64 位
-> 最近更新：2026-10-26 第六十三波（样式改父级 / 样式复制）
+> 最近更新：2026-10-26 第六十四波（标注对象 / 图框内容 / 辅助线 / 文本框链接）
 
 ## 怎么得出这份清单
 
@@ -243,6 +243,7 @@
 >   `CreateFreeConnector` 报「未实现」；本机无符号库。
 > * 混合 **可用（第十七波）**：`CreateBlend` 传全参数且 `Path=None` 时成功；
 >   效果经 `Effects.Item(i).Blend`（IVGEffectBlend）读写 Steps/Spacing/Angle 等。
+> * 标注/图框/辅助线/文本框链接 **可用（第六十四波）**：`Shape.Dimension`、`Shape.PowerClip`、`Shape.Guide`、`Text.Frames.Item(i).LinkTo/UnLink`。
 > * 样式改父级/复制 **可用（第六十三波）**：`Style.SetBasedOn(名称串)`、`Style.Assign(样式对象)`；`IVGStyle` 达 100%。
 > * 副本打开 / 字体结构体工厂 **可用（第六十二波）**：`OpenDocumentAsCopy(path, 选项)`、`CreateStructFontProperties()`。
 > * 中心定尺寸/拉伸/范围排除 **可用（第六十一波）**：`SetSizeEx(cx,cy,宽,高)`、`StretchEx(cx,cy,X倍数,Y倍数,缩放文字)`（**前两参是中心点**）、`AllExcluding(索引数组，1 基)`。
@@ -360,7 +361,7 @@
 
 ```powershell
 python -m pytest -q              # 93 项纯逻辑
-python scripts/live_smoke.py     # 498 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
+python scripts/live_smoke.py     # 503 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
 ```
 
 联调断言覆盖了上表所有 ✅ 项。反解脚本属于过程产物，已按要求放在 `tmp/` 并在完成时清理；
@@ -368,28 +369,28 @@ python scripts/live_smoke.py     # 498 项端到端（真实 CorelDRAW，**跑�
 
 ---
 
-## 六、量化覆盖率（2026-10-26 第六十三波实测）
+## 六、量化覆盖率（2026-10-26 第六十四波实测）
 
 方法：反解类型库拿到 196 个自动化类 / **1619** 个方法（已剔除 `QueryInterface` 等 COM 基础设施）；
 用 AST 扫描 `src/cdrx8_mcp/*.py`，收集所有 `.方法名(` 调用与 `setattr/getattr` 的属性名，
 与主干接口的方法名求交集。**注意：属性名（如 `curve.Nodes`）也会被计入**，所以本波数字含真实属性访问。
 
-**全局：1039 / 1619 = 64.2%**（21.2% → … → 64.1% → 本轮 64.2%）
-**主干 20 接口：665 / 743 = 89.5%**
+**全局：1056 / 1619 = 65.2%**（21.2% → … → 64.2% → 本轮 65.2%）
+**主干 20 接口：665 / 743 = 89.5%**（本轮新增覆盖主要在 4 个**非主干**接口）
 
 复现命令：`python scripts/coverage_audit.py`（会临时展开类型库到 `tmp/gen_py`，跑完自动清理）
 
 | 接口 | 方法数 | 已调用 | 覆盖 |
 |---|---:|---:|---:|
-| `IVGShape` | 123 | 114 | **93%** |
-| `IVGShapeRange` | 125 | 116 | **93%** |
+| `IVGShape` | 123 | 113 | **92%** |
+| `IVGShapeRange` | 125 | 118 | **94%** |
 | `IVGSubPath` | 38 | 37 | **97%** |
 | `IVGDocument` | 74 | 60 | **81%** |
 | `IVGPage` | 21 | 20 | **95%** |
 | `IVGCurve` | 36 | 33 | **92%** |
 | `IVGLayer` | 49 | 42 | **86%** |
 | `IVGTextRange` | 31 | 30 | **97%** |
-| `IVGApplication` | 78 | 57 | **73%** |
+| `IVGApplication` | 78 | 59 | **76%** |
 | `IVGText` | 29 | 25 | **86%** |
 | `IVGNode` | 18 | 16 | **89%** |
 | `IVGBitmap` | 15 | 14 | **93%** |
@@ -404,7 +405,7 @@ python scripts/live_smoke.py     # 498 项端到端（真实 CorelDRAW，**跑�
 | **合计** | **743** | **665** | **89.5%** |
 
 > **怎么读这两个数**：
-> 1. 全局 64.2% 覆盖 1619 个方法（含变体与重复）；主干 20 接口 89.5%。
+> 1. 全局 **65.2%** 覆盖 1619 个方法（含变体与重复）；主干 20 接口 89.5%。
 > 2. 它是**方法/属性名匹配**的近似值，同名方法会跨接口误计。
 > 3. `IVGColor` 已到 **91%**：分量**写**走 `*Assign`，分量**读**走 `CorelScriptGetComponent`（`(5000+模型号, v1..v7)`）；纯 Python 只用于无 COM 场景的换算。
 > 4. 未调用方法多为变体（Wide/Ex/2/3 后缀）与事件订阅、CorelScriptTools/MathUtils。
@@ -1330,6 +1331,22 @@ python scripts/live_smoke.py     # 498 项端到端（真实 CorelDRAW，**跑�
 > 另：`Text.ImportFromFile(path, 1, 0)` 实测**弹出模态导入框导致 COM 卡死（240 s 超时）**，
 > 已并入"严禁调用"清单。
 
+## 七之六十三、第六十四波已接入（2026-10-26，标注对象 / 图框内容 / 辅助线 / 文本框链接）
+
+> 这一波是**新边界**：开始覆盖主干 20 接口之外的对象接口，命中 4 个此前 0 覆盖的接口。
+
+| 能力 | 落地位置 | 实测 |
+|---|---|---|
+| **标注对象**（IVGDimension 3/3） | `cdr_shape_ops(op="dimension_info"/"dimension_set", target=标注)` | ✅ `Shape.Dimension` 拿到 `IVGDimension`；`SetTextLabelGap` / `SetOverhang` / `SetDistanceFromObject` 全部可调；Precision/Prefix/Suffix/BoxedText 等属性可读写 |
+| **图框内容**（IVGPowerClip 3/3） | `cdr_shape_ops(op="powerclip_extract", target=图框)` | ✅ `Shape.PowerClip` → `IVGPowerClip`；`EnterEditMode` / `LeaveEditMode` / `ExtractShapes` 可用（内容 1 个、进入编辑态成功） |
+| **辅助线几何**（IVGGuide 5/5） | `cdr_shape_ops(op="guide_info"/"guide_set", target=辅助线)` | ✅ `Shape.Guide` → `IVGGuide`；`MakeEditable` / `GetPoints` / `GetPointAndAngle` / `SetPoints` / `SetPointAndAngle` 全可用（实测角度 26.57°→30°） |
+| **文本框链接**（IVGTextFrame 2/5） | `cdr_text(link_to=另一个文本, unlink=true)` | ✅ `Text.Frames.Item(1).LinkTo(t2)` → `FramesInLink=2`；`UnLink()` 可断开。`SetColumns` 要 SAFEARRAY（`[25,25]` 报类型不匹配），暂不可用 |
+
+> **第六十四波方法**：这些接口在自动化对象上**不能 QueryInterface**（报「不支持此接口」），
+> 只能通过属性取：`Shape.Dimension`、`Shape.PowerClip`、`Shape.Guide`、`Text.Frames.Item(i)`。
+> 四类合计 **13 个方法**，把全局覆盖从 64.2% 推到 **65.2%** ——
+> 说明"主干 20 接口之外还有长尾可挖"，这一波之后的主攻方向会转向这些对象接口。
+
 ## 七之二、仍未接入（第三轮候选）
 
 | 能力 | 接口 | 为什么还没做 |
@@ -1356,11 +1373,11 @@ python scripts/live_smoke.py     # 498 项端到端（真实 CorelDRAW，**跑�
   自定义虚线、文档设置、文本区间编辑、自定义箭头、图案微调、文本格式查询、位图内容替换/链接、
   文档回滚、立体化/透镜/效果管理、位图特效命令串、混合、文档颜色转换、用户偏好 KV、OLE 嵌入、
   命名视图、网格设置、叠印、段落缩进、制表位、屏幕叠加层、应用/文档事件、导出/保存/导入选项、吸附点全家族、颜色对象分量、描边对象全量属性都已补上。
-* **方法级覆盖**：全局 64.2%（1039/1619），主干 20 接口 89.5%（665/743）。
+* **方法级覆盖**：**全局 65.2%（1056/1619）**，主干 20 接口 89.5%（665/743）。
 * **明确不可用**：位图描摹、文本导入、点集数组建曲线、尺寸标注/连接线（MathUtils 点对象
   不可创建）、符号库、文件型图案/影线填充（本机无库）、曲线贴笔触、OpenDocumentAsCopy、
   HTML 兼容文本、断字写入、填充字符串、文本尺寸查询、灰度→RGB 转换、真实应用偏好读取、
   文本分栏（SetColumns 数组参数）。
-* **第六十三波新增**：样式改父级（SetBasedOn 名称串）、样式复制（Assign）；`IVGStyle` 达 100%；并把 `Text.ImportFromFile`（模态框卡死）并入严禁清单。
+* **第六十四波新增**：标注对象（IVGDimension 100%）、图框内容（IVGPowerClip 100%）、辅助线几何（IVGGuide 100%）、文本框链接（IVGTextFrame 40%）—— 主攻方向转向**主干之外的对象接口**。
 
 

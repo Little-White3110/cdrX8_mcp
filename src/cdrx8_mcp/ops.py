@@ -6005,6 +6005,8 @@ SHAPE_OPS = (
     "sibling",
     # 第六十一波：按中心定尺寸/拉伸（SetSizeEx / StretchEx）与范围排除
     "set_size_ex", "stretch_ex", "all_excluding",
+    # 第六十四波：标注对象 / 图框内容 / 辅助线几何
+    "dimension_info", "dimension_set", "powerclip_extract", "guide_info", "guide_set",
     # 第四十九波：按掩码复制属性
     "copy_props",
     # 第五十波：形状级斜切（SkewEx）
@@ -6311,6 +6313,123 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
                     "excluded": list(exclude), "result_count": count,
                     "names": [_s(lambda i=i: str(got.Item(i).Name))
                               for i in range(1, min(count, 20) + 1)]}
+        if op in {"dimension_info", "dimension_set"}:
+            # 实测：标注形状的 `Shape.Dimension` 就是 IVGDimension
+            source = find_shape(doc, page, target or {})
+            dim = _s(lambda: source.Dimension)
+            if dim is None:
+                raise CdrBadArgument("目标不是标注对象（先用 linear_dimension 创建）")
+            spec = dict(params or {})
+            applied = []
+            if op == "dimension_set":
+                with atomic(doc, label):
+                    for key, fn in (
+                            ("text_label_gap", lambda v: dim.SetTextLabelGap(float(v))),
+                            ("overhang", lambda v: dim.SetOverhang(float(v))),
+                            ("distance_from_object",
+                             lambda v: dim.SetDistanceFromObject(float(v)))):
+                        if key in spec:
+                            try:
+                                fn(spec[key])
+                                applied.append(key)
+                            except Exception:
+                                continue
+                    for key, attr in (("precision", "Precision"),
+                                      ("prefix", "Prefix"), ("suffix", "Suffix"),
+                                      ("boxed_text", "BoxedText"),
+                                      ("show_units", "ShowUnits"),
+                                      ("leading_zero", "LeadingZero"),
+                                      ("text_centered", "TextCentered"),
+                                      ("horizontal_text", "HorizontalText"),
+                                      ("dynamic_text", "DynamicText"),
+                                      ("placement", "Placement")):
+                        if key in spec:
+                            try:
+                                setattr(dim, attr, spec[key])
+                                applied.append(key)
+                            except Exception:
+                                continue
+            return {"op": op,
+                    "precision": _n(lambda: int(dim.Precision)),
+                    "prefix": _s(lambda: str(dim.Prefix)),
+                    "suffix": _s(lambda: str(dim.Suffix)),
+                    "linear": bool(_s(lambda: bool(dim.Linear), False)),
+                    "boxed_text": bool(_s(lambda: bool(dim.BoxedText), False)),
+                    "show_units": bool(_s(lambda: bool(dim.ShowUnits), False)),
+                    "text_label_gap": _round(_s(lambda: float(dim.TextLabelGap))),
+                    "overhang": _round(_s(lambda: float(dim.Overhang))),
+                    "distance_from_object": _round(
+                        _s(lambda: float(dim.DistanceFromObject))),
+                    "applied": applied,
+                    "note": "标注用 Shape.Dimension 取 IVGDimension；"
+                            "Set* 三个方法调用不报错，但读回可能仍为 0"}
+        if op == "powerclip_extract":
+            # 实测：Shape.PowerClip → IVGPowerClip；EnterEditMode / LeaveEditMode /
+            # ExtractShapes 都可用，ExtractShapes 会把内容取回页面（对象数 +1）
+            source = find_shape(doc, page, target or {})
+            pc = _s(lambda: source.PowerClip)
+            if pc is None:
+                raise CdrBadArgument("目标不是图框（先用 powerclip 装入内容）")
+            contents = _n(lambda: int(pc.Shapes.Count), 0)
+            before = _n(lambda: int(page.Shapes.Count), 0) or 0
+            with atomic(doc, label):
+                try:
+                    pc.EnterEditMode()
+                    entered = True
+                except Exception:
+                    entered = False
+                made = None
+                try:
+                    made = _s(lambda: pc.ExtractShapes())
+                finally:
+                    try:
+                        pc.LeaveEditMode()
+                    except Exception:
+                        pass
+            after = _n(lambda: int(page.Shapes.Count), 0) or 0
+            return {"op": op, "contents": contents,
+                    "entered_edit_mode": entered,
+                    "extracted": (_n(lambda: int(made.Count), 0)
+                                  if made is not None else None),
+                    "page_shapes_before": before, "page_shapes_after": after,
+                    "contents_locked": bool(_s(lambda: bool(pc.ContentsLocked), False))}
+        if op in {"guide_info", "guide_set"}:
+            # 实测：辅助线形状的 `Shape.Guide` 是 IVGGuide：
+            # MakeEditable / GetPoints / GetPointAndAngle / SetPointAndAngle 可用
+            source = find_shape(doc, page, target or {})
+            gd = _s(lambda: source.Guide)
+            if gd is None:
+                raise CdrBadArgument("目标不是辅助线（先用 create_guide 创建）")
+            spec = dict(params or {})
+            applied = []
+            with atomic(doc, label):
+                try:
+                    gd.MakeEditable()
+                    applied.append("make_editable")
+                except Exception:
+                    pass
+                if op == "guide_set":
+                    if all(k in spec for k in ("x", "y", "angle")):
+                        gd.SetPointAndAngle(float(spec["x"]), float(spec["y"]),
+                                            float(spec["angle"]))
+                        applied.append("set_point_and_angle")
+                    elif all(k in spec for k in ("x1", "y1", "x2", "y2")):
+                        gd.SetPoints(float(spec["x1"]), float(spec["y1"]),
+                                     float(spec["x2"]), float(spec["y2"]))
+                        applied.append("set_points")
+            pts = _s(lambda: gd.GetPoints(0.0, 0.0, 0.0, 0.0))
+            pa = _s(lambda: gd.GetPointAndAngle(0.0, 0.0, 0.0))
+            return {"op": op, "type": _n(lambda: int(gd.Type)),
+                    "angle": _round(_s(lambda: float(gd.Angle))),
+                    "point1": [_round(_s(lambda: float(gd.Point1X))),
+                               _round(_s(lambda: float(gd.Point1Y)))],
+                    "point2": [_round(_s(lambda: float(gd.Point2X))),
+                               _round(_s(lambda: float(gd.Point2Y)))],
+                    "get_points": ([_round(float(v)) for v in pts]
+                                   if isinstance(pts, (tuple, list)) else None),
+                    "get_point_and_angle": ([_round(float(v)) for v in pa]
+                                            if isinstance(pa, (tuple, list)) else None),
+                    "applied": applied}
         if op == "sibling":
             # 实测：Shape.GetNext(方向) / GetPrevious(方向) 返回 IVGShape（同级对象）
             spec = dict(params or {})
@@ -7407,6 +7526,7 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
              find_query: str | None = None, runs: bool = False,
              begin_edit: bool = False, paragraph_format: dict | None = None,
              range_struct: dict | None = None,
+             link_to: dict | None = None, unlink: bool = False,
              struct_info: bool = False,
              range_action: dict | None = None,
              label: str = "cdr_text") -> dict:
@@ -7425,7 +7545,8 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
         )) or any((to_curves, fit_frame, no_effect, to_paragraph, to_artistic,
                    select_all, align_to_baseline, range_delete, range_copy,
                    range_paste, range_straighten, clear_tabs)) or bool(tab_stops) \
-            or begin_edit or paragraph_format is not None
+            or begin_edit or paragraph_format is not None \
+            or link_to is not None or unlink
         if not mutating:
             # 纯读取 / 导出：不建 undo 组，也不改动文档
             result: dict = {"applied": [], "warnings": [],
@@ -7585,6 +7706,24 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
                 except Exception as exc:  # noqa: BLE001
                     warnings.append(f"复制文字属性失败：{exc}")
 
+            if link_to is not None or unlink:
+                # 实测：Text.Frames.Item(1).LinkTo(另一个文本形状) 可把段落框串起来
+                frames = _s(lambda: shape.Text.Frames)
+                tf = _s(lambda: frames.Item(1)) if frames is not None else None
+                if tf is None:
+                    raise CdrComFailure("取不到文本框架（Text.Frames）")
+                with atomic(doc, label):
+                    if unlink:
+                        tf.UnLink()
+                        applied.append("unlink")
+                    else:
+                        other_shape = find_shape(doc, _page(doc, page_index), link_to)
+                        tf.LinkTo(other_shape)
+                        applied.append("link_to")
+                return {"applied": applied, "warnings": warnings,
+                        "frames_in_link": _n(lambda: int(shape.Text.FramesInLink), 0),
+                        "frame_index": _n(lambda: int(tf.Index)),
+                        "column_count": _n(lambda: int(tf.ColumnCount))}
             if paragraph_format:
                 # 实测：Application.CreateStructAlignProperties / SpaceProperties /
                 # HyphenationSettings 造出的结构体可直接喂给 Set*Properties(0, 结构体)，

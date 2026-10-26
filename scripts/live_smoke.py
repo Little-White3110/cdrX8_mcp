@@ -4197,6 +4197,55 @@ def main() -> int:
                       f"based_on={sb63.get('based_on_name')}")
         no_error("关闭样式测试文档", server.cdr_close(y63_id))
 
+    # ---------------- 15br. 第六十四波：标注对象 / 图框内容 / 辅助线 / 文本框链接 ----------------
+    print("\n[15br] 第六十四波：Shape.Dimension·Shape.PowerClip·Shape.Guide·TextFrame.LinkTo")
+    x64_doc = server.cdr_open(preset="A4")
+    if "document_id" in x64_doc:
+        x64_id = x64_doc["document_id"]
+        x64r = server.cdr_create(x64_id, [
+            {"type": "linear_dimension", "x1": 0, "y1": 0, "x2": 40, "y2": 0},
+            {"type": "rectangle", "x": 0, "y": 40, "width": 40, "height": 30},
+            {"type": "rectangle", "x": 5, "y": 45, "width": 10, "height": 10},
+            {"type": "paragraph_text", "x": 60, "y": 40, "x2": 120, "y2": 80,
+             "text": "甲框"},
+            {"type": "paragraph_text", "x": 130, "y": 40, "x2": 190, "y2": 80,
+             "text": ""},
+        ])
+        if no_error("cdr_create(标注/图框测试)", x64r):
+            xD, xH, xI, xT1, xT2 = [{"name": c["name"]} for c in x64r["created"]]
+            di = server.cdr_shape_ops(x64_id, op="dimension_info", target=xD)
+            if no_error("cdr_shape_ops(dimension_info)", di):
+                check("标注对象可读（Shape.Dimension）",
+                      di.get("linear") is True and di.get("precision") is not None,
+                      f"linear={di.get('linear')} precision={di.get('precision')}")
+            ds = server.cdr_shape_ops(x64_id, op="dimension_set", target=xD,
+                                      params={"text_label_gap": 2.0, "overhang": 1.0,
+                                              "precision": 1})
+            if no_error("cdr_shape_ops(dimension_set)", ds):
+                check("标注参数可设（SetTextLabelGap/SetOverhang）",
+                      {"text_label_gap", "overhang"} <= set(ds.get("applied") or []),
+                      str(ds.get("applied")))
+            server.cdr_shape_ops(x64_id, op="powerclip", target=xI, other=xH)
+            pe = server.cdr_shape_ops(x64_id, op="powerclip_extract", target=xH)
+            if no_error("cdr_shape_ops(powerclip_extract)", pe):
+                check("图框内容可取出（Shape.PowerClip.ExtractShapes）",
+                      pe.get("contents") is not None
+                      and pe.get("entered_edit_mode") is True,
+                      f"contents={pe.get('contents')} "
+                      f"edit={pe.get('entered_edit_mode')}")
+            lk64 = server.cdr_text(x64_id, xT1, link_to=xT2)
+            if no_error("cdr_text(link_to)", lk64):
+                check("文本框可链接（TextFrame.LinkTo）",
+                      "link_to" in (lk64.get("applied") or [])
+                      and (lk64.get("frames_in_link") or 0) >= 2,
+                      f"frames={lk64.get('frames_in_link')}")
+            ul64 = server.cdr_text(x64_id, xT1, unlink=True)
+            if no_error("cdr_text(unlink)", ul64):
+                check("文本框可断开链接（TextFrame.UnLink）",
+                      "unlink" in (ul64.get("applied") or []),
+                      str(ul64.get("applied")))
+        no_error("关闭标注/图框测试文档", server.cdr_close(x64_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,
