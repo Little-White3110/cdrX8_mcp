@@ -2,7 +2,7 @@
 
 > 目的：证明"还有多少没探"。每一行要么有对应的工具，要么有实测失败证据。
 > 环境：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）/ Python 3.11.9 64 位
-> 最近更新：2026-10-26 第七十波（HTML 兼容 / 按模型设色彩配置文件）
+> 最近更新：2026-10-26 第七十一波（剖面线参数 / 渐变控制点 / 椭圆几何 / 调色板工厂 / 窗口查找）
 
 ## 怎么得出这份清单
 
@@ -243,6 +243,7 @@
 >   `CreateFreeConnector` 报「未实现」；本机无符号库。
 > * 混合 **可用（第十七波）**：`CreateBlend` 传全参数且 `Path=None` 时成功；
 >   效果经 `Effects.Item(i).Blend`（IVGEffectBlend）读写 Steps/Spacing/Angle 等。
+> * 剖面线参数 / 渐变控制点 / 椭圆几何 / 调色板工厂 / 窗口查找 **可用（第七十一波）**：`Fill.Hatch`、`Fountain.Colors`、`Shape.Ellipse`、`Palettes.CreateFrom*`、`Windows.FindWindow`。
 > * HTML 兼容 / 色彩配置文件指派 **可用（第七十波）**：`Text.MakeHTMLCompatible`、`ColorContext.SetColorProfile(模型号, 匹配模型的配置文件)`。
 > * 对象树 / 样式填充存盘 **可用（第六十九波）**：`Document.TreeManager`、`Style.Fill.SaveFill/LoadFill(path, IVGFillMetadata)`。
 > * 双色调子对象 / 网格频率 / 线性标注子对象 **可用（第六十八波）**：`IVGDuotone(+Overprint)`、`Document.Grid.SetFrequency`、`Dimension.Linear`。
@@ -367,7 +368,7 @@
 
 ```powershell
 python -m pytest -q              # 93 项纯逻辑
-python scripts/live_smoke.py     # 524 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
+python scripts/live_smoke.py     # 530 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
 ```
 
 联调断言覆盖了上表所有 ✅ 项。反解脚本属于过程产物，已按要求放在 `tmp/` 并在完成时清理；
@@ -375,14 +376,14 @@ python scripts/live_smoke.py     # 524 项端到端（真实 CorelDRAW，**跑�
 
 ---
 
-## 六、量化覆盖率（2026-10-26 第七十波实测）
+## 六、量化覆盖率（2026-10-26 第七十一波实测）
 
 方法：反解类型库拿到 196 个自动化类 / **1619** 个方法（已剔除 `QueryInterface` 等 COM 基础设施）；
 用 AST 扫描 `src/cdrx8_mcp/*.py`，收集所有 `.方法名(` 调用与 `setattr/getattr` 的属性名，
 与主干接口的方法名求交集。**注意：属性名（如 `curve.Nodes`）也会被计入**，所以本波数字含真实属性访问。
 
-**全局：1123 / 1619 = 69.4%**（21.2% → … → 69.2% → 本轮 69.4%）
-**主干 20 接口：669 / 743 = 90.0%**
+**全局：1142 / 1619 = 70.5%**（21.2% → … → 69.4% → 本轮 70.5%）
+**主干 20 接口：669 / 743 = 90.0%**（本轮 19 个方法全在非主干接口）
 
 复现命令：`python scripts/coverage_audit.py`（会临时展开类型库到 `tmp/gen_py`，跑完自动清理）
 
@@ -411,7 +412,7 @@ python scripts/live_smoke.py     # 524 项端到端（真实 CorelDRAW，**跑�
 | **合计** | **743** | **665** | **89.5%** |
 
 > **怎么读这两个数**：
-> 1. 全局 **69.4%** 覆盖 1619 个方法（含变体与重复）；**主干 20 接口到 90.0%**。
+> 1. 全局 **70.5%** 覆盖 1619 个方法（含变体与重复）；主干 20 接口 90.0%。
 > 2. 它是**方法/属性名匹配**的近似值，同名方法会跨接口误计。
 > 3. `IVGColor` 已到 **91%**：分量**写**走 `*Assign`，分量**读**走 `CorelScriptGetComponent`（`(5000+模型号, v1..v7)`）；纯 Python 只用于无 COM 场景的换算。
 > 4. 未调用方法多为变体（Wide/Ex/2/3 后缀）与事件订阅、CorelScriptTools/MathUtils。
@@ -1436,6 +1437,20 @@ python scripts/live_smoke.py     # 524 项端到端（真实 CorelDRAW，**跑�
 >    纯自动化场景拿不到 GUID，故整族不暴露。
 > 3. `IVGColor.SpotAssign` 在 TRUMATCH 上调仍报「未找到指定的对象」（该调色板无专色）。
 
+## 七之七十、第七十一波已接入（2026-10-26，剖面线参数 / 渐变控制点 / 椭圆 / 调色板工厂 / 窗口）
+
+| 能力 | 落地位置 | 实测 |
+|---|---|---|
+| **剖面线参数**（IVGHatchFill 5 方法） | `cdr_shape_ops(op="hatch_fill", params={"fill_scale":2,"line_scale":2,"no_back_color":true})` | ✅ `Fill.Hatch`：`GetFillScale()` / `GetLineScale()` **零参**可读、`SetFillScale` / `SetLineScale` / `SetNoBackColor` 可用 |
+| **渐变控制点灰度**（IVGFountainColors 2 方法） | `cdr_shape_ops(op="fountain_colors", params={"index":1,"gray_level":30})` | ✅ `Fill.Fountain.Colors`：`GrayLevel(i)` 读、`SetGrayLevel(i, v)` 写（读回 30.0），Count=2 |
+| **椭圆几何**（IVGEllipse 2 方法） | `cdr_shape_ops(op="ellipse_geometry", params={"center_x":10,"center_y":45})` | ✅ `Shape.Ellipse`：`GetRadius()` 返回 `(x, y)`、`SetCenterPosition(x, y)` 可用 |
+| **调色板工厂**（IVGPalettes 3 方法） | `cdr_doc(action="palette_from", settings={"name":…,"mode":"selection"/"document","open_path":…})` | ✅ `CreateFromSelection(名)` / `CreateFromDocument(名)` / `Open(路径)` 都可用；选区里没有可取色对象时自动退回整篇文档，同名冲突会加后缀重试 |
+| **窗口查找**（IVGWindows.FindWindow） | `cdr_doc(action="windows", settings={"find_caption":…})` | ✅ `Application.Windows.FindWindow(标题)` 可查（找不到返回空） |
+| **线型虚线段写入**（IVGOutlineStyle 2 方法） | `cdr_doc(action="outline_style_dash", palette_index=2, settings={"dash_length":0.3,"gap_length":0.2})` | ✅ `SetDashLength(i, v)` / `SetGapLength(i, v)` 可调用（读回仍为 0，属"写不进"半可用） |
+
+> **第七十一波记录**：`IVGHatchFill` 的两个 Get 方法是**零参**（传参数会 TypeError），
+> 这与带索引的 `DashLength(i)` 恰好相反 —— 同一批 TLB 里混着两种风格，只能逐个试。
+
 ## 七之二、仍未接入（第三轮候选）
 
 | 能力 | 接口 | 为什么还没做 |
@@ -1462,11 +1477,11 @@ python scripts/live_smoke.py     # 524 项端到端（真实 CorelDRAW，**跑�
   自定义虚线、文档设置、文本区间编辑、自定义箭头、图案微调、文本格式查询、位图内容替换/链接、
   文档回滚、立体化/透镜/效果管理、位图特效命令串、混合、文档颜色转换、用户偏好 KV、OLE 嵌入、
   命名视图、网格设置、叠印、段落缩进、制表位、屏幕叠加层、应用/文档事件、导出/保存/导入选项、吸附点全家族、颜色对象分量、描边对象全量属性都已补上。
-* **方法级覆盖**：**全局 69.4%（1123/1619）**，**主干 20 接口 90.0%（669/743）**。
+* **方法级覆盖**：**全局 70.5%（1142/1619）**，主干 20 接口 90.0%（669/743）。
 * **明确不可用**：位图描摹、文本导入、点集数组建曲线、尺寸标注/连接线（MathUtils 点对象
   不可创建）、符号库、文件型图案/影线填充（本机无库）、曲线贴笔触、OpenDocumentAsCopy、
   HTML 兼容文本、断字写入、填充字符串、文本尺寸查询、灰度→RGB 转换、真实应用偏好读取、
   文本分栏（SetColumns 数组参数）。
-* **第七十波新增**：HTML 兼容标记、按模型指派色彩配置文件；`IVGColorContext` 达 100%、**主干 20 接口首次到 90%**；并确认 UI 自动化整族（因缺 GUID）不可达。
+* **第七十一波新增**：剖面线缩放参数、渐变控制点灰度、椭圆几何、调色板工厂、窗口查找、线型虚线段写入 —— **全局覆盖过 70%**。
 
 

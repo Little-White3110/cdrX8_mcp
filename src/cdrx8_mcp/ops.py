@@ -563,7 +563,7 @@ DOC_ACTIONS = ("info", "clear_selection", "clear_undo", "palette", "arrowhead",
                "color_context_create", "proof_color_settings",
                "app_status", "palette_manager",
                "outline_style_dash", "tool_shape_attributes", "tree_manager",
-               "set_color_profile",
+               "set_color_profile", "palette_from", "windows",
                "fountain_transform", "arrowhead_unnamed",
                # 第四十六波：CorelScriptTools（VBA 辅助对象）单位/数学/日期
                "script_tools")
@@ -1462,6 +1462,62 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
         out["note"] = ("CorelScriptTools 的值以 1/10000 mm 为单位：FromInches(1)=254000；"
                        "ASin 返回弧度；query+code_page 可做 Unicode↔ANSI 码页转换")
         return out
+    if act in {"palette_from", "windows"}:
+        app = _app_of(doc)
+        if act == "palette_from":
+            # 实测：Application.Palettes → IVGPalettes；
+            # CreateFromDocument(名) / CreateFromSelection(名) / Open(路径) 可用
+            pals = _s(lambda: app.Palettes)
+            if pals is None:
+                raise CdrComFailure("取不到 Palettes")
+            spec = dict(settings or {})
+            name = str(spec.get("name") or "MCP 调色板")
+            made = None
+            mode = str(spec.get("mode") or "document").lower()
+            if mode == "selection":
+                made = _s(lambda: pals.CreateFromSelection(name))
+                if made is None:
+                    # 没有选中对象时 CreateFromSelection 会失败，退回整篇文档
+                    made = _s(lambda: pals.CreateFromDocument(name))
+                    mode = "document(fallback)"
+            else:
+                made = _s(lambda: pals.CreateFromDocument(name))
+            if made is None:
+                # 同名调色板已存在时创建会失败，换个唯一名字再试一次
+                uniq = f"{name} {_short_id()}"
+                if mode.startswith("selection"):
+                    made = _s(lambda: pals.CreateFromSelection(uniq))
+                if made is None:
+                    made = _s(lambda: pals.CreateFromDocument(uniq))
+                if made is not None:
+                    name = uniq
+            result = {"action": act, "mode": mode, "name": name,
+                      "created": made is not None}
+            if made is not None:
+                result["color_count"] = _n(lambda: int(made.ColorCount))
+                result["palette_name"] = _s(lambda: str(made.Name))[:60]
+                result["index"] = _n(lambda: int(made.Index))
+            if spec.get("open_path"):
+                # 打开已有调色板文件（.cpl/.xml 等，路径由调用方给出）
+                opened = _s(lambda: pals.Open(str(spec["open_path"])))
+                result["opened"] = opened is not None
+                if opened is not None:
+                    result["opened_count"] = _n(lambda: int(opened.ColorCount))
+            return result
+        # windows
+        wins = _s(lambda: app.Windows)
+        if wins is None:
+            raise CdrComFailure("取不到 Windows 集合")
+        count = _n(lambda: int(wins.Count), 0) or 0
+        spec = dict(settings or {})
+        result = {"action": act, "count": count}
+        if spec.get("find_caption"):
+            found = _s(lambda: wins.FindWindow(str(spec["find_caption"])))
+            result["found"] = found is not None
+            result["caption"] = (_s(lambda: str(found.Caption))
+                                 if found is not None else None)
+        return result
+
     if act == "set_color_profile":
         # 实测：ColorContext.SetColorProfile(模型号, 配置文件) 可用，
         # 但**配置文件的 ColorModel 必须与模型号一致**（否则报「颜色模型不匹配」）
@@ -1538,6 +1594,25 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
             if not 1 <= idx <= count:
                 raise CdrBadArgument(f"线型序号越界：{idx}（共 {count} 个）")
             style = styles.Item(idx)
+            # 实测：SetDashLength(i, v) / SetGapLength(i, v) 可调（但读回可能仍是 0）
+            applied = []
+            spec = dict(settings or {})
+            if spec.get("dash_length") is not None:
+                dash_count = _n(lambda: int(style.DashCount), 1) or 1
+                for k in range(1, dash_count + 1):
+                    try:
+                        style.SetDashLength(k, float(spec["dash_length"]))
+                    except Exception:
+                        continue
+                applied.append("set_dash_length")
+            if spec.get("gap_length") is not None:
+                dash_count = _n(lambda: int(style.DashCount), 1) or 1
+                for k in range(1, dash_count + 1):
+                    try:
+                        style.SetGapLength(k, float(spec["gap_length"]))
+                    except Exception:
+                        continue
+                applied.append("set_gap_length")
             dashes = _n(lambda: int(style.DashCount), 0) or 0
             segments = []
             for k in range(1, min(dashes, 20) + 1):
@@ -1550,7 +1625,9 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
                     "dash_count": dashes,
                     "enhanced": bool(_s(lambda: bool(style.Enhanced), False)),
                     "segments": segments,
-                    "note": "DashLength/GapLength 用 (序号) 取；写入不生效"}
+                    "applied": applied if 'applied' in dir() else [],
+                    "note": "DashLength/GapLength 用 (序号) 取；"
+                            "SetDashLength/SetGapLength 可调但读回可能仍为 0"}
         # tool_shape_attributes：造一个自定义工具形状属性对象并逐项设置
         # （12 个 Set* 都是 IVGToolShapeAttributes 的方法，实测全部可用）
         attrs = _s(lambda: app.CreateToolShapeAttributes())
@@ -6363,6 +6440,8 @@ SHAPE_OPS = (
     "blend_effect",
     # 第六十七波：矩形圆角 / 克隆链 / 投影偏移 / 效果子对象
     "corners", "clone_links", "drop_shadow",
+    # 第七十一波：剖面线参数 / 渐变控制点 / 椭圆几何
+    "hatch_fill", "fountain_colors", "ellipse_geometry",
     # 第四十九波：按掩码复制属性
     "copy_props",
     # 第五十波：形状级斜切（SkewEx）
@@ -6669,6 +6748,62 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
                     "excluded": list(exclude), "result_count": count,
                     "names": [_s(lambda i=i: str(got.Item(i).Name))
                               for i in range(1, min(count, 20) + 1)]}
+        if op in {"hatch_fill", "fountain_colors", "ellipse_geometry"}:
+            source = find_shape(doc, page, target or {})
+            spec = dict(params or {})
+            applied = []
+            if op == "hatch_fill":
+                # 实测：Fill.Hatch → IVGHatchFill；GetFillScale/GetLineScale 零参，
+                # SetFillScale/SetLineScale/SetNoBackColor 可用
+                hf = _s(lambda: source.Fill.Hatch)
+                if hf is None:
+                    raise CdrBadArgument("目标不是剖面线填充（先用 fill=hatch）")
+                with atomic(doc, label):
+                    if spec.get("fill_scale") is not None:
+                        hf.SetFillScale(float(spec["fill_scale"]))
+                        applied.append("fill_scale")
+                    if spec.get("line_scale") is not None:
+                        hf.SetLineScale(float(spec["line_scale"]))
+                        applied.append("line_scale")
+                    if spec.get("no_back_color"):
+                        hf.SetNoBackColor()
+                        applied.append("no_back_color")
+                return {"op": op, "fill_scale": _round(_s(lambda: float(hf.GetFillScale()))),
+                        "line_scale": _round(_s(lambda: float(hf.GetLineScale()))),
+                        "applied": applied}
+            if op == "fountain_colors":
+                # 实测：Fill.Fountain.Colors → IVGFountainColors；
+                # GrayLevel(i) 读、SetGrayLevel(i, v) 写（Count 可读）
+                fountain = _s(lambda: source.Fill.Fountain)
+                colors = _s(lambda: fountain.Colors) if fountain is not None else None
+                if colors is None:
+                    raise CdrBadArgument("目标不是渐变填充")
+                count = _n(lambda: int(colors.Count), 0) or 0
+                with atomic(doc, label):
+                    if spec.get("index") is not None and spec.get("gray_level") is not None:
+                        colors.SetGrayLevel(int(spec["index"]),
+                                            float(spec["gray_level"]))
+                        applied.append("set_gray_level")
+                idx = int(spec.get("index", 1))
+                return {"op": op, "count": count, "index": idx,
+                        "gray_level": _round(_s(lambda: float(colors.GrayLevel(idx)))),
+                        "levels": [_round(_s(lambda i=i: float(colors.GrayLevel(i))))
+                                   for i in range(1, min(count, 10) + 1)],
+                        "applied": applied}
+            # ellipse_geometry
+            ell = _s(lambda: source.Ellipse)
+            if ell is None:
+                raise CdrBadArgument("目标不是椭圆（没有 Ellipse 子对象）")
+            radius = _s(lambda: ell.GetRadius())
+            with atomic(doc, label):
+                if spec.get("center_x") is not None and spec.get("center_y") is not None:
+                    ell.SetCenterPosition(float(spec["center_x"]),
+                                          float(spec["center_y"]))
+                    applied.append("set_center")
+            return {"op": op,
+                    "radius": ([_round(float(v)) for v in radius]
+                               if isinstance(radius, (tuple, list)) else None),
+                    "bbox": _bbox(source), "applied": applied}
         if op in {"corners", "clone_links", "drop_shadow"}:
             # 实测入口：Shape.Rectangle（IVGRectangle）/ Shape.CloneLink（IVGCloneLink）/
             # Shape.Effects.Item(1).DropShadow（IVGEffectDropShadow）

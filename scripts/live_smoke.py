@@ -4466,6 +4466,65 @@ def main() -> int:
                   f"profile={cp70.get('profile')}")
         no_error("关闭 HTML 兼容测试文档", server.cdr_close(h70_id))
 
+    # ---------------- 15by. 第七十一波：剖面线参数 / 渐变控制点 / 椭圆几何 / 调色板工厂 / 窗口查找 ----------------
+    print("\n[15by] 第七十一波：IVGHatchFill·IVGFountainColors·IVGEllipse·IVGPalettes·IVGWindows")
+    h71_doc = server.cdr_open(preset="A4")
+    if "document_id" in h71_doc:
+        h71_id = h71_doc["document_id"]
+        h71r = server.cdr_create(h71_id, [
+            {"type": "rectangle", "x": 0, "y": 0, "width": 30, "height": 20,
+             "fill": {"type": "hatch", "index": 1}},
+            {"type": "rectangle", "x": 40, "y": 0, "width": 30, "height": 20,
+             "fill": {"type": "fountain", "start": "#FF0000", "end": "#0000FF"}},
+            {"type": "ellipse", "x": 0, "y": 40, "width": 20, "height": 10},
+        ])
+        if no_error("cdr_create(剖面线/渐变测试)", h71r):
+            hH, hF, hE = [{"name": c["name"]} for c in h71r["created"]]
+            hf71 = server.cdr_shape_ops(h71_id, op="hatch_fill", target=hH,
+                                        params={"fill_scale": 2.0, "line_scale": 2.0,
+                                                "no_back_color": True})
+            if no_error("cdr_shape_ops(hatch_fill)", hf71):
+                check("剖面线缩放可调（IVGHatchFill）",
+                      hf71.get("fill_scale") == 2.0
+                      and {"fill_scale", "line_scale"} <= set(hf71.get("applied") or []),
+                      f"fill={hf71.get('fill_scale')} line={hf71.get('line_scale')}")
+            fc71 = server.cdr_shape_ops(h71_id, op="fountain_colors", target=hF,
+                                        params={"index": 1, "gray_level": 30})
+            if no_error("cdr_shape_ops(fountain_colors)", fc71):
+                check("渐变控制点灰度可读写（IVGFountainColors）",
+                      (fc71.get("count") or 0) >= 2
+                      and (fc71.get("levels") or [None])[0] == 30.0,
+                      f"count={fc71.get('count')} levels={fc71.get('levels')}")
+            el71 = server.cdr_shape_ops(h71_id, op="ellipse_geometry", target=hE,
+                                        params={"center_x": 10, "center_y": 45})
+            if no_error("cdr_shape_ops(ellipse_geometry)", el71):
+                check("椭圆几何可读写（IVGEllipse）",
+                      el71.get("radius") is not None
+                      and "set_center" in (el71.get("applied") or []),
+                      f"radius={el71.get('radius')}")
+            server.cdr_select(h71_id, name=hF["name"])
+            pf71 = server.cdr_doc(h71_id, action="palette_from",
+                                  settings={"name": "MCP 测试", "mode": "selection"})
+            if no_error("cdr_doc(palette_from)", pf71):
+                check("可从文档/选区造调色板（IVGPalettes）",
+                      pf71.get("created") is True,
+                      f"count={pf71.get('color_count')}")
+            w71 = server.cdr_doc(h71_id, action="windows",
+                                 settings={"find_caption": "CorelDRAW"})
+            if no_error("cdr_doc(windows)", w71):
+                check("可按标题查窗口（IVGWindows.FindWindow）",
+                      (w71.get("count") or 0) >= 1 and "found" in w71,
+                      f"count={w71.get('count')} found={w71.get('found')}")
+            od71 = server.cdr_doc(h71_id, action="outline_style_dash",
+                                  palette_index=2,
+                                  settings={"dash_length": 0.3, "gap_length": 0.2})
+            if no_error("cdr_doc(outline_style_dash set)", od71):
+                check("线型虚线段可写调用（SetDashLength/SetGapLength）",
+                      {"set_dash_length", "set_gap_length"}
+                      <= set(od71.get("applied") or []),
+                      str(od71.get("applied")))
+        no_error("关闭剖面线/渐变测试文档", server.cdr_close(h71_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,
