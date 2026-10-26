@@ -562,6 +562,7 @@ DOC_ACTIONS = ("info", "clear_selection", "clear_undo", "palette", "arrowhead",
                "color_context_info", "color_context_copy", "color_context_merge",
                "color_context_create", "proof_color_settings",
                "app_status", "palette_manager",
+               "outline_style_dash", "tool_shape_attributes",
                "fountain_transform", "arrowhead_unnamed",
                # 第四十六波：CorelScriptTools（VBA 辅助对象）单位/数学/日期
                "script_tools")
@@ -1448,6 +1449,114 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
         out["note"] = ("CorelScriptTools 的值以 1/10000 mm 为单位：FromInches(1)=254000；"
                        "ASin 返回弧度；query+code_page 可做 Unicode↔ANSI 码页转换")
         return out
+    if act in {"outline_style_dash", "tool_shape_attributes"}:
+        app = _app_of(doc)
+        if act == "outline_style_dash":
+            # 实测：Application.OutlineStyles.Item(n) 是 IVGOutlineStyle。
+            # DashCount / DashLength(i) / GapLength(i) / Enhanced 都能**读**；
+            # 写入（DashCount= / DashLength=(i, v)）调用不报错但不生效
+            styles = _s(lambda: app.OutlineStyles)
+            if styles is None:
+                raise CdrComFailure("取不到 OutlineStyles")
+            count = _n(lambda: int(styles.Count), 0) or 0
+            idx = int(palette_index or 1)
+            if not 1 <= idx <= count:
+                raise CdrBadArgument(f"线型序号越界：{idx}（共 {count} 个）")
+            style = styles.Item(idx)
+            dashes = _n(lambda: int(style.DashCount), 0) or 0
+            segments = []
+            for k in range(1, min(dashes, 20) + 1):
+                segments.append({
+                    "dash": _round(_s(lambda k=k: float(style.DashLength(k)))),
+                    "gap": _round(_s(lambda k=k: float(style.GapLength(k))),)})
+            return {"action": act, "index": idx,
+                    "style_count": count,
+                    "index_of_style": _n(lambda: int(style.Index)),
+                    "dash_count": dashes,
+                    "enhanced": bool(_s(lambda: bool(style.Enhanced), False)),
+                    "segments": segments,
+                    "note": "DashLength/GapLength 用 (序号) 取；写入不生效"}
+        # tool_shape_attributes：造一个自定义工具形状属性对象并逐项设置
+        # （12 个 Set* 都是 IVGToolShapeAttributes 的方法，实测全部可用）
+        attrs = _s(lambda: app.CreateToolShapeAttributes())
+        if attrs is None:
+            raise CdrComFailure("CreateToolShapeAttributes 返回空")
+        spec = dict(settings or {})
+        applied: list[str] = []
+        guid_zero = "00000000-0000-0000-0000-000000000000"
+
+        def _mark(name: str) -> None:
+            applied.append(name)
+
+        try:
+            attrs.SetCanResize(bool(spec.get("can_resize", True)))
+            _mark("CanResize")
+        except Exception:
+            pass
+        try:
+            attrs.SetCanRotate(bool(spec.get("can_rotate", True)))
+            _mark("CanRotate")
+        except Exception:
+            pass
+        try:
+            attrs.SetCanSkew(bool(spec.get("can_skew", True)))
+            _mark("CanSkew")
+        except Exception:
+            pass
+        try:
+            attrs.SetCanSizeDisproportionally(
+                bool(spec.get("can_size_disproportionally", True)))
+            _mark("CanSizeDisproportionally")
+        except Exception:
+            pass
+        try:
+            attrs.SetCanApplyNonlinearTransforms(
+                bool(spec.get("can_apply_nonlinear", True)))
+            _mark("CanApplyNonlinearTransforms")
+        except Exception:
+            pass
+        try:
+            attrs.SetRegenerateOnTransform(
+                bool(spec.get("regenerate_on_transform", True)))
+            _mark("RegenerateOnTransform")
+        except Exception:
+            pass
+        try:
+            attrs.SetRegenerateOnStyleChange(
+                bool(spec.get("regenerate_on_style_change", True)))
+            _mark("RegenerateOnStyleChange")
+        except Exception:
+            pass
+        try:
+            attrs.SetPropertyBarGuid(str(spec.get("property_bar_guid", guid_zero)))
+            _mark("PropertyBarGuid")
+        except Exception:
+            pass
+        try:
+            attrs.SetContextMenuGuid(str(spec.get("context_menu_guid", guid_zero)))
+            _mark("ContextMenuGuid")
+        except Exception:
+            pass
+        try:
+            attrs.SetObjectManagerBitmapGuid(
+                str(spec.get("object_manager_guid", guid_zero)))
+            _mark("ObjectManagerBitmapGuid")
+        except Exception:
+            pass
+        try:
+            attrs.SetEditStateGuid(str(spec.get("edit_state_guid", guid_zero)))
+            _mark("EditStateGuid")
+        except Exception:
+            pass
+        try:
+            attrs.SetDefaultShapename(str(spec.get("default_shape_name", "MCP 形状")))
+            _mark("DefaultShapename")
+        except Exception:
+            pass
+        return {"action": act, "applied": applied, "count": len(applied),
+                "note": "自定义工具形状的属性对象；X8 没有可用的 RegisterToolShape，"
+                        "所以此处只做配置、不注册"}
+
     if act in {"app_status", "palette_manager"}:
         app = _app_of(doc)
         if act == "palette_manager":

@@ -4298,6 +4298,29 @@ def main() -> int:
                       f"count={pm65.get('palette_count')}")
         no_error("关闭视口/混合测试文档", server.cdr_close(v65_id))
 
+    # ---------------- 15bt. 第六十六波：线型虚线段 / 自定义工具形状属性 ----------------
+    print("\n[15bt] 第六十六波：IVGOutlineStyle 虚线段读取、IVGToolShapeAttributes 12 项")
+    t66_doc = server.cdr_open(preset="A4")
+    if "document_id" in t66_doc:
+        t66_id = t66_doc["document_id"]
+        od66 = server.cdr_doc(t66_id, action="outline_style_dash", palette_index=2)
+        if no_error("cdr_doc(outline_style_dash)", od66):
+            segs66 = od66.get("segments") or []
+            check("线型虚线段可读（DashCount/DashLength/GapLength）",
+                  (od66.get("dash_count") or 0) >= 1
+                  and len(segs66) >= 1
+                  and segs66[0].get("dash") is not None
+                  and od66.get("enhanced") is not None,
+                  f"count={od66.get('dash_count')} segs={segs66[:1]}")
+        tsa66 = server.cdr_doc(t66_id, action="tool_shape_attributes",
+                               settings={"default_shape_name": "MCP 形状",
+                                         "can_skew": False})
+        if no_error("cdr_doc(tool_shape_attributes)", tsa66):
+            check("自定义工具形状属性可配置（12 项 Set*）",
+                  (tsa66.get("count") or 0) == 12,
+                  f"count={tsa66.get('count')}")
+        no_error("关闭线型/工具属性测试文档", server.cdr_close(t66_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,
