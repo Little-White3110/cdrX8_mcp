@@ -3961,6 +3961,37 @@ def main() -> int:
                       f"api={mref.get('api')} nodes={mref.get('nodes')}")
         no_error("关闭骨架映射测试文档", server.cdr_close(m56_id))
 
+    # ---------------- 15bk. 第五十七波：文字区间结构体（*InRange 1 基） ----------------
+    print("\n[15bk] 第五十七波：FontPropertiesInRange / SetSpacePropertiesInRange 家族")
+    r57_doc = server.cdr_open(preset="A4")
+    if "document_id" in r57_doc:
+        r57_id = r57_doc["document_id"]
+        r57r = server.cdr_create(r57_id, [
+            {"type": "paragraph_text", "x": 20, "y": 20, "x2": 140, "y2": 90,
+             "text": "段落文本 Hello world", "size": 14},
+        ])
+        if no_error("cdr_create(区间结构体测试)", r57r):
+            r57t = {"name": r57r["created"][0]["name"]}
+            w57 = server.cdr_text(r57_id, r57t, paragraph_format={
+                "range_start": 1, "range_count": 5,
+                "character_spacing": 200.0, "alignment": 2})
+            if no_error("cdr_text(paragraph_format 区间写)", w57):
+                app57 = w57.get("applied") or []
+                check("区间结构体可写（SetSpacePropertiesInRange / SetAlignPropertiesInRange）",
+                      "space_struct_in_range" in app57
+                      and "align_struct_in_range" in app57,
+                      str(app57))
+            rd57 = server.cdr_text(r57_id, r57t,
+                                   range_struct={"start": 1, "count": 5})
+            if no_error("cdr_text(range_struct)", rd57):
+                rs57 = rd57.get("range_struct") or {}
+                space57 = rs57.get("space") or {}
+                check("区间结构体可读且值可信（*InRange 需 1 基）",
+                      abs((space57.get("CharacterSpacing") or 0) - 200.0) < 0.01,
+                      f"char={space57.get('CharacterSpacing')} "
+                      f"align={(rs57.get('align') or {}).get('Alignment')}")
+        no_error("关闭区间结构体测试文档", server.cdr_close(r57_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

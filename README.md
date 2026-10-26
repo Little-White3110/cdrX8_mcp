@@ -7,9 +7,9 @@
 
 > **已在真机验证**：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）+ Python 3.11.9 64 位
 > - 单元测试 **93 项通过**
-> - 端到端联调（真实 CorelDRAW）**480/480 通过**
+> - 端到端联调（真实 CorelDRAW）**482/482 通过**
 > - 能力边界来自对 `vgcoreauto.tlb` 的反解（196 个自动化类 / 1619 个方法）+ 逐项实跑
-> - 方法级覆盖 **62.1%**（主干 20 接口 85.6%），可用 `python scripts/coverage_audit.py` 复现
+> - 方法级覆盖 **62.6%**（主干 20 接口 86.5%），可用 `python scripts/coverage_audit.py` 复现
 > - 完整清单见 [docs/COVERAGE.md](docs/COVERAGE.md)
 
 ---
@@ -67,7 +67,7 @@ python -m cdrx8_mcp              # 启动 MCP 服务器（stdio）
 |---|---|
 | `cdr_create` | 批量创建：矩形（含圆角）/ 椭圆（含圆弧、扇形）/ 多边形 / 星形 / 螺旋 / 网格 / 直线 / 贝塞尔 / **曲线段（curve_segment：端点+两端控制柄）** / **边界版矩形·椭圆·完整多边形（rect_ltrb / ellipse_ltrb / polygon_full）** / **位图构造器（bitmap_at / bitmap_rect）** / **宽文本（text_wide / paragraph_wide：显式语言/字符集）** / **B 样条（bspline：控制点构造，可 to_curves）** / **连接器（connector / connector_ex / right_angle_connector）** / **线性标注（linear_dimension）·角度标注（angular_dimension）** / 文字 / 段落文字 / 参考线 / **内存位图（纯色 + 像素色块）** / **OLE 文件嵌入（ole_file）** |
 | `cdr_modify` | 单个或**批量**修改：移动、缩放、旋转、翻转、斜切、矩阵/仿射变换、清除变换、旋转中心、克隆、锁定；填充（纯色/渐变/纹理/图案/专色/无色/复制）；**图案填充微调（旋转/平铺/镜像/前景色）**；描边（虚线、箭头、专色、自定义虚线线型）；透明度/图案透明、冻结/解冻；投影、轮廓图、封套；渐变微调；色彩滤镜；层级调整、复制/剪切到剪贴板、移动到/复制到图层、对象数据字段、**叠印（填充/描边/位图）**、复制、删除 |
-| `cdr_text` | 排版级：内容 / 字体 / 字号 / 粗斜体 / 下划线 / 对齐 / 大小写 / 项目符号 / 首字下沉 / 行距字距 / 段落缩进 / **制表位** / 前后插入 / 沿路径 / 自适应 / 转曲 / 艺术字↔段落字互转 / 段落内容读写与替换 / 文本区间 / 区间删除·复制·粘贴·拉直 / 读取全文·指定区间·导出纯文本 / **字体属性读取·断字设置读取·格式段列表·按格式查询区间（@font/@bold）** / OpenType 特性 / **四个结构体快照（struct_info：字体·间距·对齐·断字）** / **区间宽接口（range_action：插入·替换·折叠·重设·判等·包含·行距）** / **进入编辑态（begin_edit）** / **结构体工厂写段落格式（paragraph_format：对齐·缩进·字距·行距·连字符）** |
+| `cdr_text` | 排版级：内容 / 字体 / 字号 / 粗斜体 / 下划线 / 对齐 / 大小写 / 项目符号 / 首字下沉 / 行距字距 / 段落缩进 / **制表位** / 前后插入 / 沿路径 / 自适应 / 转曲 / 艺术字↔段落字互转 / 段落内容读写与替换 / 文本区间 / 区间删除·复制·粘贴·拉直 / 读取全文·指定区间·导出纯文本 / **字体属性读取·断字设置读取·格式段列表·按格式查询区间（@font/@bold）** / OpenType 特性 / **四个结构体快照（struct_info：字体·间距·对齐·断字）** / **区间宽接口（range_action：插入·替换·折叠·重设·判等·包含·行距）** / **进入编辑态（begin_edit）** / **结构体工厂写段落格式（paragraph_format：对齐·缩进·字距·行距·连字符，支持 range_start 走 *InRange 区间）** / **区间结构体读取（range_struct：字体·间距·对齐·连字符，1 基）** |
 | `cdr_replace_text` | 全文档文字替换（底层用 X8 原生 `Page.TextReplace`） |
 | `cdr_select` | 按名字 / 类型 / 矩形框选，加入选择集；**可移除或清空选择集** |
 | `cdr_shape_ops` | **布尔与整形**：weld / trim / intersect / combine / group / ungroup / break_apart / to_curves / **outline_to_curves** / to_symbol / powerclip / fillet / chamfer / scallop / **step_repeat / distribute / boundary / perspective / separate / parallel_curves / rasterize / batch_outline_to_curves / fill_mode / pixel_aligned / range_boundary / envelope_from_shape / compare / project / unproject / to_document / extrude / lens / extrude_set / lens_set / effect_info / clear_effects / blend / blend_set / **unlock_all / ungroup_all / break_apart_ex / clear_effect / range_info / range_add / range_remove / apply_fill（Fill 工厂批量上色）/ **matrix（矩阵读写）/ is_type / in_front_of / is_on_shape / distort（pushpull·twister·zipper）/ place_text（文字内嵌）/ duplicate_range · clone_range / **position_ex（9 个参考点）/ find_snap（按引用反查吸附点）/ linked（链接对象）/ rasterize_ex（带参位图化）/ overprint_state / **range_from_list（对象列表建范围）/ range_bitmap（整批位图化）/ range_outline（整批描边 14/15 参）/ copy_to_layer_range（复制到其它图层）/ align_to_range（对齐到形状范围）/ copy_props（按掩码复制属性）/ skew_ex（形状级斜切）/ range_outline_apply（整批套描边）/ ungroup_all·ungroup_all_ex·ungroup_ex（解组家族）/ sibling（同层相邻遍历）** |
@@ -186,7 +186,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ---
 
-## X8 特有问题（141 条，全部实测）
+## X8 特有问题（142 条，全部实测）
 
 这些是 **X8 与 2024+ 的差异**，也是本项目存在的主要理由。
 
@@ -333,6 +333,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 | 139 | **解组家族不是空操作，`GetNext/GetPrevious` 也不是那个 3 参属性** | 第 30 波把 `ShapeRange.UngroupAll/UngroupAllEx/UngroupEx` 判成空操作，其实是**拿组合体内部对象**去解组（自然没反应）；对组合体本身调用三者都生效（页码 1→2 / 1→3）。`Shape.GetNext(方向)`、`GetPrevious(方向)` 各只要 1 个参数就返回同层相邻对象，与之前记的「`Shape.Next` 是 3 参 propget」是两个不同成员 | 已封装 `cdr_shape_ops(op="ungroup_all"/"ungroup_all_ex"/"ungroup_ex"/"sibling")` |
 | 140 | **连接器/标注的端点是 `IVGSnapPoint`，由 `CreateSnapPoint(x,y)` 产出** | `Layer.CreateConnector/CreateLinearDimension` 要的端点不是 `IVGPoint`（它没有可写的 x/y），而是 `Application.CreateSnapPoint(x, y)` 返回的 `IVGSnapPoint`。拿到它之后连接器三件套 + 线性/角度标注（22 参 / 18 参）一次全通 | 已封装 `cdr_create(type="connector"/"right_angle_connector"/"linear_dimension"/"angular_dimension")`；`SHAPE_TYPES` 补 14 与 19 |
 | 141 | **`CreateCurveMappedToStroke` 的 Stroke 要 `IVGSubPath` 不是 `IVGCurve`** | 第 32 波判「类型不匹配」是因为传了整条 Curve。正确：`Curve.CreateCurveMappedToStroke(子路径, ScaleY, SelfWeld)`；参考线版再要两个 `IVGPoint`（`Node.GetPoint()`）。返回新 Curve，`Layer.CreateCurve` 后成 Type 3 | 已封装 `cdr_path(action="map_to_stroke", other=骨架线, params={"scale_y":…,"use_reference_line":…})` |
+| 142 | **文字 `*InRange` 结构体：方法名无 `Get` 前缀 + StartIndex 1 基** | 第 37 波判它们"字段全是垃圾"其实是两个错叠加：正确写法是 `Text.FontPropertiesInRange(start, count, indexing)`（没有 `Get` 前缀，`GetFontPropertiesInRange` 根本不存在）；且 `StartIndex` **从 1 开始**（传 0 才返回 `Size=0 / Style=16` 的假值）。写入端 `Set*PropertiesInRange` 同样 1 基。另外 `SetFontProperties(frames, 结构体)` 不报错但对可见文本**无效** | 已封装 `cdr_text(range_struct={…})` 与 `paragraph_format={"range_start":1,…}` |
 
 改代码前请先读 [`src/cdrx8_mcp/constants.py`](src/cdrx8_mcp/constants.py) 里的注释。
 
@@ -382,7 +383,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ```powershell
 python -m pytest -q                # 93 项逻辑测试，任何平台可跑
-python scripts/live_smoke.py       # 480 项端到端（跑前先确认没有残留 CorelDRW 进程）
+python scripts/live_smoke.py       # 482 项端到端（跑前先确认没有残留 CorelDRW 进程）
 python scripts/live_smoke.py --keep   # 保留文档方便肉眼看效果
 python scripts/coverage_audit.py   # 覆盖率审计（复现 README/COVERAGE 里的数字）
 ```

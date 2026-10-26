@@ -6982,6 +6982,23 @@ def _text_structs(shape: Any) -> dict:
     return out
 
 
+def _text_struct_dict(struct: Any, attrs: tuple) -> dict | None:
+    """把 IVGStruct* 快照转成只保留白名单字段的 dict（字段读失败就跳过）。"""
+    if struct is None:
+        return None
+    out: dict = {}
+    for attr in attrs:
+        try:
+            val = getattr(struct, attr)
+        except Exception:
+            continue
+        if isinstance(val, (int, float)):
+            out[attr] = _round(float(val))
+        else:
+            out[attr] = str(val)[:80]
+    return out
+
+
 def _text_range_action(story: Any, spec: dict) -> dict:
     """TextRange 的宽接口 / 游标操作（第三十七波实测）。
 
@@ -7121,6 +7138,7 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
              range_paste: bool = False, range_straighten: bool = False,
              find_query: str | None = None, runs: bool = False,
              begin_edit: bool = False, paragraph_format: dict | None = None,
+             range_struct: dict | None = None,
              struct_info: bool = False,
              range_action: dict | None = None,
              label: str = "cdr_text") -> dict:
@@ -7145,6 +7163,32 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
             result: dict = {"applied": [], "warnings": [],
                             "text": _s(lambda: str(shape.Text.Story.Text), ""),
                             "bbox": _bbox(shape)}
+            if range_struct is not None:
+                # 实测：Text.FontPropertiesInRange / SpacePropertiesInRange /
+                # AlignPropertiesInRange / HyphenationSettingsInRange(StartIndex, Count,
+                # IndexingType) 都能返回结构体（注意方法名**没有** Get 前缀）
+                spec = dict(range_struct or {})
+                # 注意：StartIndex 是 1 基；传 0 会返回一堆垃圾值（Size=0/Style=16）
+                start = int(spec.get("start", 1))
+                count = int(spec.get("count", 5))
+                indexing = int(spec.get("indexing", 0))
+                text_obj = shape.Text
+                result["range_struct"] = {
+                    "start": start, "count": count, "indexing": indexing,
+                    "font": _text_struct_dict(
+                        _s(lambda: text_obj.FontPropertiesInRange(start, count, indexing)),
+                        ("Name", "Size", "Style", "Underline")),
+                    "space": _text_struct_dict(
+                        _s(lambda: text_obj.SpacePropertiesInRange(start, count, indexing)),
+                        ("CharacterSpacing", "WordSpacing", "LineSpacing")),
+                    "align": _text_struct_dict(
+                        _s(lambda: text_obj.AlignPropertiesInRange(start, count, indexing)),
+                        ("Alignment", "LeftIndent", "RightIndent", "FirstIndent")),
+                    "hyphenation": _text_struct_dict(
+                        _s(lambda: text_obj.HyphenationSettingsInRange(start, count,
+                                                                      indexing)),
+                        ("UseAutomaticHyphenation", "HotZone")),
+                }
             if read_contents:
                 result["contents"] = _s(lambda: shape.Text.GetContents(2), "")
             if range_start is not None or range_end is not None:
@@ -7279,6 +7323,9 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
                 # **但只对段落文本生效**（艺术字会报「该参数需要段落文本」）
                 spec = dict(paragraph_format)
                 app = _app_of(doc)
+                range_start = spec.get("range_start")
+                range_count = int(spec.get("range_count", 5))
+                indexing = int(spec.get("indexing", 0))
                 if any(k in spec for k in ("alignment", "left_indent", "right_indent",
                                            "first_indent", "vertical_alignment")):
                     ap = app.CreateStructAlignProperties()
@@ -7292,8 +7339,13 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
                                 setattr(ap, attr, spec[key])
                             except Exception:
                                 pass
-                    shape.Text.SetAlignProperties(0, ap)
-                    applied.append("align_struct")
+                    if range_start is not None:
+                        shape.Text.SetAlignPropertiesInRange(int(range_start),
+                                                             range_count, indexing, ap)
+                        applied.append("align_struct_in_range")
+                    else:
+                        shape.Text.SetAlignProperties(0, ap)
+                        applied.append("align_struct")
                 if any(k in spec for k in ("character_spacing", "word_spacing",
                                            "line_spacing")):
                     sp = app.CreateStructSpaceProperties()
@@ -7305,8 +7357,14 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
                                 setattr(sp, attr, float(spec[key]))
                             except Exception:
                                 pass
-                    shape.Text.SetSpaceProperties(0, sp)
-                    applied.append("space_struct")
+                    if range_start is not None:
+                        # 实测：*InRange 的 StartIndex 是 **1 基**（0 会报越界）
+                        shape.Text.SetSpacePropertiesInRange(int(range_start),
+                                                             range_count, indexing, sp)
+                        applied.append("space_struct_in_range")
+                    else:
+                        shape.Text.SetSpaceProperties(0, sp)
+                        applied.append("space_struct")
                 if any(k in spec for k in ("hyphenation", "hot_zone")):
                     hp = app.CreateStructHyphenationSettings()
                     if "hyphenation" in spec:
@@ -7319,8 +7377,13 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
                             hp.HotZone = float(spec["hot_zone"])
                         except Exception:
                             pass
-                    shape.Text.SetHyphenationSettings(0, hp)
-                    applied.append("hyphenation_struct")
+                    if range_start is not None:
+                        shape.Text.SetHyphenationSettingsInRange(
+                            int(range_start), range_count, indexing, hp)
+                        applied.append("hyphenation_struct_in_range")
+                    else:
+                        shape.Text.SetHyphenationSettings(0, hp)
+                        applied.append("hyphenation_struct")
             if begin_edit:
                 try:
                     shape.Text.BeginEdit()
