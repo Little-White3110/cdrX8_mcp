@@ -563,6 +563,7 @@ DOC_ACTIONS = ("info", "clear_selection", "clear_undo", "palette", "arrowhead",
                "color_context_create", "proof_color_settings",
                "app_status", "palette_manager",
                "outline_style_dash", "tool_shape_attributes", "tree_manager",
+               "set_color_profile",
                "fountain_transform", "arrowhead_unnamed",
                # 第四十六波：CorelScriptTools（VBA 辅助对象）单位/数学/日期
                "script_tools")
@@ -1461,6 +1462,40 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
         out["note"] = ("CorelScriptTools 的值以 1/10000 mm 为单位：FromInches(1)=254000；"
                        "ASin 返回弧度；query+code_page 可做 Unicode↔ANSI 码页转换")
         return out
+    if act == "set_color_profile":
+        # 实测：ColorContext.SetColorProfile(模型号, 配置文件) 可用，
+        # 但**配置文件的 ColorModel 必须与模型号一致**（否则报「颜色模型不匹配」）
+        app = _app_of(doc)
+        ctx = _s(lambda: doc.ColorContext)
+        if ctx is None:
+            raise CdrComFailure("Document.ColorContext 返回空")
+        want_model = int(model) if model is not None else 1
+        profiles = _s(lambda: app.ColorManager.ColorProfiles)
+        count = _n(lambda: int(profiles.Count), 0) or 0
+        chosen = None
+        chosen_name = None
+        for i in range(1, count + 1):
+            prof = _s(lambda i=i: profiles.Item(i))
+            if prof is None:
+                continue
+            if profile_name and _s(lambda prof=prof: str(prof.Name)).lower().startswith(
+                    str(profile_name).lower()):
+                chosen = prof
+                chosen_name = _s(lambda prof=prof: str(prof.Name))
+                break
+            if int(_s(lambda prof=prof: int(prof.ColorModel), -1)) == want_model:
+                chosen = prof
+                chosen_name = _s(lambda prof=prof: str(prof.Name))
+                if not profile_name:
+                    break
+        if chosen is None:
+            raise CdrBadArgument(f"没有 ColorModel={want_model} 的配置文件")
+        ctx.SetColorProfile(want_model, chosen)
+        return {"action": act, "model": want_model,
+                "profile": (chosen_name or "")[:60],
+                "readback": _s(lambda: str(ctx.ColorProfile(want_model).Name))[:60],
+                "rendering_intent": _n(lambda: int(ctx.RenderingIntent))}
+
     if act == "tree_manager":
         # 实测：Document.TreeManager → IVGTreeManager
         # （SelectedNodeCount / FirstSelectedNode / VirtualLayer 可读，
@@ -7960,6 +7995,7 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
              begin_edit: bool = False, paragraph_format: dict | None = None,
              range_struct: dict | None = None,
              link_to: dict | None = None, unlink: bool = False,
+             make_html_compatible: bool | None = None,
              struct_info: bool = False,
              range_action: dict | None = None,
              label: str = "cdr_text") -> dict:
@@ -7979,7 +8015,7 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
                    select_all, align_to_baseline, range_delete, range_copy,
                    range_paste, range_straighten, clear_tabs)) or bool(tab_stops) \
             or begin_edit or paragraph_format is not None \
-            or link_to is not None or unlink
+            or link_to is not None or unlink or make_html_compatible is not None
         if not mutating:
             # 纯读取 / 导出：不建 undo 组，也不改动文档
             result: dict = {"applied": [], "warnings": [],
@@ -8139,6 +8175,14 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
                 except Exception as exc:  # noqa: BLE001
                     warnings.append(f"复制文字属性失败：{exc}")
 
+            if make_html_compatible is not None:
+                # 实测：Text.MakeHTMLCompatible(bool) 返回 True（对艺术字/段落字都可调）
+                ok = bool(_s(lambda: bool(shape.Text.MakeHTMLCompatible(
+                    bool(make_html_compatible))), False))
+                applied.append("make_html_compatible")
+                return {"applied": applied, "warnings": warnings,
+                        "html_compatible": ok,
+                        "requested": bool(make_html_compatible)}
             if link_to is not None or unlink:
                 # 实测：Text.Frames.Item(1).LinkTo(另一个文本形状) 可把段落框串起来
                 frames = _s(lambda: shape.Text.Frames)

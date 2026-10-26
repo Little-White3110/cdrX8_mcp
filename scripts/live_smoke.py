@@ -4443,6 +4443,29 @@ def main() -> int:
                       f"ok={ld69.get('ok')}")
         no_error("关闭对象树/样式填充测试文档", server.cdr_close(t69_id))
 
+    # ---------------- 15bx. 第七十波：HTML 兼容 / 按模型设置色彩配置文件 ----------------
+    print("\n[15bx] 第七十波：Text.MakeHTMLCompatible、ColorContext.SetColorProfile")
+    h70_doc = server.cdr_open(preset="A4")
+    if "document_id" in h70_doc:
+        h70_id = h70_doc["document_id"]
+        h70r = server.cdr_create(h70_id, [
+            {"type": "paragraph_text", "x": 0, "y": 0, "x2": 60, "y2": 40,
+             "text": "文字"}])
+        if no_error("cdr_create(HTML 兼容测试)", h70r):
+            h70t = {"name": h70r["created"][0]["name"]}
+            hc70 = server.cdr_text(h70_id, h70t, make_html_compatible=True)
+            if no_error("cdr_text(make_html_compatible)", hc70):
+                check("文字可设 HTML 兼容（Text.MakeHTMLCompatible）",
+                      "make_html_compatible" in (hc70.get("applied") or [])
+                      and hc70.get("html_compatible") is True,
+                      f"ok={hc70.get('html_compatible')}")
+        cp70 = server.cdr_doc(h70_id, action="set_color_profile", model=1)
+        if no_error("cdr_doc(set_color_profile)", cp70):
+            check("可按模型设置色彩配置文件（SetColorProfile）",
+                  cp70.get("model") == 1 and bool(cp70.get("readback")),
+                  f"profile={cp70.get('profile')}")
+        no_error("关闭 HTML 兼容测试文档", server.cdr_close(h70_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,
