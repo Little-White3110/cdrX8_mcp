@@ -4725,6 +4725,38 @@ def main() -> int:
                   f"{br77.get('points_before')} → {br77.get('points_after')}")
         no_error("关闭第七十七波测试文档", server.cdr_close(p77_id))
 
+    # ---------------- 15ce. 第七十八波：立体化灯光/斜角 ----------------
+    print("\n[15ce] 第七十八波：EffectExtrude.SetLight·SetBevel·灯光读数")
+    x78_doc = server.cdr_open(preset="A4")
+    if "document_id" in x78_doc:
+        x78_id = x78_doc["document_id"]
+        x78r = server.cdr_create(x78_id, [
+            {"type": "rectangle", "x": 0, "y": 0, "width": 20, "height": 10}])
+        if no_error("cdr_create(立体化测试)", x78r):
+            x78a = {"name": x78r["created"][0]["name"]}
+            server.cdr_shape_ops(x78_id, op="extrude", target=x78a,
+                                 params={"depth": 20})
+            es78 = server.cdr_shape_ops(x78_id, op="extrude_set", target=x78a,
+                                        effect={"light_index": 1,
+                                                "light_intensity": 80,
+                                                "bevel_depth": 2.5,
+                                                "bevel_angle": 20,
+                                                "depth": 15})
+            if no_error("cdr_shape_ops(extrude_set lights)", es78):
+                ext78 = es78.get("extrude") or {}
+                light1 = (ext78.get("lights") or [{}])[0]
+                check("立体化可开灯（SetLight，1~3 号灯）",
+                      light1.get("present") is True
+                      and light1.get("intensity") == 80,
+                      f"light1={light1}")
+                check("立体化可设斜角（SetBevel）",
+                      ext78.get("bevel_depth") == 2.5
+                      and ext78.get("bevel_angle") == 20.0,
+                      f"bevel={ext78.get('bevel_depth')}×{ext78.get('bevel_angle')}")
+                check("立体化深度可改", ext78.get("depth") == 15.0,
+                      f"depth={ext78.get('depth')}")
+        no_error("关闭立体化测试文档", server.cdr_close(x78_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

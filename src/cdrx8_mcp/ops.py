@@ -6731,6 +6731,28 @@ def _find_effect(shape: Any, attr: str) -> tuple:
     return None, None
 
 
+def _extrude_effect_info(shape: Any) -> dict:
+    """读立体化效果的灯光/斜角状态（灯光是带索引的属性）。"""
+    try:
+        eff = shape.Effects.Item(1)
+        ext = eff.Extrude
+    except Exception:  # noqa: BLE001
+        return {}
+    out: dict = {"depth": _round(_s(lambda: float(ext.Depth))),
+                 "shading": _n(lambda: int(ext.Shading)),
+                 "bevel_depth": _round(_s(lambda: float(ext.BevelDepth))),
+                 "bevel_angle": _round(_s(lambda: float(ext.BevelAngle)))}
+    lights = []
+    for idx in (1, 2, 3):
+        lights.append({
+            "index": idx,
+            "present": bool(_s(lambda idx=idx: bool(ext.LightPresent(idx)), False)),
+            "intensity": _n(lambda idx=idx: int(ext.LightIntensity(idx))),
+        })
+    out["lights"] = lights
+    return out
+
+
 def _effect_info(shape: Any) -> dict:
     effects = _s(lambda: shape.Effects)
     if effects is None:
@@ -7892,10 +7914,32 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
                     typed = eff.Lens
                     mapping = _LENS_PROPS
                 applied = _apply_effect_props(doc, typed, effect or {}, mapping)
-            return {"op": op, "target": _s(lambda: str(shape.Name)),
-                    "effect_type": _n(lambda: int(eff.Type)),
-                    "applied": applied,
-                    "effects": _effect_info(shape)}
+                if op == "extrude_set":
+                    # 实测：灯光是"第 N 盏灯"带索引的属性（LightPresent(i)/LightIntensity(i)/
+                    # LightPosition(i)），SetLight(索引, cdrLightPosition, 强度) 可打开灯；
+                    # SetBevel(深度, 角度, 只显示斜角) 一次设斜角
+                    light_spec = effect or {}
+                    if light_spec.get("light_index") is not None:
+                        li = int(light_spec["light_index"])
+                        if not 1 <= li <= 3:
+                            raise CdrBadArgument("light_index 可用 1~3")
+                        pos = typed.LightPosition(li)
+                        intensity = int(light_spec.get("light_intensity", 80))
+                        typed.SetLight(li, pos, intensity)
+                        applied.append(f"light_{li}")
+                    if light_spec.get("bevel_depth") is not None or \
+                            light_spec.get("bevel_angle") is not None:
+                        typed.SetBevel(float(light_spec.get("bevel_depth", 1.0)),
+                                       float(light_spec.get("bevel_angle", 45.0)),
+                                       bool(light_spec.get("show_bevel_only", False)))
+                        applied.append("bevel")
+            result = {"op": op, "target": _s(lambda: str(shape.Name)),
+                      "effect_type": _n(lambda: int(eff.Type)),
+                      "applied": applied,
+                      "effects": _effect_info(shape)}
+            if op == "extrude_set":
+                result["extrude"] = _extrude_effect_info(shape)
+            return result
 
         if op == "break_apart":
             shape.BreakApart()
