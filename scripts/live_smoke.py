@@ -3901,6 +3901,37 @@ def main() -> int:
                           f"{uae.get('page_shapes_after')}")
         no_error("关闭解组测试文档", server.cdr_close(g54_id))
 
+    # ---------------- 15bi. 第五十五波：连接器 / 线性·角度标注 ----------------
+    print("\n[15bi] 第五十五波：CreateSnapPoint + CreateConnector/ConnectorEx/RightAngleConnector/Dimension")
+    d55_doc = server.cdr_open(preset="A4")
+    if "document_id" in d55_doc:
+        d55_id = d55_doc["document_id"]
+        d55r = server.cdr_create(d55_id, [
+            {"type": "connector", "x1": 0, "y1": 0, "x2": 40, "y2": 20},
+            {"type": "right_angle_connector", "x1": 0, "y1": 40, "x2": 40, "y2": 60,
+             "corner_radius": 5},
+            {"type": "linear_dimension", "x1": 0, "y1": 80, "x2": 40, "y2": 80},
+            {"type": "angular_dimension", "cx": 60, "cy": 80, "x1": 80, "y1": 80,
+             "x3": 60, "y3": 100},
+        ])
+        if no_error("cdr_create(连接器/标注)", d55r):
+            got55 = d55r.get("created") or []
+            check("可建连接器（CreateConnector + CreateSnapPoint）",
+                  (got55[0] or {}).get("type") == "connector"
+                  and ((got55[0] or {}).get("bbox") or {}).get("width") == 40.0,
+                  f"type={(got55[0] or {}).get('type')}")
+            check("可建直角连接器（CreateRightAngleConnector）",
+                  (got55[1] or {}).get("type") == "connector",
+                  f"type={(got55[1] or {}).get('type')}")
+            check("可建线性标注（CreateLinearDimension 22 参）",
+                  (got55[2] or {}).get("type") == "dimension"
+                  and ((got55[2] or {}).get("bbox") or {}).get("width") == 40.0,
+                  f"type={(got55[2] or {}).get('type')}")
+            check("可建角度标注（CreateAngularDimension 18 参）",
+                  (got55[3] or {}).get("type") == "dimension",
+                  f"type={(got55[3] or {}).get('type')}")
+        no_error("关闭连接器/标注测试文档", server.cdr_close(d55_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

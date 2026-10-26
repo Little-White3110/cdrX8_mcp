@@ -2,7 +2,7 @@
 
 > 目的：证明"还有多少没探"。每一行要么有对应的工具，要么有实测失败证据。
 > 环境：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）/ Python 3.11.9 64 位
-> 最近更新：2026-10-26 第五十四波（同级对象遍历 / 解组家族纠正）
+> 最近更新：2026-10-26 第五十五波（连接器 / 线性·角度标注）
 
 ## 怎么得出这份清单
 
@@ -22,7 +22,7 @@
 | `IVGDocumentEvents` | 28 | **新打通（第二十七波）**：每个文档挂 `DIVGDocumentEvents` sink；捕获 ShapeCreate/Delete/Move/Transform/Distort/Change、LayerCreate/Delete/Activate/Change、PageCreate/Delete/Activate/Change、SelectionChange、Before/AfterSave、Before/AfterExport |
 | `IVGDocument` | 78 | 已用：Unit / Pages / AddPages / DeletePages / ActivePage / ActiveLayer / Selection / Save·SaveAs / ExportEx / ExportBitmap(不适用) / PublishToPDF / Undo / Redo / Begin·EndCommandGroup / FileName / Dirty / Name / StyleSheet / **Metadata / DataFields / ColorContext / ConvertToColorContext / Revert / Views / CreateView** / **设置：EditAcrossLayers / ApplyToDuplicate / CurvePrecision / Resolution / ReferencePoint / ShapeEnumDirection / TextFormatter / WorldScale / FacingPages / FirstPageOnRightSide / Layout / Unit / DrawingOriginX·Y / PreserveSelection** / **Keywords·Notes（可写，读需走 Metadata）** / **ToUnits / FromUnits / SampleColorAtPoint / SampleColorInArea / ShowAllHiddenObjects / SetLayout / Repeat / CreateImage / CreateColorStyles / InsertPages / HatchLibraries / SaveStyleSheet / LoadStyleSheet / CreateFill / CreateOutline（字符串格式无效）**；**第三十五波**：`AddPagesEx` / `InsertPagesEx`（定尺寸加页/插页）、`CreateArrowHead2/Ex/Ex2`（命名箭头）、`ResolveAllBitmapsLinks`、`SaveSettings`/`RestoreSettings`/`ResetSettings`（设置快照，调用无异常、可见效果未确认）、`CreateColor`（在 Application 上）/ `CreateUniformFill`；**第三十八波**：`CreateUniformFill(IVGColor)` 造填充对象 + `ShapeRange.ApplyFill` 批量上色、`CreateArrowHead2(Curve, Name)` 命名箭头；**第四十二波**：`CreateShapeRangeFromArray`、`ConvertToBitmapEx`（范围）、`AssignColorContext`、`SaveStyleSheetAsDefault`、`CreateArrowHeadEx` / `CreateArrowHeadEx2` / `CreateArrowHeadOptions`；**第四十三波**：`Export(FileName, Filter, Range, Options, PaletteOptions)`、`ExportBitmap(16 参，返回 ICorelExportFilter，必须 Finish())`；**第五十一波**：`CreateArrowHeadEx`（无名箭头，Name 为空）与已用的 Ex2 并存（`arrowhead_unnamed`）；**第五十三波**：`CreateBSpline(控制点数, 闭合)` → `IVGBSpline`（配合 `InsertControlPoint(序号, x, y, Clamped)`，**两端必须 Clamped=True**）|
 | `IVGPage` | 22 | **全覆盖**：SetSize / SelectSize / GetSize / CreateLayer / Activate / Delete / MoveTo / FindShape(s) / TextFind / TextReplace / GetGuides / UnlockAllShapes / GetObjectsBoundingBox(改用自算) / SelectShapesFromRectangle / Shapes / Layers / Orientation / **FindClosestSnapPoint** |
-| `IVGLayer` | 50 | 已用：Create*（矩形/椭圆/多边形/螺旋/网格/线/贝塞尔/艺术字/段落字/参考线/**角度参考线**/**位图 CreateBitmap·CreateBitmap2**/**OLE 文件 CreateOLEObjectFromFile**/**矩形造形 CreateRectangleRect·CreateEllipseRect**（第三十四波）/**曲线段 CreateCurveSegment**（第三十四波））/ Import / ImportEx / CreateCurve / Activate / Delete / MoveAbove / **MoveBelow / GetAbove / GetBelow / Paste / FindShape** / Visible / Editable / Printable / Master / **IsGuidesLayer（属性，不是方法）**；**第三十八波**：完整参数形态 `CreateRectangle(left,top,right,bottom,4 圆角)` / `CreateEllipse(left,top,right,bottom,起止角,pie)` / `CreatePolygon(left,top,right,bottom,sides,subpaths,complexity,star,starComplexity,maxComplexity)`；**第四十一波**：`CreateBitmap2(x,y,w,h,Image,Alpha)` 与 `CreateBitmapRect(IVGRect,Image,Alpha)`（都要 IVGImage + Alpha=None）；**第四十三波**：`PasteEx(IVGStructPasteOptions)`（返回 ShapeRange）；**第四十七波**：`CreateArtisticTextWide` / `CreateParagraphTextWide`（显式语言/字符集）、`ImportEx(FileName, Filter, Options)`；**第五十三波**：`CreateBSpline(IVGBSpline)` —— 拿到 `Document.CreateBSpline` 造好的样条定义后落成 **Type 21** 的样条对象（`ConvertToCurves` 后变 Type 3）|
+| `IVGLayer` | 50 | 已用：Create*（矩形/椭圆/多边形/螺旋/网格/线/贝塞尔/艺术字/段落字/参考线/**角度参考线**/**位图 CreateBitmap·CreateBitmap2**/**OLE 文件 CreateOLEObjectFromFile**/**矩形造形 CreateRectangleRect·CreateEllipseRect**（第三十四波）/**曲线段 CreateCurveSegment**（第三十四波））/ Import / ImportEx / CreateCurve / Activate / Delete / MoveAbove / **MoveBelow / GetAbove / GetBelow / Paste / FindShape** / Visible / Editable / Printable / Master / **IsGuidesLayer（属性，不是方法）**；**第三十八波**：完整参数形态 `CreateRectangle(left,top,right,bottom,4 圆角)` / `CreateEllipse(left,top,right,bottom,起止角,pie)` / `CreatePolygon(left,top,right,bottom,sides,subpaths,complexity,star,starComplexity,maxComplexity)`；**第四十一波**：`CreateBitmap2(x,y,w,h,Image,Alpha)` 与 `CreateBitmapRect(IVGRect,Image,Alpha)`（都要 IVGImage + Alpha=None）；**第四十三波**：`PasteEx(IVGStructPasteOptions)`（返回 ShapeRange）；**第四十七波**：`CreateArtisticTextWide` / `CreateParagraphTextWide`（显式语言/字符集）、`ImportEx(FileName, Filter, Options)`；**第五十三波**：`CreateBSpline(IVGBSpline)` —— 拿到 `Document.CreateBSpline` 造好的样条定义后落成 **Type 21** 的样条对象（`ConvertToCurves` 后变 Type 3）；**第五十五波**：`CreateConnector(起, 止)` / `CreateConnectorEx(类型, 起, 止)` / `CreateRightAngleConnector(起, 止, 圆角)` → **Type 19** 连接器；`CreateLinearDimension(22 参)` / `CreateAngularDimension(18 参)` → **Type 14** 标注（端点用 `Application.CreateSnapPoint(x, y)` 造，返回 IVGSnapPoint）|
 | `IVGShape` | 124 | 已用：几何 / Fill / Outline / Transparency / Locked / Name / Type / GetBoundingBox / Duplicate / Clone / Delete / **层级 / StepAndRepeat / Distribute / CreateBoundary / CreatePerspective / Separate / CreateEnvelopeFromCurve / CreateEnvelopeFromShape / CompareTo / CreateSelection / RemoveFromSelection / IsOnShape / Copy / Cut / CopyToLayer / MoveToLayer / Project / Unproject / CreateDocumentFrom / CreateExtrude / CreateLens / CreateBlend / OverprintFill / OverprintOutline / OverprintBitmap** / ConvertToCurves / ConvertToSymbol / Weld·Trim·Intersect / AddToPowerClip / CreateDropShadow·Contour·Envelope / AlignToPage·AlignToShape / Fillet·Chamfer·Scallop / Group / Ungroup / BreakApart / Combine；**第三十九波**：`GetMatrix` / `SetMatrix`（[d11,d12,d21,d22,tx,ty]，读回精确；tx/ty 是 X8 内部单位）、`IsTypeAnyOf`（传 list[int] 可用）、`IsOnShape`（2=内部 / 1=边界 / 0=外部）、`OrderIsInFrontOf`、`PlaceTextInside`、`DuplicateAsRange` / `CloneAsRange`、**扭曲三件套 `CreatePushPullDistortion` / `CreateTwisterDistortion` / `CreateZipperDistortion`**；**第四十波**：`GetPositionEx` / `SetPositionEx`（cdrReferencePoint 1~9 定位）、`FindSnapPoint(ReferenceData)`、`GetLinkedShapes(LinkType)`、`ConvertToBitmapEx(8 参)`、`GetOverprintFillState` / `GetOverprintOutlineState`；**第四十八波**：`CopyToLayerAsRange(layer)`（复制到指定图层并返回范围）、`AlignToShapeRange(alignType, range, textOrigin)`（对齐到另一批对象）；**第四十九波**：`CopyPropertiesFrom(源对象, 掩码)` 在**形状级**可用（掩码 4/8/15 会复制填充，1/2 不影响填充；范围级同名方法仍报错）；**第五十波**：`SkewEx(angleX, angleY, cx, cy)` 形状级斜切可用（`ApplyTransformMatrix` 仍不可用：`Application.MathUtils` 不存在，_造型不了矩阵对象_）；**第五十四波（纠正）**：`GetNext(方向)` / `GetPrevious(方向)` **可用**（各取 1 个参数，返回同层相邻 IVGShape；之前记的「`Shape.Next` 是 3 参 propget」说的是另一个属性）；`Ungroup` 也确认生效 |
 | `IVGShapeRange` | 131 | 已用：Group / Combine / AlignAndDistribute / ApplyFountainFill / SetOutlineProperties(不适用，改属性直写) / ConvertToCurves / Add / Count / **CreateParallelCurves / ConvertToBitmap / ConvertOutlineToObject / CreateBoundary / SetFillMode / SetPixelAlignedRendering / ApplyFill / ApplyOutline / CreateDocumentFrom**；**第三十三波**：`AlignRangeToPage` / **PageCenter / Grid / Point / Shape / ShapeRange**、`AddRange` / `RemoveRange`、`Unlock`、`BreakApartEx`、`ClearEffect`、`IndexOf` / `CountAnyOfType` / `ExistsAnyOfType` / `FindAnyOfType`、`GetPositionEx` / `SetPositionEx` / `RotateEx` / `SkewEx`；**空操作/不可用**：`UngroupAll`·`UngroupAllEx`·`UngroupEx`（实测调完对象数不变）、`Sort`（比较表达式语法未逆出）、`AllExcluding`（TypeError）、`SetSizeEx`/`StretchEx`（参数语义不明且会放大到离谱尺寸）；**第四十二波**：`Document.CreateShapeRangeFromArray([shape,…])` **接受 Python list**（配 `Exists` 校验），`ConvertToBitmapEx(8 参)` 整批位图化；**第四十七波**：`SetOutlineProperties`（14 参）/ `SetOutlinePropertiesEx`（15 参，含 Justification）可与 `Shape.Outline.SetProperties(Ex)` 一样全参调用；`AlignRangeToPage(cdrAlignType)` 直接对齐页边；`DeleteItem(i)` 会**连文档里的对象一起删**（已记入陷阱）；**第五十三波**：`ApplyOutline(IVGOutline)` —— 用一个描边对象整批覆盖范围内所有对象（`Outline.GetCopy()` 再改宽度即可）；**第五十四波（重要纠正）**：`UngroupAll()` / `UngroupAllEx()` / `UngroupEx()` **三个都真实生效**（之前的「空操作」结论是测量方式错了）——`UngroupAll` 无返回，`UngroupAllEx`/`UngroupEx` 返回 ShapeRange；实测组合体解开后页面对象数 1→2/1→3 |
 | `IVGFill` | 13 | 已用：ApplyUniformFill / ApplyFountainFill / ApplyTextureFill / **ApplyPatternFill（内存 PatternCanvas 可用；文件型 Pattern 仍需图像文件）** / ApplyPostscriptFill / ApplyNoFill / **GetCopy / CompareWith**；Hatch 需本机 Hatch 库（本机为空） |
@@ -76,7 +76,7 @@
 | 能力域 | 工具 | 状态 |
 |---|---|---|
 | 会话/文档/状态 | `cdr_status` `cdr_connect` `cdr_documents` `cdr_open`（含**从模板创建**） `cdr_inspect` `cdr_save`（含**保存选项**） `cdr_close` | ✅ / **`cdr_open(create_options=…)`（CreateDocumentEx）** / **`cdr_open(open_options=…)`（OpenDocumentEx）** | ✅ / **`cdr_doc(action="assign_color_context")`** / **`cdr_doc(action="stylesheet_default")`** / **`cdr_doc(action="arrowhead_ex")`** | ✅ |
-| 绘图 | `cdr_create`（矩形含圆角 / 椭圆含圆弧扇形 / 多边形 / 星形 / 螺旋 / 网格 / 直线 / 贝塞尔 / 文字 / 段落文字 / 参考线 / 任意折线 / **内存位图（纯色 + 像素色块）** / **OLE 文件嵌入**） | ✅ / **宽文本（text_wide / paragraph_wide：显式 language_id·charset）** / **B 样条（bspline：控制点构造，可 to_curves）**） | ✅ |
+| 绘图 | `cdr_create`（矩形含圆角 / 椭圆含圆弧扇形 / 多边形 / 星形 / 螺旋 / 网格 / 直线 / 贝塞尔 / 文字 / 段落文字 / 参考线 / 任意折线 / **内存位图（纯色 + 像素色块）** / **OLE 文件嵌入**） | ✅ / **宽文本（text_wide / paragraph_wide：显式 language_id·charset）** / **B 样条（bspline）** / **连接器（connector / connector_ex / right_angle_connector）** / **线性标注（linear_dimension）·角度标注（angular_dimension）**） | ✅ |
 | 样式 | `cdr_modify`（纯色/渐变/纹理/图案（画布）/专色/无色、描边含虚线箭头/自定义虚线线型、投影、轮廓图、封套、透明/图案透明、冻结/解冻透明度、**图案填充微调**） | ✅ |
 | 变换 | `cdr_modify`（移动/尺寸/旋转/翻转/斜切/矩阵/克隆/层级/**层级相对调整**/**清除变换**/**旋转中心**/复制/删除/锁定） | ✅ |
 | **对象样式** | `cdr_style`（列出/从对象创建/派生/套用/改名/删除/读定义/改属性/**样式表 .cdst 导入导出**/**颜色样式与颜色协调**） | ✅ 第六/七/九波/**覆盖属性（override_props）·继承状态（inherited）·属性取值（get_property）·属性清除（clear_property）** | ✅ 第六/七/九/三十七波 |
@@ -243,6 +243,7 @@
 >   `CreateFreeConnector` 报「未实现」；本机无符号库。
 > * 混合 **可用（第十七波）**：`CreateBlend` 传全参数且 `Path=None` 时成功；
 >   效果经 `Effects.Item(i).Blend`（IVGEffectBlend）读写 Steps/Spacing/Angle 等。
+> * 连接器 / 标注 **可用（第五十五波）**：`Application.CreateSnapPoint(x,y)` 造端点后，`CreateConnector` / `CreateConnectorEx` / `CreateRightAngleConnector` / `CreateLinearDimension`(22 参) / `CreateAngularDimension`(18 参) 全部可用。
 > * 同级遍历 / 解组家族 **可用（第五十四波）**：`Shape.GetNext/GetPrevious(方向)`、`ShapeRange.UngroupAll/UngroupAllEx/UngroupEx`（纠正了"空操作"的旧结论）。
 > * B 样条 **可用（第五十三波）**：`Document.CreateBSpline` + `InsertControlPoint` + `Layer.CreateBSpline`（`Layer.CreateBSpline` 要的是 `IVGBSpline` 不是 Curve）。
 > * 整批套描边 **可用（第五十三波）**：`ShapeRange.ApplyOutline(Outline.GetCopy())`。
@@ -352,7 +353,7 @@
 
 ```powershell
 python -m pytest -q              # 93 项纯逻辑
-python scripts/live_smoke.py     # 474 项端到端（真实 CorelDRAW）
+python scripts/live_smoke.py     # 478 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
 ```
 
 联调断言覆盖了上表所有 ✅ 项。反解脚本属于过程产物，已按要求放在 `tmp/` 并在完成时清理；
@@ -360,14 +361,14 @@ python scripts/live_smoke.py     # 474 项端到端（真实 CorelDRAW）
 
 ---
 
-## 六、量化覆盖率（2026-10-26 第五十四波实测）
+## 六、量化覆盖率（2026-10-26 第五十五波实测）
 
 方法：反解类型库拿到 196 个自动化类 / **1619** 个方法（已剔除 `QueryInterface` 等 COM 基础设施）；
 用 AST 扫描 `src/cdrx8_mcp/*.py`，收集所有 `.方法名(` 调用与 `setattr/getattr` 的属性名，
 与主干接口的方法名求交集。**注意：属性名（如 `curve.Nodes`）也会被计入**，所以本波数字含真实属性访问。
 
-**全局：999 / 1619 = 61.7%**（21.2% → … → 61.2% → 本轮 61.7%）
-**主干 20 接口：629 / 743 = 84.7%**
+**全局：1004 / 1619 = 62.0%**（21.2% → … → 61.7% → 本轮 62.0%）
+**主干 20 接口：634 / 743 = 85.3%**
 
 复现命令：`python scripts/coverage_audit.py`（会临时展开类型库到 `tmp/gen_py`，跑完自动清理）
 
@@ -379,7 +380,7 @@ python scripts/live_smoke.py     # 474 项端到端（真实 CorelDRAW）
 | `IVGDocument` | 74 | 57 | **77%** |
 | `IVGPage` | 21 | 20 | **95%** |
 | `IVGCurve` | 36 | 28 | **78%** |
-| `IVGLayer` | 49 | 37 | **76%** |
+| `IVGLayer` | 49 | 42 | **86%** |
 | `IVGTextRange` | 31 | 30 | **97%** |
 | `IVGApplication` | 78 | 53 | **68%** |
 | `IVGText` | 29 | 18 | **62%** |
@@ -393,10 +394,10 @@ python scripts/live_smoke.py     # 474 项端到端（真实 CorelDRAW）
 | `IVGTransparency` | 8 | 7 | **88%** |
 | `IVGStyle` | 15 | 13 | **87%** |
 | `IVGColorContext` | 6 | 5 | **83%** |
-| **合计** | **743** | **629** | **84.7%** |
+| **合计** | **743** | **634** | **85.3%** |
 
 > **怎么读这两个数**：
-> 1. 全局 61.7% 覆盖 1619 个方法（含变体与重复）；主干 20 接口 84.7%。
+> 1. 全局 **62.0%** 覆盖 1619 个方法（含变体与重复）；主干 20 接口 85.3%。
 > 2. 它是**方法/属性名匹配**的近似值，同名方法会跨接口误计。
 > 3. `IVGColor` 已到 **91%**：分量**写**走 `*Assign`，分量**读**走 `CorelScriptGetComponent`（`(5000+模型号, v1..v7)`）；纯 Python 只用于无 COM 场景的换算。
 > 4. 未调用方法多为变体（Wide/Ex/2/3 后缀）与事件订阅、CorelScriptTools/MathUtils。
@@ -1176,6 +1177,24 @@ python scripts/live_smoke.py     # 474 项端到端（真实 CorelDRAW）
 > 另：本轮跑全量冒烟时 CorelDRAW 有一次在 `[15t] Revert` 用例后**进程直接崩溃**
 > （RPC 服务器不可用），重启后同一条命令 474/474 全通过 —— 属偶发，`Revert` 本身已标记为破坏性操作。
 
+## 七之五十三、第五十五波已接入（2026-10-26，连接器 / 线性·角度标注）
+
+| 能力 | 落地位置 | 实测 |
+|---|---|---|
+| **连接器** | `cdr_create(type="connector", x1,y1,x2,y2)` | ✅ `Layer.CreateConnector(IVGSnapPoint, IVGSnapPoint)` → **Type 19**，bbox 40×20 |
+| **连接器（带类型）** | `cdr_create(type="connector_ex", connector_type=0, …)` | ✅ `CreateConnectorEx(类型, 起, 止)` → Type 19 |
+| **直角连接器** | `cdr_create(type="right_angle_connector", corner_radius=5, …)` | ✅ `CreateRightAngleConnector(起, 止, 5)` → Type 19 |
+| **线性标注** | `cdr_create(type="linear_dimension", x1,y1,x2,y2, text_x, text_y, precision, prefix, suffix, …)` | ✅ `CreateLinearDimension` **22 参**全给实参 → **Type 14**，bbox 40 宽 |
+| **角度标注** | `cdr_create(type="angular_dimension", cx,cy,x1,y1,x3,y3, …)` | ✅ `CreateAngularDimension` **18 参** → Type 14 |
+
+> **第五十五波记录**：
+> 1. 这一族的"堵点"是端点类型 `IVGSnapPoint` —— 它由 **`Application.CreateSnapPoint(x, y)`** 产出
+>    （不是 `IVGPoint`，也没有 `x/y` 属性可写）。拿到它之后，连接器三件套与两种标注一次全通。
+> 2. `SHAPE_TYPES` 补了 `14: "dimension"`、`19: "connector"`。
+> 3. **环境经验**：连续两次全量冒烟分别在 `[15t] Revert` 与 `[15n] paste` 崩掉 CorelDRAW
+>    （RPC 服务器不可用）；**杀掉残留的 CorelDRW 进程再跑，478/478 全通过** ——
+>    说明崩的是上一次遗留的坏实例，不是被测代码。跑全量前务必确认没有残留进程。
+
 ## 七之二、仍未接入（第三轮候选）
 
 | 能力 | 接口 | 为什么还没做 |
@@ -1202,11 +1221,11 @@ python scripts/live_smoke.py     # 474 项端到端（真实 CorelDRAW）
   自定义虚线、文档设置、文本区间编辑、自定义箭头、图案微调、文本格式查询、位图内容替换/链接、
   文档回滚、立体化/透镜/效果管理、位图特效命令串、混合、文档颜色转换、用户偏好 KV、OLE 嵌入、
   命名视图、网格设置、叠印、段落缩进、制表位、屏幕叠加层、应用/文档事件、导出/保存/导入选项、吸附点全家族、颜色对象分量、描边对象全量属性都已补上。
-* **方法级覆盖**：全局 61.7%（999/1619），主干 20 接口 84.7%（629/743）。
+* **方法级覆盖**：**全局 62.0%（1004/1619）**，主干 20 接口 85.3%（634/743）。
 * **明确不可用**：位图描摹、文本导入、点集数组建曲线、尺寸标注/连接线（MathUtils 点对象
   不可创建）、符号库、文件型图案/影线填充（本机无库）、曲线贴笔触、OpenDocumentAsCopy、
   HTML 兼容文本、断字写入、填充字符串、文本尺寸查询、灰度→RGB 转换、真实应用偏好读取、
   文本分栏（SetColumns 数组参数）。
-* **第五十四波新增**：同级对象遍历（GetNext/GetPrevious）、解组家族三方法；`IVGShape` 与 `IVGShapeRange` 双双到 90%。
+* **第五十五波新增**：连接器三件套与线性/角度标注（端点用 CreateSnapPoint 造）；`IVGLayer` 到 86%；**全局覆盖过 62%**。
 
 

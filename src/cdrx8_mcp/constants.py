@@ -39,6 +39,8 @@ SHAPE_TYPES: dict[int, str] = {
     7: "group",     # 实测：组合体与「图纸网格」都是 7（网格本质就是一组曲线）
     9: "guide",
     21: "bspline",   # 第五十三波实测：Layer.CreateBSpline 得到 21，ConvertToCurves 后变 3
+    14: "dimension", # 第五十五波实测：CreateLinearDimension / CreateAngularDimension
+    19: "connector", # 第五十五波实测：CreateConnector / ConnectorEx / RightAngleConnector
 }
 TEXT_TYPE = 6
 

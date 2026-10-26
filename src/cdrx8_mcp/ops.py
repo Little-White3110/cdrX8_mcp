@@ -4209,6 +4209,9 @@ CREATABLE = (
     "text_wide", "paragraph_wide",
     # 第五十三波：B 样条（控制点 → IVGBSpline → Layer.CreateBSpline）
     "bspline",
+    # 第五十五波：连接器 / 线性标注 / 角度标注（Application.CreateSnapPoint 造端点）
+    "connector", "connector_ex", "right_angle_connector",
+    "linear_dimension", "angular_dimension",
 )
 
 
@@ -4308,6 +4311,44 @@ def _create_one(doc: Any, layer: Any, item: dict) -> Any:
             float(g("c2x", 7)), float(g("c2y", 7)),
             float(g("x2", 10)), float(g("y2", 10)),
         )
+    elif kind in {"connector", "connector_ex", "right_angle_connector",
+                  "linear_dimension", "angular_dimension"}:
+        # 实测：Application.CreateSnapPoint(x, y) 返回 IVGSnapPoint，可直接当
+        # CreateConnector/CreateLinearDimension 的端点参数用
+        app = _app_of(doc)
+
+        def _snap(key_x, key_y, dx=0.0, dy=0.0):
+            return app.CreateSnapPoint(float(g(key_x, dx)), float(g(key_y, dy)))
+
+        p1 = _snap("x1", "y1", 0.0, 0.0)
+        p2 = _snap("x2", "y2", 40.0, 20.0)
+        if kind == "connector":
+            shape = layer.CreateConnector(p1, p2)
+        elif kind == "connector_ex":
+            shape = layer.CreateConnectorEx(int(g("connector_type", 0)), p1, p2)
+        elif kind == "right_angle_connector":
+            shape = layer.CreateRightAngleConnector(p1, p2, float(g("corner_radius", 5.0)))
+        elif kind == "linear_dimension":
+            shape = layer.CreateLinearDimension(
+                int(g("dimension_type", 0)), p1, p2,
+                True, float(g("text_x", (g("x1", 0.0) + g("x2", 40.0)) / 2)),
+                float(g("text_y", g("y1", 0.0) - 10.0)),
+                int(g("style", 0)), int(g("precision", 2)), True,
+                int(g("units", 0)), int(g("placement", 0)), True, False, True,
+                str(g("prefix", "")), str(g("suffix", "")),
+                float(g("outline_width", 0.2)), None, None,
+                str(g("text_font", "Arial")), float(g("text_size", 8.0)), None)
+        else:
+            pc = _snap("cx", "cy", 0.0, 0.0)
+            p3 = _snap("x3", "y3", 40.0, 0.0)
+            shape = layer.CreateAngularDimension(
+                pc, p1, p3, float(g("text_x", 20.0)), float(g("text_y", -10.0)),
+                int(g("precision", 2)), True, int(g("units", 0)), False, True,
+                str(g("prefix", "")), str(g("suffix", "")),
+                float(g("outline_width", 0.2)), None, None,
+                str(g("text_font", "Arial")), float(g("text_size", 8.0)), None)
+        if shape is None:
+            raise CdrComFailure(f"创建 {kind} 失败")
     elif kind in {"bspline"}:
         # 实测：Document.CreateBSpline(控制点数, 闭合) → IVGBSpline；
         # 用 InsertControlPoint(序号, x, y, Clamped) 填点（**两端必须 Clamped=True**），
