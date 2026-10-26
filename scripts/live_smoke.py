@@ -3818,6 +3818,42 @@ def main() -> int:
                       f"param={s52.get('param_offset')}")
         no_error("关闭偏移取点测试文档", server.cdr_close(o52_id))
 
+    # ---------------- 15bg. 第五十三波：B 样条构造 / 整批套用描边 ----------------
+    print("\n[15bg] 第五十三波：CreateBSpline 控制点构造、ShapeRange.ApplyOutline")
+    b53_doc = server.cdr_open(preset="A4")
+    if "document_id" in b53_doc:
+        b53_id = b53_doc["document_id"]
+        b53r = server.cdr_create(b53_id, [
+            {"type": "bspline", "points": [[0, 0], [20, 30], [40, 30], [60, 0]],
+             "closed": False},
+            {"type": "bspline", "points": [[80, 0], [100, 30], [120, 0]],
+             "closed": True, "to_curves": True},
+            {"type": "rectangle", "x": 10, "y": 60, "width": 20, "height": 10,
+             "outline": {"width": 1.0}},
+            {"type": "rectangle", "x": 40, "y": 60, "width": 20, "height": 10,
+             "outline": {"width": 1.0}},
+        ])
+        if no_error("cdr_create(B样条/描边测试)", b53r):
+            made53 = b53r.get("created") or []
+            check("B 样条控制点构造可用（CreateBSpline + Layer.CreateBSpline）",
+                  (made53[0] or {}).get("type") == "bspline",
+                  f"type={(made53[0] or {}).get('type')}")
+            check("B 样条可转曲线（to_curves）",
+                  (made53[1] or {}).get("type") == "curve",
+                  f"type={(made53[1] or {}).get('type')}")
+            b53a = {"name": made53[2]["name"]}
+            b53b = {"name": made53[3]["name"]}
+            server.cdr_select(b53_id, name=b53a["name"])
+            server.cdr_select(b53_id, name=b53b["name"])
+            aop = server.cdr_shape_ops(b53_id, op="range_outline_apply",
+                                       target=b53a, other=b53b,
+                                       params={"width": 4.0})
+            if no_error("cdr_shape_ops(range_outline_apply)", aop):
+                check("可整批套用描边（ShapeRange.ApplyOutline）",
+                      aop.get("first_width") == 4.0 and (aop.get("count") or 0) >= 2,
+                      f"width={aop.get('first_width')} count={aop.get('count')}")
+        no_error("关闭 B 样条测试文档", server.cdr_close(b53_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

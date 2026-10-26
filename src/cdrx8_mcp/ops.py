@@ -4207,6 +4207,8 @@ CREATABLE = (
     "bitmap_at", "bitmap_rect",
     # 第四十七波：宽文本（带语言/字符集）构造
     "text_wide", "paragraph_wide",
+    # 第五十三波：B 样条（控制点 → IVGBSpline → Layer.CreateBSpline）
+    "bspline",
 )
 
 
@@ -4306,6 +4308,23 @@ def _create_one(doc: Any, layer: Any, item: dict) -> Any:
             float(g("c2x", 7)), float(g("c2y", 7)),
             float(g("x2", 10)), float(g("y2", 10)),
         )
+    elif kind in {"bspline"}:
+        # 实测：Document.CreateBSpline(控制点数, 闭合) → IVGBSpline；
+        # 用 InsertControlPoint(序号, x, y, Clamped) 填点（**两端必须 Clamped=True**），
+        # 再 Layer.CreateBSpline(bs) 落成 Type 21 的样条对象（转曲后 Type 3）
+        pts = item.get("points") or []
+        if len(pts) < 3:
+            raise CdrBadArgument("bspline 需要 points：[[x,y], …] 至少 3 个控制点")
+        closed = bool(item.get("closed", False))
+        bs = doc.CreateBSpline(len(pts), closed)
+        for idx, point in enumerate(pts, start=1):
+            clamped = idx in (1, len(pts))
+            bs.InsertControlPoint(idx, float(point[0]), float(point[1]), clamped)
+        shape = layer.CreateBSpline(bs)
+        if shape is None:
+            raise CdrComFailure("Layer.CreateBSpline 返回空")
+        if bool(item.get("to_curves", False)):
+            shape.ConvertToCurves()
     elif kind in {"polyline", "points", "path"}:
         pts = item.get("points") or []
         if len(pts) < 2:
@@ -5699,6 +5718,8 @@ SHAPE_OPS = (
     "range_outline",
     # 第四十八波：复制到其它图层（AsRange）/ 对齐到形状范围
     "copy_to_layer_range", "align_to_range",
+    # 第五十三波：把某个对象的描边整批套到范围
+    "range_outline_apply",
     # 第四十九波：按掩码复制属性
     "copy_props",
     # 第五十波：形状级斜切（SkewEx）
@@ -5961,6 +5982,36 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
                 first = _s(lambda: sr2.Item(1))
             return {"op": op, "count": _n(lambda: int(sr2.Count), 0),
                     "api": used,
+                    "first_width": _round(_s(lambda: float(first.Outline.Width)))
+                    if first is not None else None}
+        if op == "range_outline_apply":
+            # 实测：ShapeRange.ApplyOutline(Outline) —— 用一个描边对象整批覆盖范围内所有对象
+            if not other:
+                raise CdrBadArgument("range_outline_apply 需要 other（描边来源对象）")
+            source_shape = find_shape(doc, page, other)
+            outline = _s(lambda: source_shape.Outline.GetCopy())
+            if outline is None:
+                raise CdrComFailure("Outline.GetCopy 返回空")
+            spec = dict(params or {})
+            if "width" in spec:
+                try:
+                    outline.Width = float(spec["width"])
+                except Exception:
+                    pass
+            with atomic(doc, label):
+                sr = selection_range(doc)
+                if target:
+                    try:
+                        doc.Selection().RemoveAll()
+                    except Exception:
+                        pass
+                    find_shape(doc, page, target).AddToSelection()
+                    sr = selection_range(doc)
+                sr.ApplyOutline(outline)
+                sr2 = selection_range(doc)
+                first = _s(lambda: sr2.Item(1))
+            return {"op": op, "count": _n(lambda: int(sr2.Count), 0),
+                    "source": _s(lambda: str(source_shape.Name)),
                     "first_width": _round(_s(lambda: float(first.Outline.Width)))
                     if first is not None else None}
         if op == "skew_ex":
