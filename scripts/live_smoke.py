@@ -4563,6 +4563,38 @@ def main() -> int:
                       f"ok={pf72.get('ok')}")
         no_error("关闭包络/手柄测试文档", server.cdr_close(v72_id))
 
+    # ---------------- 15ca. 第七十三波：叠加层补齐 / 文本框列信息 ----------------
+    print("\n[15ca] 第七十三波：OnScreenText.SetText·SetPixelOffset·UpdatePosition / OnScreenCurve.SetPoints / TextFrame 列信息")
+    o73_doc = server.cdr_open(preset="A4")
+    if "document_id" in o73_doc:
+        o73_id = o73_doc["document_id"]
+        ot73 = server.cdr_view(o73_id, action="overlay_text", text="MCP 叠加",
+                               x=50, y=50, distance=5)
+        if no_error("cdr_view(overlay_text)", ot73):
+            check("叠加文字可设文本/像素偏移/位置（OnScreenText 三方法）",
+                  ot73.get("shown") == 1, f"shown={ot73.get('shown')}")
+        op73 = server.cdr_view(o73_id, action="overlay_points", x=10, y=10,
+                               x2=80, y2=60, color=0x00FF00)
+        if no_error("cdr_view(overlay_points)", op73):
+            check("叠加曲线可设无笔刷/填充/点集（OnScreenCurve 三方法）",
+                      {"set_no_pen", "set_brush", "set_points"}
+                      <= set(op73.get("applied") or []),
+                      str(op73.get("applied")))
+        server.cdr_view(o73_id, action="overlay_clear")
+        o73r = server.cdr_create(o73_id, [
+            {"type": "paragraph_text", "x": 0, "y": 0, "x2": 80, "y2": 60,
+             "text": "段落文本"}])
+        if no_error("cdr_create(文本框列信息测试)", o73r):
+            fi73 = server.cdr_text(o73_id, {"name": o73r["created"][0]["name"]},
+                                   frame_info=True)
+            if no_error("cdr_text(frame_info)", fi73):
+                frames73 = fi73.get("frames") or []
+                check("文本框列信息可读（ColumnWidth/ColumnGutter）",
+                      len(frames73) == 1
+                      and bool(frames73[0].get("column_widths")),
+                      f"cols={frames73[0].get('column_widths') if frames73 else None}")
+        no_error("关闭叠加层/文本框测试文档", server.cdr_close(o73_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

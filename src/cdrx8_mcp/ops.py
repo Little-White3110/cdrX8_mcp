@@ -387,7 +387,7 @@ def save_as_copy(doc: Any, path: str, *, options: dict | None = None) -> dict:
     }
 
 
-VIEW_ACTIONS = ("refresh", "activate", "new_window", "overlay_handle",
+VIEW_ACTIONS = ("refresh", "activate", "new_window", "overlay_handle", "overlay_points",
                 "to_screen", "to_document",
                 "zoom_fit_page", "zoom_fit_width", "zoom_fit_height",
                 "zoom_all_objects", "zoom_selection", "actual_size", "zoom_in",
@@ -519,14 +519,54 @@ def view_ops(doc: Any, action: str, *, x: float | None = None, y: float | None =
                 pass
         _ONSCREEN["items"] = []
         return {"action": act, "hidden": hidden}
+    if act == "overlay_points":
+        # 实测：IVGOnScreenCurve 的 SetNoPen / SetBrush / SetPoints 都可用
+        app = _app_of(doc)
+        obj = app.CreateOnScreenCurve()
+        points = [[float(x if x is not None else 50), float(y if y is not None else 50)],
+                  [float(x2 if x2 is not None else 120), float(y2 if y2 is not None else 90)]]
+        applied = []
+        try:
+            obj.SetNoPen()
+            applied.append("set_no_pen")
+        except Exception:
+            pass
+        try:
+            obj.SetBrush(int(color))
+            applied.append("set_brush")
+        except Exception:
+            pass
+        try:
+            # 实测：SetPoints 要的是 IVGPointRange（不是 Python list）
+            obj.SetPoints(_make_point_range(app, points))
+            applied.append("set_points")
+        except Exception:
+            pass
+        obj.Show()
+        _ONSCREEN["items"].append(obj)
+        return {"action": act, "points": len(points), "applied": applied,
+                "shown": len(_ONSCREEN["items"])}
     if act.startswith("overlay_"):
         app = _app_of(doc)
         if act == "overlay_text":
             obj = app.CreateOnScreenText()
-            obj.SetTextAndPosition(str(text or "overlay"),
-                                   float(x if x is not None else 100),
-                                   float(y if y is not None else 100))
+            tx = float(x if x is not None else 100)
+            ty = float(y if y is not None else 100)
+            obj.SetTextAndPosition(str(text or "overlay"), tx, ty)
             obj.SetTextColor(int(color))
+            # 实测：IVGOnScreenText 还有 SetText / SetPixelOffset / UpdatePosition
+            try:
+                obj.SetText(str(text or "overlay"))
+            except Exception:
+                pass
+            try:
+                obj.SetPixelOffset(int(distance), 0)
+            except Exception:
+                pass
+            try:
+                obj.UpdatePosition(tx, ty)
+            except Exception:
+                pass
         else:
             obj = app.CreateOnScreenCurve()
             obj.SetPen(int(color), int(width), 0)
@@ -8232,6 +8272,7 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
              range_struct: dict | None = None,
              link_to: dict | None = None, unlink: bool = False,
              make_html_compatible: bool | None = None,
+             frame_info: bool = False,
              struct_info: bool = False,
              range_action: dict | None = None,
              label: str = "cdr_text") -> dict:
@@ -8251,7 +8292,8 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
                    select_all, align_to_baseline, range_delete, range_copy,
                    range_paste, range_straighten, clear_tabs)) or bool(tab_stops) \
             or begin_edit or paragraph_format is not None \
-            or link_to is not None or unlink or make_html_compatible is not None
+            or link_to is not None or unlink or make_html_compatible is not None \
+            or frame_info
         if not mutating:
             # 纯读取 / 导出：不建 undo 组，也不改动文档
             result: dict = {"applied": [], "warnings": [],
@@ -8411,6 +8453,37 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
                 except Exception as exc:  # noqa: BLE001
                     warnings.append(f"复制文字属性失败：{exc}")
 
+            if frame_info:
+                # 实测：Text.Frames.Item(i) 是 IVGTextFrame，
+                # ColumnWidth(i) / ColumnGutter(i) 按列号读（SetColumns 需要 SAFEARRAY，暂不可用）
+                frames = _s(lambda: shape.Text.Frames)
+                if frames is None:
+                    raise CdrComFailure("取不到 Text.Frames")
+                count = _n(lambda: int(frames.Count), 0) or 0
+                info = []
+                for i in range(1, min(count, 10) + 1):
+                    tf = _s(lambda i=i: frames.Item(i))
+                    if tf is None:
+                        continue
+                    cols = _n(lambda tf=tf: int(tf.ColumnCount), 0) or 0
+                    info.append({
+                        "index": _n(lambda tf=tf: int(tf.Index)),
+                        "is_first": bool(_s(lambda tf=tf: bool(tf.IsFirst), False)),
+                        "is_last": bool(_s(lambda tf=tf: bool(tf.IsLast), False)),
+                        "empty": bool(_s(lambda tf=tf: bool(tf.Empty), False)),
+                        "columns": cols,
+                        "vertical_alignment": _n(
+                            lambda tf=tf: int(tf.VerticalAlignment)),
+                        "column_widths": [
+                            _round(_s(lambda tf=tf, k=k: float(tf.ColumnWidth(k))))
+                            for k in range(1, min(cols, 8) + 1)],
+                        "column_gutters": [
+                            _round(_s(lambda tf=tf, k=k: float(tf.ColumnGutter(k))))
+                            for k in range(1, min(cols, 8) + 1)],
+                    })
+                return {"applied": ["frame_info"], "frames": info,
+                        "frames_in_link": _n(lambda: int(shape.Text.FramesInLink), 0),
+                        "unused_frames": _n(lambda: int(shape.Text.UnusedFramesInLink), 0)}
             if make_html_compatible is not None:
                 # 实测：Text.MakeHTMLCompatible(bool) 返回 True（对艺术字/段落字都可调）
                 ok = bool(_s(lambda: bool(shape.Text.MakeHTMLCompatible(

@@ -414,7 +414,8 @@ def cdr_text(document_id: str, target: dict, text: str | None = None,
              paragraph_format: dict | None = None,
              range_struct: dict | None = None,
              link_to: dict | None = None, unlink: bool = False,
-             make_html_compatible: bool | None = None) -> dict:
+             make_html_compatible: bool | None = None,
+             frame_info: bool = False) -> dict:
     """文字的排版级操作。
 
     内容与类型：text / contents（段落文本整体替换）/ find / replace_old+replace_new /
@@ -482,7 +483,7 @@ def cdr_text(document_id: str, target: dict, text: str | None = None,
             struct_info=struct_info, range_action=range_action,
             begin_edit=begin_edit, paragraph_format=paragraph_format,
             range_struct=range_struct, link_to=link_to, unlink=unlink,
-            make_html_compatible=make_html_compatible,
+            make_html_compatible=make_html_compatible, frame_info=frame_info,
         ), label="cdr_text")
         if not mutating:
             return result
