@@ -4623,6 +4623,42 @@ def main() -> int:
                       f"arranged={ar74.get('arranged')}")
         no_error("关闭消失点/窗口测试文档", server.cdr_close(e74_id))
 
+    # ---------------- 15cc. 第七十五波：批量斜切 / 渐变色标枚举 / 线型表保存 ----------------
+    print("\n[15cc] 第七十五波：ShapeRange.SkewEx 批量、FountainColors 色标枚举、OutlineStyles.Save")
+    s75_doc = server.cdr_open(preset="A4")
+    if "document_id" in s75_doc:
+        s75_id = s75_doc["document_id"]
+        s75r = server.cdr_create(s75_doc["document_id"], [
+            {"type": "rectangle", "x": 0, "y": 0, "width": 10, "height": 10},
+            {"type": "rectangle", "x": 30, "y": 0, "width": 10, "height": 10},
+            {"type": "rectangle", "x": 0, "y": 40, "width": 30, "height": 20,
+             "fill": {"type": "fountain", "start": "#FF0000", "end": "#0000FF"}},
+        ])
+        if no_error("cdr_create(批量斜切测试)", s75r):
+            s75a, s75b, s75f = [{"name": c["name"]} for c in s75r["created"]]
+            server.cdr_select(s75_id, name=s75a["name"])
+            server.cdr_select(s75_id, name=s75b["name"])
+            sk75 = server.cdr_shape_ops(s75_id, op="range_skew",
+                                        params={"angle_x": 10, "cx": 20, "cy": 5})
+            if no_error("cdr_shape_ops(range_skew)", sk75):
+                bb75 = sk75.get("bbox_after") or {}
+                check("选区可整批斜切（ShapeRange.SkewEx）",
+                      (bb75.get("width") or 0) > 40.0,
+                      f"bbox={bb75.get('x')},{bb75.get('width')}")
+            fc75 = server.cdr_shape_ops(s75_id, op="fountain_colors", target=s75f,
+                                        params={"index": 1})
+            if no_error("cdr_shape_ops(fountain_colors stops)", fc75):
+                stops75 = fc75.get("stops") or []
+                check("渐变色标可枚举（Color/Position）",
+                      len(stops75) >= 1 and stops75[0].get("position") is not None,
+                      f"count={fc75.get('count')} stops={len(stops75)}")
+            os75 = server.cdr_doc(s75_id, action="outline_styles_save")
+            if no_error("cdr_doc(outline_styles_save)", os75):
+                check("线型表可保存（OutlineStyles.Save）",
+                      os75.get("saved") is True and (os75.get("count") or 0) > 100,
+                      f"count={os75.get('count')}")
+        no_error("关闭批量斜切测试文档", server.cdr_close(s75_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

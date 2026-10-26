@@ -645,6 +645,7 @@ DOC_ACTIONS = ("info", "clear_selection", "clear_undo", "palette", "arrowhead",
                "app_status", "palette_manager",
                "outline_style_dash", "tool_shape_attributes", "tree_manager",
                "set_color_profile", "palette_from", "windows",
+               "outline_styles_save",
                "select_color_profile",
                "fountain_transform", "arrowhead_unnamed",
                # 第四十六波：CorelScriptTools（VBA 辅助对象）单位/数学/日期
@@ -1544,6 +1545,15 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
         out["note"] = ("CorelScriptTools 的值以 1/10000 mm 为单位：FromInches(1)=254000；"
                        "ASin 返回弧度；query+code_page 可做 Unicode↔ANSI 码页转换")
         return out
+    if act == "outline_styles_save":
+        # 实测：Application.OutlineStyles.Save() 可把线型表存回用户配置
+        styles = _s(lambda: _app_of(doc).OutlineStyles)
+        if styles is None:
+            raise CdrComFailure("取不到 OutlineStyles")
+        styles.Save()
+        return {"action": act, "saved": True,
+                "count": _n(lambda: int(styles.Count), 0)}
+
     if act == "select_color_profile":
         # 实测：IVGColorProfiles.SelectByName(名称) 可调用（找不到/不匹配时返回 False）
         app = _app_of(doc)
@@ -6546,6 +6556,8 @@ SHAPE_OPS = (
     "envelope_object",
     # 第七十四波：拉伸消失点共享
     "extrude_vp_share",
+    # 第七十五波：批量斜切（含范围版）
+    "range_skew",
     # 第四十九波：按掩码复制属性
     "copy_props",
     # 第五十波：形状级斜切（SkewEx）
@@ -6852,6 +6864,27 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
                     "excluded": list(exclude), "result_count": count,
                     "names": [_s(lambda i=i: str(got.Item(i).Name))
                               for i in range(1, min(count, 20) + 1)]}
+        if op == "range_skew":
+            # 实测：ShapeRange.SkewEx(AngleX, AngleY, CenterX, CenterY) 可对选区整批斜切，
+            # 每个对象都按同一中心变形（bbox 宽度会变大）
+            spec = dict(params or {})
+            use_range = bool(spec.get("use_range", True))
+            if use_range:
+                target_obj = selection_range(doc)
+                if _n(lambda: int(target_obj.Count), 0) < 1:
+                    raise CdrBadArgument("range_skew 需要先选中对象（或 use_range=false）")
+            else:
+                target_obj = find_shape(doc, page, target or {})
+            before = _bbox(target_obj)
+            ax = float(spec.get("angle_x", 0.0))
+            ay = float(spec.get("angle_y", 0.0))
+            cx = float(spec.get("cx", 0.0))
+            cy = float(spec.get("cy", 0.0))
+            with atomic(doc, label):
+                target_obj.SkewEx(ax, ay, cx, cy)
+            return {"op": op, "scope": "range" if use_range else "shape",
+                    "angles": [ax, ay], "center": [cx, cy],
+                    "bbox_before": before, "bbox_after": _bbox(target_obj)}
         if op == "envelope_object":
             # 实测：Shape.CreateEnvelope(PresetIndex(1 基), Mode, KeepLines) 返回 IVGEffect；
             # effect.Envelope 是 IVGEffectEnvelope，Select / CreateFrom / CopyFrom /
@@ -6922,6 +6955,7 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
                         "line_scale": _round(_s(lambda: float(hf.GetLineScale()))),
                         "applied": applied}
             if op == "fountain_colors":
+                local_warnings: list = []
                 # 实测：Fill.Fountain.Colors → IVGFountainColors；
                 # GrayLevel(i) 读、SetGrayLevel(i, v) 写（Count 可读）
                 fountain = _s(lambda: source.Fill.Fountain)
@@ -6934,12 +6968,31 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
                         colors.SetGrayLevel(int(spec["index"]),
                                             float(spec["gray_level"]))
                         applied.append("set_gray_level")
+                    if spec.get("add_gray_level") is not None:
+                        # 实测：AddGrayLevel(灰度) **只对灰度渐变有效**；
+                        # 彩色渐变调用会报「非选择性的参数」，要改用 SetGrayLevel
+                        try:
+                            colors.AddGrayLevel(float(spec["add_gray_level"]))
+                            applied.append("add_gray_level")
+                        except Exception as exc:  # noqa: BLE001
+                            local_warnings.append(
+                                f"AddGrayLevel 仅灰度渐变可用：{exc}")
                 idx = int(spec.get("index", 1))
+                stops = []
+                for i in range(1, min(count, 12) + 1):
+                    c = _s(lambda i=i: colors.Item(i))
+                    if c is None:
+                        continue
+                    stops.append({
+                        "color": (_s(lambda c=c: str(c.Color.ToString())) or "")[:44],
+                        "position": _round(_s(lambda c=c: float(c.Position))),
+                    })
                 return {"op": op, "count": count, "index": idx,
                         "gray_level": _round(_s(lambda: float(colors.GrayLevel(idx)))),
                         "levels": [_round(_s(lambda i=i: float(colors.GrayLevel(i))))
                                    for i in range(1, min(count, 10) + 1)],
-                        "applied": applied}
+                        "stops": stops, "applied": applied,
+                        "warnings": local_warnings}
             # ellipse_geometry
             ell = _s(lambda: source.Ellipse)
             if ell is None:

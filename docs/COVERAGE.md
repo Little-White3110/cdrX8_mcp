@@ -2,7 +2,7 @@
 
 > 目的：证明"还有多少没探"。每一行要么有对应的工具，要么有实测失败证据。
 > 环境：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）/ Python 3.11.9 64 位
-> 最近更新：2026-10-26 第七十四波（拉伸消失点共享 / 窗口排列）+ **终版覆盖报告**
+> 最近更新：2026-10-27 第七十五波（批量斜切 / 渐变色标枚举 / 线型表保存）
 
 ## 怎么得出这份清单
 
@@ -243,6 +243,7 @@
 >   `CreateFreeConnector` 报「未实现」；本机无符号库。
 > * 混合 **可用（第十七波）**：`CreateBlend` 传全参数且 `Path=None` 时成功；
 >   效果经 `Effects.Item(i).Blend`（IVGEffectBlend）读写 Steps/Spacing/Angle 等。
+> * 批量斜切 / 渐变色标枚举 / 线型表保存 **可用（第七十五波）**：`ShapeRange.SkewEx`（range_skew）、`FountainColors.Item(i)` 枚举、`OutlineStyles.Save`。
 > * 拉伸消失点共享 / 窗口排列 **可用（第七十四波）**：`ext.VanishingPoint.Share(effect.Extrude)`、`Windows.Arrange`。
 > * 叠加层补齐 / 文本框列信息 **可用（第七十三波）**：`OnScreenText` 7/7、`OnScreenCurve` 11/11、`cdr_text(frame_info=true)`。
 > * 屏幕手柄 / 包络效果对象 / 按名选配置文件 **可用（第七十二波）**：`CreateOnScreenHandle`、`effect.Envelope`（Select/CreateFrom/CopyFrom/CopyFromCurve）、`ColorProfiles.SelectByName`。
@@ -371,7 +372,7 @@
 
 ```powershell
 python -m pytest -q              # 93 项纯逻辑
-python scripts/live_smoke.py     # 539 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
+python scripts/live_smoke.py     # 542 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
 ```
 
 联调断言覆盖了上表所有 ✅ 项。反解脚本属于过程产物，已按要求放在 `tmp/` 并在完成时清理；
@@ -379,13 +380,13 @@ python scripts/live_smoke.py     # 539 项端到端（真实 CorelDRAW，**跑�
 
 ---
 
-## 六、量化覆盖率（2026-10-26 第七十四波实测）
+## 六、量化覆盖率（2026-10-27 第七十五波实测）
 
 方法：反解类型库拿到 196 个自动化类 / **1619** 个方法（已剔除 `QueryInterface` 等 COM 基础设施）；
 用 AST 扫描 `src/cdrx8_mcp/*.py`，收集所有 `.方法名(` 调用与 `setattr/getattr` 的属性名，
 与主干接口的方法名求交集。**注意：属性名（如 `curve.Nodes`）也会被计入**，所以本波数字含真实属性访问。
 
-**全局：1162 / 1619 = 71.8%**（21.2% → … → 71.6% → 本轮 71.8%）
+**全局：1163 / 1619 = 71.8%**（21.2% → … → 71.8% → 本轮 71.8%）
 **主干 20 接口：670 / 743 = 90.2%**
 
 复现命令：`python scripts/coverage_audit.py`（会临时展开类型库到 `tmp/gen_py`，跑完自动清理）
@@ -1548,6 +1549,20 @@ python -m pytest -q                       # 93 项纯 Python 单元测试
 > **给后来者的三条经验**：① 类型库里大量 `*InRange`、`Set*` 的坑是"1 基索引"和"名称串 vs 对象"；
 > ② 数组入参先找 `IVGPointRange`/`IVGSnapPoint` 这类容器，别直接塞 Python list；
 > ③ 同一接口里 Get 类方法的参数个数可能不一致（`GetFillScale()` 零参 vs `DashLength(i)` 带索引），逐个试。
+
+## 七之七十四、第七十五波已接入（2026-10-27，批量斜切 / 渐变色标枚举 / 线型表保存）
+
+> 这一轮按终版报告的"批量版/参数完整度"方向推进（应用户要求，不装 PANTONE/符号库插件）。
+
+| 能力 | 落地位置 | 实测 |
+|---|---|---|
+| **批量斜切**（ShapeRange.SkewEx 确认） | `cdr_shape_ops(op="range_skew", params={"angle_x":10,"cx":20,"cy":5})` | ✅ 选区整批斜切（两个 10×10 矩形 → bbox 宽 50.58）；范围版与形状版统一，`use_range=false` 可退回单对象 |
+| **渐变色标枚举**（IVGFountainColors 补强） | `cdr_shape_ops(op="fountain_colors")` 返回 `stops=[{color, position}]` | ✅ `colors.Item(i)` 可读 `Color.ToString()` 与 `Position`；同时确认 **`AddGrayLevel` 仅灰度渐变可用**（彩色渐变报「非选择性的参数」，已改为 warnings 提示而非报错） |
+| **线型表保存**（IVGOutlineStyles.Save） | `cdr_doc(action="outline_styles_save")` | ✅ `OutlineStyles.Save()` 把 131 个线型存回用户配置 |
+
+> **第七十五波记录**：`FountainColors.AddGrayLevel(灰度, 位置)` 的位置参数在彩色渐变上无效
+> （直接报错），并且 `colors.Item(2)` 在只有 2 个色标时会「超出范围」——
+> 色标数实际由渐变类型决定，枚举时以 `Count` 为准。
 
 ## 七之二、仍未接入（第三轮候选）
 
