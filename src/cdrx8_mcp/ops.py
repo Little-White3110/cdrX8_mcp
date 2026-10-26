@@ -2702,6 +2702,8 @@ PATH_ACTIONS = (
     "segment_range",
     # 第五十波：子路径追加曲线段 / 抽出子路径 / 焊接结果落地
     "append_curve_segment", "extract_subpath", "weld_to_shape",
+    # 第五十二波：按偏移取点 / 按偏移定位线段
+    "point_at_offset", "segment_at_offset",
 )
 
 
@@ -3013,6 +3015,44 @@ def path_ops(doc: Any, page_index: int | None, target: dict, action: str, *,
                         "nodes_before": nodes_before, "nodes_after": _node_count(curve),
                         "first_segment": _n(lambda: int(srange.FirstSegment.Index)),
                         "last_segment": _n(lambda: int(srange.LastSegment.Index)),
+                        **info()}
+            if act == "point_at_offset":
+                # 实测：SubPath.GetPointPositionAt(x, y, 偏移, 偏移类型) 返回 (X, Y)。
+                # 偏移类型 0 = 绝对长度(mm)，1 = 归一化 0~1（前两个入参被忽略）
+                spec = dict(params or {})
+                off = float(spec.get("offset", 0.5))
+                normalized = bool(spec.get("normalized", True))
+                sub_index = int(spec.get("subpath", 1))
+                sub = _s(lambda: curve.SubPaths.Item(sub_index))
+                if sub is None:
+                    raise CdrBadArgument(f"子路径 {sub_index} 不存在")
+                got = _s(lambda: sub.GetPointPositionAt(0.0, 0.0, off,
+                                                        1 if normalized else 0))
+                if not isinstance(got, (tuple, list)) or len(got) < 2:
+                    raise CdrComFailure("GetPointPositionAt 没有返回 (X, Y)")
+                return {"action": act, "subpath": sub_index, "offset": off,
+                        "normalized": normalized,
+                        "point": [_round(float(got[0])), _round(float(got[1]))],
+                        **info()}
+            if act == "segment_at_offset":
+                # 实测：SubPath.FindSegmentOffset(绝对偏移, Segment, ParamOffset, Remainder)
+                # 返回 (bool, IVGSegment, 参数偏移, 余数)
+                spec = dict(params or {})
+                off = float(spec.get("offset", 10.0))
+                sub_index = int(spec.get("subpath", 1))
+                sub = _s(lambda: curve.SubPaths.Item(sub_index))
+                if sub is None:
+                    raise CdrBadArgument(f"子路径 {sub_index} 不存在")
+                got = _s(lambda: sub.FindSegmentOffset(off, None, 0.0, 0.0))
+                if not isinstance(got, (tuple, list)) or len(got) < 3:
+                    raise CdrComFailure("FindSegmentOffset 没有返回 (bool, segment, param, …)")
+                seg = got[1]
+                return {"action": act, "subpath": sub_index, "offset": off,
+                        "found": bool(got[0]),
+                        "segment_index": _n(lambda: int(seg.Index))
+                        if seg is not None else None,
+                        "param_offset": _round(float(got[2])),
+                        "remainder": _round(float(got[3])) if len(got) > 3 else None,
                         **info()}
             if act == "append_curve_segment":
                 # 实测：SubPath.AppendCurveSegment(x,y,起控长,起控角,终控长,终控角,atBegin)

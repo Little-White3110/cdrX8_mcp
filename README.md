@@ -7,9 +7,9 @@
 
 > **已在真机验证**：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）+ Python 3.11.9 64 位
 > - 单元测试 **93 项通过**
-> - 端到端联调（真实 CorelDRAW）**466/466 通过**
+> - 端到端联调（真实 CorelDRAW）**468/468 通过**
 > - 能力边界来自对 `vgcoreauto.tlb` 的反解（196 个自动化类 / 1619 个方法）+ 逐项实跑
-> - 方法级覆盖 **60.8%**（主干 20 接口 82.9%），可用 `python scripts/coverage_audit.py` 复现
+> - 方法级覆盖 **61.0%**（主干 20 接口 83.2%），可用 `python scripts/coverage_audit.py` 复现
 > - 完整清单见 [docs/COVERAGE.md](docs/COVERAGE.md)
 
 ---
@@ -74,7 +74,7 @@ python -m cdrx8_mcp              # 启动 MCP 服务器（stdio）
 | `cdr_align` | 对齐与分布（左中右 / 上下中 / 等间距；`to=selection/page`，**以及原生范围对齐 `to=page_edge/page_center/grid/point/shape/range`**） |
 | `cdr_find` | 按名字或类型查找（跨图层） |
 | `cdr_style` | **对象样式**：列出 / 从对象创建（fill·outline·character·paragraph）/ **基于已有样式派生** / 按名套用 / 改名 / 删除 / **读可读属性·改属性** / 列派生样式 / **样式表 .cdst 导入导出** / **颜色样式与颜色协调** / **覆盖属性（override_props）·继承状态（inherited）·属性取值（get_property）·属性清除** |
-| `cdr_path` | 曲线/子路径级：长度面积 / 偏移轮廓（刀模线）/ **折线采样** / **追加圆·椭圆·矩形·三点弧·贝塞尔** / **节点精简** / **自焊接** / **路径等分** / **加节点·断开·移动子路径** / **点在形状内·曲线求交·取点取切向** / **参数取点·切向量·法向量·速度·交点·按坐标找节点/线段·反转方向·焊接子路径·去重叠** / **曲线合并（AppendCurve）·焊接（WeldWith）·命中判定·曲线副本·曲线结构信息·任意线段集合（segment_range）·追加曲线段（append_curve_segment）·抽出子路径（extract_subpath）·焊接落地（weld_to_shape）** |
+| `cdr_path` | 曲线/子路径级：长度面积 / 偏移轮廓（刀模线）/ **折线采样** / **追加圆·椭圆·矩形·三点弧·贝塞尔** / **节点精简** / **自焊接** / **路径等分** / **加节点·断开·移动子路径** / **点在形状内·曲线求交·取点取切向** / **参数取点·切向量·法向量·速度·交点·按坐标找节点/线段·反转方向·焊接子路径·去重叠** / **曲线合并（AppendCurve）·焊接（WeldWith）·命中判定·曲线副本·曲线结构信息·任意线段集合（segment_range）·追加曲线段（append_curve_segment）·抽出子路径（extract_subpath）·焊接落地（weld_to_shape）·按偏移取点（point_at_offset）·按偏移定位线段（segment_at_offset）** |
 | `cdr_node` | **节点/线段级编辑（第五波打通）**：列节点·列线段 / 移动·选中·删除 / 圆角·倒角· scallop·平滑 / 拉伸·旋转·斜切·断开 / 加节点·断线 / 读写贝塞尔控制点 / 按坐标找节点与线段 / **前后邻居（Next·Previous）·节点间距·平均位置·末端节点合并·任意不连续节点集合（arbitrary：move/rotate/skew/stretch/autoreduce/smoothen/set_type/delete/fillet/chamfer/scallop）·**节点坐标搬运（copy_point：GetPoint/SetPoint）** |
 | `cdr_bitmap` | 位图：信息 / 转色彩模式（rgb·cmyk·gray·bw）/ **阈值二值化** / **调色板模式 0~9（9=自定义调色板）** / **双色调 0~3（可给 .cpd 预设）** / **取像素颜色** / 图像缓冲信息 / 重采样 / **扩边** / 裁剪 / **内容替换（SetImageData，支持色块/像素绘制）** / **位图特效命令串（ApplyBitmapEffect）** / **链接信息·重新加载·解析链接** / **调色板选项转换（paletted_options：颜色数·抖动·指定调色板）** |
 | `cdr_rect` | **矩形对象（IVGRect）**：读派生值 / 平移 / 四边外扩内缩 / 并 / 交 / 点包含 / 复制；**按矩形造形**（CreateRectangleRect 带四角圆角、CreateEllipseRect 带角度/扇形） |
@@ -186,7 +186,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ---
 
-## X8 特有问题（135 条，全部实测）
+## X8 特有问题（137 条，全部实测）
 
 这些是 **X8 与 2024+ 的差异**，也是本项目存在的主要理由。
 
@@ -327,6 +327,8 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 | 133 | **分量其实读得到：入口是 `CorelScriptGetComponent`** | 以前一直写「`IVGColor` 不暴露分量」，其实 `Color.CorelScriptGetComponent(模型号, 0,0,0,0,0,0,0)` 返回 `(5000+模型号, v1..v7)`：CMYK `(5002,10,20,30,40,…)`、RGB `(5005,11,22,33,…)`、Gray `(5009,50,…)`。`ConvertToPalette` 的参数也是**调色板 GUID**，传序号报「找不到调色板 N」 | 已封装 `cdr_color(object_components/object_convert_palette)`；至此颜色分量读写都通了 |
 | 134 | **`ApplyTransformMatrix` 永远拿不到矩阵对象** | `Shape/Curve.ApplyTransformMatrix` 需要 `IVGTransformMatrix`，而工厂全在 `IVGMathUtils` 上，`Application.MathUtils` 直接 AttributeError（CLSID `{E98800C5-…}` 未注册）。另外 `Curve.WeldWith` 返回的是**游离曲线**，必须 `BindToDocument(doc)` 再 `Layer.CreateCurve` 才能变成文档里的真形状 | 矩阵变换用 `Shape.SetMatrix`/`cdr_modify(affine=…)`；焊接用 `cdr_path(weld_to_shape)`（已封装收尾） |
 | 135 | **文本结构体写入只认段落文本** | `Text.SetAlignProperties(0, 结构体)` 等三个 setter 对**艺术字**报「该参数需要段落文本」；对段落文本则完全正常（用 `CreateStructAlignProperties/SpaceProperties/HyphenationSettings` 从零造结构体即可）。另外 `ConvertToUnicode/ConvertFromUnicode` 被 BSTR 边界弄坏（GBK → `?D??`） | 已封装 `cdr_text(paragraph_format=…)`；码页转换请用 Python `bytes.decode` |
+| 136 | **连接器 / 符号库 / 曲线信息数组都造不出来** | `Layer.CreateFreeConnector(x1,y1,x2,y2)` 报「发生意外」；`CreateSymbol(x,y,名,库)` 报「找不到该对象」；`Application.SymbolLibraries` 直接 com_error（本机未装符号库）；`Curve.PutCurveInfo(tuple, n)` 报 `MemoryError: CreatingSafeArray` | 连接线用两点直线/贝塞尔自绘；符号用 `cdr_shapes` 植物件；曲线信息用 `GetCurveInfo()` |
+| 137 | **`GetPointPositionAt` 的偏移类型是 0/1 而不是枚举名** | `SubPath.GetPointPositionAt(0, 0, 偏移, 类型)`：类型 **0 = 绝对长度（mm）**、**1 = 归一化 0~1**；前两个入参被忽略，返回 `(X, Y)` | 已封装 `cdr_path(point_at_offset, params={"offset":…,"normalized":true})` |
 
 改代码前请先读 [`src/cdrx8_mcp/constants.py`](src/cdrx8_mcp/constants.py) 里的注释。
 
@@ -376,7 +378,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ```powershell
 python -m pytest -q                # 93 项逻辑测试，任何平台可跑
-python scripts/live_smoke.py       # 466 项端到端，需要 CorelDRAW X8
+python scripts/live_smoke.py       # 468 项端到端，需要 CorelDRAW X8
 python scripts/live_smoke.py --keep   # 保留文档方便肉眼看效果
 python scripts/coverage_audit.py   # 覆盖率审计（复现 README/COVERAGE 里的数字）
 ```

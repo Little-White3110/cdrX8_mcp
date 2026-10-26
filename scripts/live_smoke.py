@@ -3792,6 +3792,32 @@ def main() -> int:
                       f"name={ah51.get('name')!r}")
         no_error("关闭结构体写入测试文档", server.cdr_close(s51_id))
 
+    # ---------------- 15bf. 第五十二波：按偏移取点 / 定位线段 ----------------
+    print("\n[15bf] 第五十二波：SubPath.GetPointPositionAt / FindSegmentOffset")
+    o52_doc = server.cdr_open(preset="A4")
+    if "document_id" in o52_doc:
+        o52_id = o52_doc["document_id"]
+        o52r = server.cdr_create(o52_id, [
+            {"type": "curve_segment", "x1": 0, "y1": 60, "x2": 40, "y2": 60}])
+        if no_error("cdr_create(偏移取点测试)", o52r):
+            o52c = {"name": o52r["created"][0]["name"]}
+            p52 = server.cdr_path(o52_id, o52c, action="point_at_offset",
+                                  params={"offset": 0.5, "normalized": True})
+            if no_error("cdr_path(point_at_offset)", p52):
+                pt52 = p52.get("point") or []
+                check("可按归一化偏移取点（GetPointPositionAt）",
+                      len(pt52) == 2 and 19.0 < pt52[0] < 21.5,
+                      f"point={pt52}")
+            s52 = server.cdr_path(o52_id, o52c, action="segment_at_offset",
+                                  params={"offset": 10.0})
+            if no_error("cdr_path(segment_at_offset)", s52):
+                check("可按绝对偏移定位线段（FindSegmentOffset）",
+                      s52.get("found") is True
+                      and (s52.get("segment_index") or 0) >= 1,
+                      f"found={s52.get('found')} seg={s52.get('segment_index')} "
+                      f"param={s52.get('param_offset')}")
+        no_error("关闭偏移取点测试文档", server.cdr_close(o52_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

@@ -2,7 +2,7 @@
 
 > 目的：证明"还有多少没探"。每一行要么有对应的工具，要么有实测失败证据。
 > 环境：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）/ Python 3.11.9 64 位
-> 最近更新：2026-10-26 第五十一波（结构体工厂写入 / 按模型取配置 / 风格色 / 无名箭头）
+> 最近更新：2026-10-26 第五十二波（按偏移取点 / 按偏移定位线段）
 
 ## 怎么得出这份清单
 
@@ -30,7 +30,7 @@
 | `IVGOutlineStyle` / `IVGOutlineStyles` | 6 / 6 | **新打通（第十一波）**：`CreateOutlineStyle(dash,gap[,dash,gap,…])` 生成虚拟线型（Index=-1），`OutlineStyles.AddStyle(virtual)` 注册后得到可用 Index，赋给 `Outline.Style` 即生效；`Save()` 可持久化 |
 | `IVGDataFields` / `IVGDataField` / `IVGDataItems` | 8 / 18 / 4 | **新打通（第十一波）**：`DataFields.Add(Name,"0")`、`IsPresent/Item`、`Shape.ObjectData.Add(DataField, Value)`、`DataItem.Value/FormattedValue` 可读写（对象级持久化数据字段） |
 | `IVGCurve` | 37 | 已用：Length / Area / SubPaths / Contour / CreateSubPath / GetCopy / **Nodes / Segments / Selection / FindNodeAtPoint / FindSegmentAtPoint / ReverseDirection / JoinTouchingSubpaths / RemoveOverlaps / GetPolyline / IsOnCurve / IsClockwise / Closed / GetCurveInfo**；数组入参（AppendSubpathFromPoints / CreateSubPathFromArray）不可用；CreateCurveMappedToStroke 类型不匹配；**第三十六波**：`AppendCurve`（把另一条曲线并成子路径）、`WeldWith`（返回新曲线）、`IsOnCurve(x,y,hot)`、`GetCopy`、`GetCurveInfo`（返回 com_struct 数组）；**第五十波**：`BindToDocument(doc)` —— `WeldWith` 返回的游离曲线必须先 Bind 再 `Layer.CreateCurve`，才能变回文档里的真形状（补上了焊接流程最后一环）|
-| `IVGSubPath` | 39 | 已用：CreateSubPath / AppendLineSegment / AppendCurveSegment2 / Closed / **Nodes / Segments / StartNode / EndNode / GetPointAt / GetPointPositionAt / GetTangentVectorAt / GetPerpendicularVectorAt / GetCurveSpeedAt / GetIntersections / ReverseDirection / Next / Previous / Extract / GetCopy**；求交/等分/切向已打通，点集数组仍取不回；`Next`·`Previous`·`GetCopy` 与曲线同名方法共享计数（审计按名字匹配，含跨接口误计）；**第五十波**：`AppendCurveSegment(x,y,起控长,起控角,终控长,终控角,atBegin)`（节点 +1、返回 IVGSegment）、`Extract(Shape)`（**把子路径抽成独立对象**，返回 `(新 Shape, …)`）|
+| `IVGSubPath` | 39 | 已用：CreateSubPath / AppendLineSegment / AppendCurveSegment2 / Closed / **Nodes / Segments / StartNode / EndNode / GetPointAt / GetPointPositionAt / GetTangentVectorAt / GetPerpendicularVectorAt / GetCurveSpeedAt / GetIntersections / ReverseDirection / Next / Previous / Extract / GetCopy**；求交/等分/切向已打通，点集数组仍取不回；`Next`·`Previous`·`GetCopy` 与曲线同名方法共享计数（审计按名字匹配，含跨接口误计）；**第五十波**：`AppendCurveSegment(x,y,起控长,起控角,终控长,终控角,atBegin)`（节点 +1、返回 IVGSegment）、`Extract(Shape)`（**把子路径抽成独立对象**，返回 `(新 Shape, …)`）；**第五十二波**：`GetPointPositionAt(0,0,偏移,偏移类型)` 返回 `(X,Y)`（类型 0=绝对长度 mm、1=归一化 0~1）、`FindSegmentOffset(绝对偏移, Segment, ParamOffset, Remainder)` 返回 `(bool, IVGSegment, 参数偏移, 余数)` |
 | `IVGNode` | 19 | **已覆盖（第五波纠正）**：`curve.Nodes` / `curve.SubPaths.Item(i).Nodes` 是**属性**；`GetPosition/SetPosition/Move/Type/Index/SubPathIndex/IsEnding/Selected/Delete/CreateSelection` 均可用；范围操作走 `curve.Nodes.Range(a,b)` → `IVGNodeRange`（Fillet/Chamfer/Scallop/Smoothen/SetType/Move/Rotate/Skew/Stretch/BreakApart/GetBoundingBox）；`app.CreateNodeRange()` 返回空集合；**第三十六波**：`Next()` / `Previous()`（**是方法不是属性**，返回 IVGNode）、`GetDistanceFrom`、`AveragePositionWith`、`JoinWith`（末端节点合并）、`GetPoint`（返回 IVGPoint）；`ConnectWith` / `ExtendSubPaths` 实测报「指定的节点必须在另一条曲线上」/「无法连接曲线」；**第四十七波**：`GetPoint()`（返回 IVGPoint）+ `SetPoint(point)` 可整颗搬运节点坐标 |
 | `IVGText` | 30 | 已用：Story（**Font / Size / Bold / Italic / Underline 读取**）/ GetSpaceProperties / SetSpaceProperties / GetAlignProperties / SetAlignProperties / FitToPath / FitTextToFrame / **GetContents / Range / ExportToFile / GetHyphenationSettings**；GetFontProperties 结构体返回默认值不可信；**第三十七波**：`FontProperties` / `SpaceProperties` / `AlignProperties` / `HyphenationSettings` 四个**属性**可读（返回 IVGStruct* 快照）；带下标/帧的 `*InRange` 版本返回的结构体字段是垃圾值（Size=1.17e-38），不可用；直接赋值 setter 会把字号写坏，**只读不写**；**第四十五波**：`BeginEdit()` 可用（进入文字编辑态）；**第五十一波**：`SetAlignProperties` / `SetSpaceProperties` / `SetHyphenationSettings` 配合结构体工厂可从零构造段落格式（**只对段落文本生效**，艺术字报「该参数需要段落文本」）|
 | `IVGTextRange` | 35 | 已用：Text / Font / Size / Bold / Italic / Underline / ChangeCase / ApplyBulletEffect / ApplyDropCapEffect / ApplyNoEffect / InsertBefore / InsertAfter / **SetOpenTypeFeature / GetOpenTypeFeature / Delete / Copy / Paste / Straighten / FindRanges / EnumRanges / LeftIndent / RightIndent / FirstLineIndent / Tabs**；ApplyStyle 调用不报错但未观测到效果；**第三十七波**：`InsertBeforeWide` / `InsertAfterWide` / `ReplaceWide`（带语言/字符集/字体）、`Collapse` / `SetRange` / `InRange` / `IsSame` / `SetLineSpacing`、`Start`·`End`；`Evaluate` 的表达式语法未逆出（`len` 报 Identifier is not a method of global）|
@@ -127,7 +127,9 @@
 | 导入/导出过滤器号不通用 | `Layer.ImportEx(path, 802, opts)` | 802 是 **PNG 导出**过滤器号，传给 ImportEx 时调用成功但 `shapes_added=0`（静默不导入）；传 0 让它自动判断才正常 | `cdr_import(filter_id=…)` 已暴露但标注需用**导入**过滤器号；X8 没有列出导入过滤器号的 API |
 
 
-| Unicode 码页转换被 pywin32 弄坏 | `Application.ConvertToUnicode(串, 码页)` / `ConvertFromUnicode` | 传 GBK 字节串得到 `?D??`、传 "中文" 原样返回 —— API 期望 `char*`，pywin32 只给 BSTR，编码信息在边界就丢了 | 不封装；需要码页转换请用 Python 的 `bytes.decode("gbk")` || 变换矩阵对象造不出来 | `Shape.ApplyTransformMatrix` / `Curve.ApplyTransformMatrix` | 需要 `IVGTransformMatrix`，而它的工厂在 `IVGMathUtils` 上，`Application.MathUtils` 根本不存在（AttributeError，CLSID 未注册）| 矩阵变换改用 `Shape.SetMatrix` + `cdr_modify(affine=…)` || 范围删项会真删对象 | `ShapeRange.DeleteItem(1)` | 删完范围 Count 2→1，**页面对象数也从 2 变 1** | 只是想从范围里移除成员用 `range_remove`（`RemoveRange`），别用 DeleteItem || 文档级填充/描边工厂（字符串） | `Document.CreateFill("…")` / `CreateOutline("…")` | 传 CMYK/RGB 颜色串或 "UniformFill" 都只得到 **Type=0 / 宽度 0** 的空对象（字符串格式无效）| 填充/描边仍走 `cdr_modify` 或 `CreateUniformFill` |
+
+| 连接线/符号库造不出来 | `Layer.CreateFreeConnector(x1,y1,x2,y2)` / `CreateSymbol(x,y,名,库)` / `Application.SymbolLibraries` | CreateFreeConnector 报「发生意外」；CreateSymbol 报「找不到该对象」；SymbolLibraries 直接 com_error（本机未装符号库） | 用两点直线/贝塞尔自绘连接线 |
+| 曲线信息数组接口不可用 | `Curve.PutCurveInfo(数组, 元素数)` | 传 tuple 报 `MemoryError: CreatingSafeArray`（pywin32 造不出该 SAFEARRAY）| 曲线信息读 `GetCurveInfo()` 即可 || Unicode 码页转换被 pywin32 弄坏 | `Application.ConvertToUnicode(串, 码页)` / `ConvertFromUnicode` | 传 GBK 字节串得到 `?D??`、传 "中文" 原样返回 —— API 期望 `char*`，pywin32 只给 BSTR，编码信息在边界就丢了 | 不封装；需要码页转换请用 Python 的 `bytes.decode("gbk")` || 变换矩阵对象造不出来 | `Shape.ApplyTransformMatrix` / `Curve.ApplyTransformMatrix` | 需要 `IVGTransformMatrix`，而它的工厂在 `IVGMathUtils` 上，`Application.MathUtils` 根本不存在（AttributeError，CLSID 未注册）| 矩阵变换改用 `Shape.SetMatrix` + `cdr_modify(affine=…)` || 范围删项会真删对象 | `ShapeRange.DeleteItem(1)` | 删完范围 Count 2→1，**页面对象数也从 2 变 1** | 只是想从范围里移除成员用 `range_remove`（`RemoveRange`），别用 DeleteItem || 文档级填充/描边工厂（字符串） | `Document.CreateFill("…")` / `CreateOutline("…")` | 传 CMYK/RGB 颜色串或 "UniformFill" 都只得到 **Type=0 / 宽度 0** 的空对象（字符串格式无效）| 填充/描边仍走 `cdr_modify` 或 `CreateUniformFill` |
 | 页面自定义命令 | `Page.CustomCommand("", "", [])` | 报「未装载此命令」| 不暴露 |
 | 样式改父级 | `Style.SetBasedOn(父样式对象)` | 传 None 报「未找到样式 None」；而用 `CreateStyleFromShape` 连续创建两个样式时 `Styles.Find("名字")` 会找不到，列表里只显示一个 `name=null` 的样式，所以 SetBasedOn 无法稳定验证 | 派生样式仍用 `cdr_style(action="create", based_on=…)`；`set_based_on` 未暴露 || 范围级属性复制 | `ShapeRange.CopyPropertiesFrom(shape, mask)` | 报 `com_error: 执行方法 coVGShape::CopyPropertiesFrom 时发生意外`（掩码 1|2|4）| 属性复制请逐个对象用 `cdr_modify(changes={"fill_from"/"outline_from"})` || BSpline / 自定义效果 | `Layer.CreateBSpline(Source)` / `Shape.CreateCustomEffect(id, …)` / `Shape.CreateCustomDistortion(id, …)` | BSpline 报「类型不匹配」（Source 不是 Curve）；两个自定义效果都报「未装载此效果」（需要先装插件效果）| `Layer.CreateBSpline` 暂不可用；自定义效果需安装对应插件，不暴露 |
 | 数组入参（点集/形状集） | `Document.CreateCurveFitToPoints(Points, …)` / `Document.CreateCurveFromArray(Source, NumElements)` | 点集仍报 `TypeError: Python instance can not be converted to a COM object`；但 `CreateShapeRangeFromArray([shape,…])` **能接受 Python list**（传 1 个返回 Count=1）| 点集建曲线仍走逐点 AppendLineSegment || 叠印状态查询不对称 | `Shape.GetOverprintFillState()` / `GetOverprintOutlineState()` | 实测 outline 状态随开关变化（2→4），但 **fill 状态恒为 1**（开关前后都一样）；`RemoveFromContainer(1)` 报「参考的对象已不再存在」| 判断填充叠印请直接读布尔属性 `OverprintFill/OverprintOutline`（`cdr_shape_ops(op="overprint_state")` 一并返回）|| 矩阵平移量单位 | `Shape.SetMatrix(d11,d12,d21,d22,tx,ty)` / `GetMatrix` | 读回的初始矩阵 tx/ty 是 `-850000`、`-285000` 这类大数 —— X8 内部按 1/100000 单位存平移；写 `tx=5` 实际位移极小 | 矩阵读写本身精确（写什么读什么），但**不要拿它做毫米级平移**，平移请用 `cdr_modify(move=…)` || 调色板色/专色工厂 | `Application.CreatePaletteColor(name, index)` / `CreateSpotColor(name, tint, ?)` | 分别报「找不到颜色 PANTONE 185 C」「未找到颜色 MCP专色」—— 它们是从**已存在**的调色板/文档专色里取，不是新建 | 新建专色仍用 `cdr_doc(action="spot_color")`（CreateSpotColorByName + 已打开调色板） || 文字结构体写入 | `Text.FontProperties(frames, struct)` / `SpaceProperties(...)` 等 4 个 propget/putter | pywin32 里这些名字是**属性**：当方法调报 `TypeError: IVGStruct... object is not callable`；直接赋值（`text.FontProperties = struct`）不报错，但会把字号写成 1.17e-38 之类的垃圾值 | `Font/Space/Align/Hyphenation` 四个快照**只读**（`cdr_text(struct_info=true)`）；写字号/字体仍走 `cdr_text(font=…, size=…)` |
@@ -241,6 +243,7 @@
 >   `CreateFreeConnector` 报「未实现」；本机无符号库。
 > * 混合 **可用（第十七波）**：`CreateBlend` 传全参数且 `Path=None` 时成功；
 >   效果经 `Effects.Item(i).Blend`（IVGEffectBlend）读写 Steps/Spacing/Angle 等。
+> * 路径偏移查询 **可用（第五十二波）**：`SubPath.GetPointPositionAt`（取点）、`FindSegmentOffset`（定位线段+参数偏移）。
 > * 文本结构体写入 **可用（第五十一波）**：`CreateStructAlignProperties/SpaceProperties/HyphenationSettings` + 对应 `Set*Properties(0, 结构体)`，仅限段落文本。
 > * 色彩配置按模型读 **可用（第五十一波）**：`ColorContext.ColorProfile(model)`。
 > * 形状斜切 / 子路径追加与抽出 **可用（第五十波）**：`Shape.SkewEx`、`SubPath.AppendCurveSegment`、`SubPath.Extract`。
@@ -346,7 +349,7 @@
 
 ```powershell
 python -m pytest -q              # 93 项纯逻辑
-python scripts/live_smoke.py     # 466 项端到端（真实 CorelDRAW）
+python scripts/live_smoke.py     # 468 项端到端（真实 CorelDRAW）
 ```
 
 联调断言覆盖了上表所有 ✅ 项。反解脚本属于过程产物，已按要求放在 `tmp/` 并在完成时清理；
@@ -354,14 +357,14 @@ python scripts/live_smoke.py     # 466 项端到端（真实 CorelDRAW）
 
 ---
 
-## 六、量化覆盖率（2026-10-26 第五十一波实测）
+## 六、量化覆盖率（2026-10-26 第五十二波实测）
 
 方法：反解类型库拿到 196 个自动化类 / **1619** 个方法（已剔除 `QueryInterface` 等 COM 基础设施）；
 用 AST 扫描 `src/cdrx8_mcp/*.py`，收集所有 `.方法名(` 调用与 `setattr/getattr` 的属性名，
 与主干接口的方法名求交集。**注意：属性名（如 `curve.Nodes`）也会被计入**，所以本波数字含真实属性访问。
 
-**全局：984 / 1619 = 60.8%**（21.2% → … → 60.2% → 本轮 60.8%）
-**主干 20 接口：616 / 743 = 82.9%**
+**全局：987 / 1619 = 61.0%**（21.2% → … → 60.8% → 本轮 61.0%）
+**主干 20 接口：618 / 743 = 83.2%**
 
 复现命令：`python scripts/coverage_audit.py`（会临时展开类型库到 `tmp/gen_py`，跑完自动清理）
 
@@ -369,7 +372,7 @@ python scripts/live_smoke.py     # 466 项端到端（真实 CorelDRAW）
 |---|---:|---:|---:|
 | `IVGShape` | 123 | 106 | **86%** |
 | `IVGShapeRange` | 125 | 109 | **87%** |
-| `IVGSubPath` | 38 | 35 | **92%** |
+| `IVGSubPath` | 38 | 37 | **97%** |
 | `IVGDocument` | 74 | 56 | **76%** |
 | `IVGPage` | 21 | 20 | **95%** |
 | `IVGCurve` | 36 | 28 | **78%** |
@@ -387,10 +390,10 @@ python scripts/live_smoke.py     # 466 项端到端（真实 CorelDRAW）
 | `IVGTransparency` | 8 | 7 | **88%** |
 | `IVGStyle` | 15 | 13 | **87%** |
 | `IVGColorContext` | 6 | 5 | **83%** |
-| **合计** | **743** | **616** | **82.9%** |
+| **合计** | **743** | **618** | **83.2%** |
 
 > **怎么读这两个数**：
-> 1. 全局 60.8% 覆盖 1619 个方法（含变体与重复）；主干 20 接口 82.9%。
+> 1. 全局 61.0% 覆盖 1619 个方法（含变体与重复）；主干 20 接口 83.2%。
 > 2. 它是**方法/属性名匹配**的近似值，同名方法会跨接口误计。
 > 3. `IVGColor` 已到 **91%**：分量**写**走 `*Assign`，分量**读**走 `CorelScriptGetComponent`（`(5000+模型号, v1..v7)`）；纯 Python 只用于无 COM 场景的换算。
 > 4. 未调用方法多为变体（Wide/Ex/2/3 后缀）与事件订阅、CorelScriptTools/MathUtils。
@@ -1130,6 +1133,17 @@ python scripts/live_smoke.py     # 466 项端到端（真实 CorelDRAW）
 >    （GBK 字节串 → `?D??`），已列入不可用清单，码页转换请用 Python `bytes.decode`。
 > 3. `SpotAssign(调色板, 专色ID, tint)` 在 TRUMATCH 上仍报「未找到指定的对象」（该调色板没有专色）。
 
+## 七之五十、第五十二波已接入（2026-10-26，按偏移取点 / 定位线段）
+
+| 能力 | 落地位置 | 实测 |
+|---|---|---|
+| **按偏移取点** | `cdr_path(action="point_at_offset", params={"offset":0.5,"normalized":true})` | ✅ `SubPath.GetPointPositionAt(0,0,偏移,类型)` 返回 `(X,Y)`：半程得 `(20.175, 63.217)`（弧长 42.07 的贝塞尔）；类型 0=绝对长度 mm、1=归一化 0~1 |
+| **按偏移定位线段** | `cdr_path(action="segment_at_offset", params={"offset":10.0})` | ✅ `FindSegmentOffset(10.0, None, 0, 0)` → `(true, IVGSegment, 0.297, 0.0)`，可拿到线段序号与参数偏移 |
+
+> **第五十二波记录**：`IVGSubPath` 至此只剩 `PutCurveInfo` 未覆盖（数组入参不可用），
+> 已达 **97%**。另外 `Layer.CreateFreeConnector` / `CreateSymbol` 与 `Application.SymbolLibraries`
+> 实测都不可用（本机没有符号库、连接器需要文档级状态），已写入不可用清单。
+
 ## 七之二、仍未接入（第三轮候选）
 
 | 能力 | 接口 | 为什么还没做 |
@@ -1156,11 +1170,11 @@ python scripts/live_smoke.py     # 466 项端到端（真实 CorelDRAW）
   自定义虚线、文档设置、文本区间编辑、自定义箭头、图案微调、文本格式查询、位图内容替换/链接、
   文档回滚、立体化/透镜/效果管理、位图特效命令串、混合、文档颜色转换、用户偏好 KV、OLE 嵌入、
   命名视图、网格设置、叠印、段落缩进、制表位、屏幕叠加层、应用/文档事件、导出/保存/导入选项、吸附点全家族、颜色对象分量、描边对象全量属性都已补上。
-* **方法级覆盖**：全局 60.8%（984/1619），主干 20 接口 82.9%（616/743）。
+* **方法级覆盖**：全局 61.0%（987/1619），主干 20 接口 83.2%（618/743）。
 * **明确不可用**：位图描摹、文本导入、点集数组建曲线、尺寸标注/连接线（MathUtils 点对象
   不可创建）、符号库、文件型图案/影线填充（本机无库）、曲线贴笔触、OpenDocumentAsCopy、
   HTML 兼容文本、断字写入、填充字符串、文本尺寸查询、灰度→RGB 转换、真实应用偏好读取、
   文本分栏（SetColumns 数组参数）。
-* **第五十一波新增**：文本结构体工厂写入（段落对齐/缩进/字距/行距/连字符）、色彩配置按模型读取、颜色风格色改写、无名箭头变体。
+* **第五十二波新增**：路径按偏移取点与按偏移定位线段；`IVGSubPath` 达 97%。
 
 
