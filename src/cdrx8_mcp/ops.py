@@ -2704,6 +2704,8 @@ PATH_ACTIONS = (
     "append_curve_segment", "extract_subpath", "weld_to_shape",
     # 第五十二波：按偏移取点 / 按偏移定位线段
     "point_at_offset", "segment_at_offset",
+    # 第五十六波：把曲线映射到另一条"骨架线"上（艺术笔映射）
+    "map_to_stroke",
 )
 
 
@@ -3016,6 +3018,42 @@ def path_ops(doc: Any, page_index: int | None, target: dict, action: str, *,
                         "first_segment": _n(lambda: int(srange.FirstSegment.Index)),
                         "last_segment": _n(lambda: int(srange.LastSegment.Index)),
                         **info()}
+            if act == "map_to_stroke":
+                # 实测：Curve.CreateCurveMappedToStroke(IVGSubPath, ScaleY, SelfWeld)
+                # 与 ...AndReferenceLine(IVGSubPath, IVGPoint, IVGPoint, ScaleY, SelfWeld)
+                # —— 第二个参数要的是**子路径**（不是整条 Curve），参考线版的两个点是 IVGPoint
+                if not other:
+                    raise CdrBadArgument("map_to_stroke 需要 other（骨架线对象）")
+                spec = dict(params or {})
+                stroke_shape = find_shape(doc, page, other)
+                stroke_sub = _s(lambda: stroke_shape.Curve.SubPaths.Item(1))
+                if stroke_sub is None:
+                    raise CdrBadArgument("other 不是曲线对象（需要 IVGCurve）")
+                scale_y = float(spec.get("scale_y", 1.0))
+                self_weld = bool(spec.get("self_weld", False))
+                with atomic(doc, label):
+                    if spec.get("use_reference_line"):
+                        nodes = stroke_shape.Curve.Nodes
+                        p1 = nodes.Item(1).GetPoint()
+                        p2 = nodes.Item(int(_n(lambda: int(nodes.Count), 2) or 2)).GetPoint()
+                        made_curve = curve.CreateCurveMappedToStrokeAndReferenceLine(
+                            stroke_sub, p1, p2, scale_y, self_weld)
+                        used = "CreateCurveMappedToStrokeAndReferenceLine"
+                    else:
+                        made_curve = curve.CreateCurveMappedToStroke(
+                            stroke_sub, scale_y, self_weld)
+                        used = "CreateCurveMappedToStroke"
+                    if made_curve is None:
+                        raise CdrComFailure(f"{used} 返回空")
+                    made = _active_layer(page).CreateCurve(made_curve)
+                if made is None:
+                    raise CdrComFailure("Layer.CreateCurve(映射结果) 返回空")
+                name = _ensure_name(made)
+                return {"action": act, "api": used, "shape": name,
+                        "type_id": _n(lambda: int(made.Type)),
+                        "nodes": _n(lambda: int(made.Curve.Nodes.Count), 0),
+                        "bbox": _bbox(made),
+                        "stroke_from": _s(lambda: str(stroke_shape.Name))}
             if act == "point_at_offset":
                 # 实测：SubPath.GetPointPositionAt(x, y, 偏移, 偏移类型) 返回 (X, Y)。
                 # 偏移类型 0 = 绝对长度(mm)，1 = 归一化 0~1（前两个入参被忽略）

@@ -3932,6 +3932,35 @@ def main() -> int:
                   f"type={(got55[3] or {}).get('type')}")
         no_error("关闭连接器/标注测试文档", server.cdr_close(d55_id))
 
+    # ---------------- 15bj. 第五十六波：曲线映射到骨架线 ----------------
+    print("\n[15bj] 第五十六波：CreateCurveMappedToStroke / …AndReferenceLine")
+    m56_doc = server.cdr_open(preset="A4")
+    if "document_id" in m56_doc:
+        m56_id = m56_doc["document_id"]
+        m56r = server.cdr_create(m56_id, [
+            {"type": "curve_segment", "x1": 0, "y1": 10, "x2": 40, "y2": 30},
+            {"type": "curve_segment", "x1": 0, "y1": 60, "x2": 60, "y2": 60},
+            {"type": "curve_segment", "x1": 0, "y1": 100, "x2": 40, "y2": 120},
+        ])
+        if no_error("cdr_create(骨架映射测试)", m56r):
+            mA, mS, mB = [{"name": c["name"]} for c in m56r["created"]]
+            mp = server.cdr_path(m56_id, mA, action="map_to_stroke", other=mS,
+                                 params={"scale_y": 5.0})
+            if no_error("cdr_path(map_to_stroke)", mp):
+                check("曲线可映射到骨架线（CreateCurveMappedToStroke）",
+                      mp.get("api") == "CreateCurveMappedToStroke"
+                      and (mp.get("nodes") or 0) > 2,
+                      f"api={mp.get('api')} nodes={mp.get('nodes')}")
+            mref = server.cdr_path(m56_id, mB, action="map_to_stroke", other=mS,
+                                   params={"scale_y": 5.0,
+                                           "use_reference_line": True})
+            if no_error("cdr_path(map_to_stroke 参考线)", mref):
+                check("参考线版映射可用（…AndReferenceLine）",
+                      mref.get("api") == "CreateCurveMappedToStrokeAndReferenceLine"
+                      and (mref.get("nodes") or 0) > 2,
+                      f"api={mref.get('api')} nodes={mref.get('nodes')}")
+        no_error("关闭骨架映射测试文档", server.cdr_close(m56_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

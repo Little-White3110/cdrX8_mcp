@@ -2,7 +2,7 @@
 
 > 目的：证明"还有多少没探"。每一行要么有对应的工具，要么有实测失败证据。
 > 环境：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）/ Python 3.11.9 64 位
-> 最近更新：2026-10-26 第五十五波（连接器 / 线性·角度标注）
+> 最近更新：2026-10-26 第五十六波（曲线映射到骨架线）
 
 ## 怎么得出这份清单
 
@@ -29,7 +29,7 @@
 | `IVGOutline` | 15 | **第三十二波补齐（13/15）**：Width / Color / **Style（可赋自定义线型）** / StartArrow·EndArrow / LineCaps / LineJoin / BehindFill / ScaleWithShape / SetNoOutline / **NibStretch / NibAngle / MiterLimit / Justification**（可读写）/ **GetCopy / CopyAssign / CompareWith / ConvertToObject / SetProperties（14 参全实参可用）**；`PenWidth` 恒 0（派生）、`DashDotLength` 写入不生效、`ToString/StringAssign` 在 pywin32 包装类里不存在；**第四十五波**：`SetPropertiesEx`（15 参，多一个 Justification）实测可用 |
 | `IVGOutlineStyle` / `IVGOutlineStyles` | 6 / 6 | **新打通（第十一波）**：`CreateOutlineStyle(dash,gap[,dash,gap,…])` 生成虚拟线型（Index=-1），`OutlineStyles.AddStyle(virtual)` 注册后得到可用 Index，赋给 `Outline.Style` 即生效；`Save()` 可持久化 |
 | `IVGDataFields` / `IVGDataField` / `IVGDataItems` | 8 / 18 / 4 | **新打通（第十一波）**：`DataFields.Add(Name,"0")`、`IsPresent/Item`、`Shape.ObjectData.Add(DataField, Value)`、`DataItem.Value/FormattedValue` 可读写（对象级持久化数据字段） |
-| `IVGCurve` | 37 | 已用：Length / Area / SubPaths / Contour / CreateSubPath / GetCopy / **Nodes / Segments / Selection / FindNodeAtPoint / FindSegmentAtPoint / ReverseDirection / JoinTouchingSubpaths / RemoveOverlaps / GetPolyline / IsOnCurve / IsClockwise / Closed / GetCurveInfo**；数组入参（AppendSubpathFromPoints / CreateSubPathFromArray）不可用；CreateCurveMappedToStroke 类型不匹配；**第三十六波**：`AppendCurve`（把另一条曲线并成子路径）、`WeldWith`（返回新曲线）、`IsOnCurve(x,y,hot)`、`GetCopy`、`GetCurveInfo`（返回 com_struct 数组）；**第五十波**：`BindToDocument(doc)` —— `WeldWith` 返回的游离曲线必须先 Bind 再 `Layer.CreateCurve`，才能变回文档里的真形状（补上了焊接流程最后一环）|
+| `IVGCurve` | 37 | 已用：Length / Area / SubPaths / Contour / CreateSubPath / GetCopy / **Nodes / Segments / Selection / FindNodeAtPoint / FindSegmentAtPoint / ReverseDirection / JoinTouchingSubpaths / RemoveOverlaps / GetPolyline / IsOnCurve / IsClockwise / Closed / GetCurveInfo**；数组入参（AppendSubpathFromPoints / CreateSubPathFromArray）不可用；CreateCurveMappedToStroke 类型不匹配；**第三十六波**：`AppendCurve`（把另一条曲线并成子路径）、`WeldWith`（返回新曲线）、`IsOnCurve(x,y,hot)`、`GetCopy`、`GetCurveInfo`（返回 com_struct 数组）；**第五十波**：`BindToDocument(doc)` —— `WeldWith` 返回的游离曲线必须先 Bind 再 `Layer.CreateCurve`，才能变回文档里的真形状（补上了焊接流程最后一环）；**第五十六波（纠正）**：`CreateCurveMappedToStroke(子路径, ScaleY, SelfWeld)` 与 `CreateCurveMappedToStrokeAndReferenceLine(子路径, IVGPoint, IVGPoint, ScaleY, SelfWeld)` **都可用** —— 之前判"类型不匹配"是因为**把整条 Curve 当骨架线传**，正确类型是 `IVGSubPath`；两者都返回新 Curve，`Layer.CreateCurve` 后成 Type 3 形状 |
 | `IVGSubPath` | 39 | 已用：CreateSubPath / AppendLineSegment / AppendCurveSegment2 / Closed / **Nodes / Segments / StartNode / EndNode / GetPointAt / GetPointPositionAt / GetTangentVectorAt / GetPerpendicularVectorAt / GetCurveSpeedAt / GetIntersections / ReverseDirection / Next / Previous / Extract / GetCopy**；求交/等分/切向已打通，点集数组仍取不回；`Next`·`Previous`·`GetCopy` 与曲线同名方法共享计数（审计按名字匹配，含跨接口误计）；**第五十波**：`AppendCurveSegment(x,y,起控长,起控角,终控长,终控角,atBegin)`（节点 +1、返回 IVGSegment）、`Extract(Shape)`（**把子路径抽成独立对象**，返回 `(新 Shape, …)`）；**第五十二波**：`GetPointPositionAt(0,0,偏移,偏移类型)` 返回 `(X,Y)`（类型 0=绝对长度 mm、1=归一化 0~1）、`FindSegmentOffset(绝对偏移, Segment, ParamOffset, Remainder)` 返回 `(bool, IVGSegment, 参数偏移, 余数)` |
 | `IVGNode` | 19 | **已覆盖（第五波纠正）**：`curve.Nodes` / `curve.SubPaths.Item(i).Nodes` 是**属性**；`GetPosition/SetPosition/Move/Type/Index/SubPathIndex/IsEnding/Selected/Delete/CreateSelection` 均可用；范围操作走 `curve.Nodes.Range(a,b)` → `IVGNodeRange`（Fillet/Chamfer/Scallop/Smoothen/SetType/Move/Rotate/Skew/Stretch/BreakApart/GetBoundingBox）；`app.CreateNodeRange()` 返回空集合；**第三十六波**：`Next()` / `Previous()`（**是方法不是属性**，返回 IVGNode）、`GetDistanceFrom`、`AveragePositionWith`、`JoinWith`（末端节点合并）、`GetPoint`（返回 IVGPoint）；`ConnectWith` / `ExtendSubPaths` 实测报「指定的节点必须在另一条曲线上」/「无法连接曲线」；**第四十七波**：`GetPoint()`（返回 IVGPoint）+ `SetPoint(point)` 可整颗搬运节点坐标 |
 | `IVGText` | 30 | 已用：Story（**Font / Size / Bold / Italic / Underline 读取**）/ GetSpaceProperties / SetSpaceProperties / GetAlignProperties / SetAlignProperties / FitToPath / FitTextToFrame / **GetContents / Range / ExportToFile / GetHyphenationSettings**；GetFontProperties 结构体返回默认值不可信；**第三十七波**：`FontProperties` / `SpaceProperties` / `AlignProperties` / `HyphenationSettings` 四个**属性**可读（返回 IVGStruct* 快照）；带下标/帧的 `*InRange` 版本返回的结构体字段是垃圾值（Size=1.17e-38），不可用；直接赋值 setter 会把字号写坏，**只读不写**；**第四十五波**：`BeginEdit()` 可用（进入文字编辑态）；**第五十一波**：`SetAlignProperties` / `SetSpaceProperties` / `SetHyphenationSettings` 配合结构体工厂可从零构造段落格式（**只对段落文本生效**，艺术字报「该参数需要段落文本」）|
@@ -243,6 +243,7 @@
 >   `CreateFreeConnector` 报「未实现」；本机无符号库。
 > * 混合 **可用（第十七波）**：`CreateBlend` 传全参数且 `Path=None` 时成功；
 >   效果经 `Effects.Item(i).Blend`（IVGEffectBlend）读写 Steps/Spacing/Angle 等。
+> * 曲线映射到骨架线 **可用（第五十六波）**：`Curve.CreateCurveMappedToStroke(子路径,…)`（`Stroke` 要 `IVGSubPath`，不是 `IVGCurve`）。
 > * 连接器 / 标注 **可用（第五十五波）**：`Application.CreateSnapPoint(x,y)` 造端点后，`CreateConnector` / `CreateConnectorEx` / `CreateRightAngleConnector` / `CreateLinearDimension`(22 参) / `CreateAngularDimension`(18 参) 全部可用。
 > * 同级遍历 / 解组家族 **可用（第五十四波）**：`Shape.GetNext/GetPrevious(方向)`、`ShapeRange.UngroupAll/UngroupAllEx/UngroupEx`（纠正了"空操作"的旧结论）。
 > * B 样条 **可用（第五十三波）**：`Document.CreateBSpline` + `InsertControlPoint` + `Layer.CreateBSpline`（`Layer.CreateBSpline` 要的是 `IVGBSpline` 不是 Curve）。
@@ -353,7 +354,7 @@
 
 ```powershell
 python -m pytest -q              # 93 项纯逻辑
-python scripts/live_smoke.py     # 478 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
+python scripts/live_smoke.py     # 480 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
 ```
 
 联调断言覆盖了上表所有 ✅ 项。反解脚本属于过程产物，已按要求放在 `tmp/` 并在完成时清理；
@@ -361,14 +362,14 @@ python scripts/live_smoke.py     # 478 项端到端（真实 CorelDRAW，**跑�
 
 ---
 
-## 六、量化覆盖率（2026-10-26 第五十五波实测）
+## 六、量化覆盖率（2026-10-26 第五十六波实测）
 
 方法：反解类型库拿到 196 个自动化类 / **1619** 个方法（已剔除 `QueryInterface` 等 COM 基础设施）；
 用 AST 扫描 `src/cdrx8_mcp/*.py`，收集所有 `.方法名(` 调用与 `setattr/getattr` 的属性名，
 与主干接口的方法名求交集。**注意：属性名（如 `curve.Nodes`）也会被计入**，所以本波数字含真实属性访问。
 
-**全局：1004 / 1619 = 62.0%**（21.2% → … → 61.7% → 本轮 62.0%）
-**主干 20 接口：634 / 743 = 85.3%**
+**全局：1006 / 1619 = 62.1%**（21.2% → … → 62.0% → 本轮 62.1%）
+**主干 20 接口：636 / 743 = 85.6%**
 
 复现命令：`python scripts/coverage_audit.py`（会临时展开类型库到 `tmp/gen_py`，跑完自动清理）
 
@@ -379,7 +380,7 @@ python scripts/live_smoke.py     # 478 项端到端（真实 CorelDRAW，**跑�
 | `IVGSubPath` | 38 | 37 | **97%** |
 | `IVGDocument` | 74 | 57 | **77%** |
 | `IVGPage` | 21 | 20 | **95%** |
-| `IVGCurve` | 36 | 28 | **78%** |
+| `IVGCurve` | 36 | 30 | **83%** |
 | `IVGLayer` | 49 | 42 | **86%** |
 | `IVGTextRange` | 31 | 30 | **97%** |
 | `IVGApplication` | 78 | 53 | **68%** |
@@ -394,10 +395,10 @@ python scripts/live_smoke.py     # 478 项端到端（真实 CorelDRAW，**跑�
 | `IVGTransparency` | 8 | 7 | **88%** |
 | `IVGStyle` | 15 | 13 | **87%** |
 | `IVGColorContext` | 6 | 5 | **83%** |
-| **合计** | **743** | **634** | **85.3%** |
+| **合计** | **743** | **636** | **85.6%** |
 
 > **怎么读这两个数**：
-> 1. 全局 **62.0%** 覆盖 1619 个方法（含变体与重复）；主干 20 接口 85.3%。
+> 1. 全局 62.1% 覆盖 1619 个方法（含变体与重复）；主干 20 接口 85.6%。
 > 2. 它是**方法/属性名匹配**的近似值，同名方法会跨接口误计。
 > 3. `IVGColor` 已到 **91%**：分量**写**走 `*Assign`，分量**读**走 `CorelScriptGetComponent`（`(5000+模型号, v1..v7)`）；纯 Python 只用于无 COM 场景的换算。
 > 4. 未调用方法多为变体（Wide/Ex/2/3 后缀）与事件订阅、CorelScriptTools/MathUtils。
@@ -1195,6 +1196,18 @@ python scripts/live_smoke.py     # 478 项端到端（真实 CorelDRAW，**跑�
 >    （RPC 服务器不可用）；**杀掉残留的 CorelDRW 进程再跑，478/478 全通过** ——
 >    说明崩的是上一次遗留的坏实例，不是被测代码。跑全量前务必确认没有残留进程。
 
+## 七之五十四、第五十六波已接入（2026-10-26，曲线映射到骨架线）
+
+| 能力 | 落地位置 | 实测 |
+|---|---|---|
+| **映射到骨架线** | `cdr_path(action="map_to_stroke", target=曲线, other=骨架线对象, params={"scale_y":5})` | ✅ `Curve.CreateCurveMappedToStroke(子路径, ScaleY, SelfWeld)` → 新 Curve，`Layer.CreateCurve` 后 Type 3、15 节点 |
+| **带参考线映射** | 同上 `params={"use_reference_line":true}` | ✅ `CreateCurveMappedToStrokeAndReferenceLine(子路径, IVGPoint, IVGPoint, ScaleY, SelfWeld)` → Type 3、16 节点 |
+
+> **第五十六波又纠正一条**：这两个方法早在第 32 波就被判成「类型不匹配」。
+> 原因是 **`Stroke` 参数要的是 `IVGSubPath`（单条子路径），不是整条 `IVGCurve`**；
+> 参考线版的两个点是 `IVGPoint`（`Node.GetPoint()` 拿）。换对类型后一次成功 ——
+> 这是"艺术笔/骨架映射"类效果的底层入口。
+
 ## 七之二、仍未接入（第三轮候选）
 
 | 能力 | 接口 | 为什么还没做 |
@@ -1221,11 +1234,11 @@ python scripts/live_smoke.py     # 478 项端到端（真实 CorelDRAW，**跑�
   自定义虚线、文档设置、文本区间编辑、自定义箭头、图案微调、文本格式查询、位图内容替换/链接、
   文档回滚、立体化/透镜/效果管理、位图特效命令串、混合、文档颜色转换、用户偏好 KV、OLE 嵌入、
   命名视图、网格设置、叠印、段落缩进、制表位、屏幕叠加层、应用/文档事件、导出/保存/导入选项、吸附点全家族、颜色对象分量、描边对象全量属性都已补上。
-* **方法级覆盖**：**全局 62.0%（1004/1619）**，主干 20 接口 85.3%（634/743）。
+* **方法级覆盖**：全局 62.1%（1006/1619），主干 20 接口 85.6%（636/743）。
 * **明确不可用**：位图描摹、文本导入、点集数组建曲线、尺寸标注/连接线（MathUtils 点对象
   不可创建）、符号库、文件型图案/影线填充（本机无库）、曲线贴笔触、OpenDocumentAsCopy、
   HTML 兼容文本、断字写入、填充字符串、文本尺寸查询、灰度→RGB 转换、真实应用偏好读取、
   文本分栏（SetColumns 数组参数）。
-* **第五十五波新增**：连接器三件套与线性/角度标注（端点用 CreateSnapPoint 造）；`IVGLayer` 到 86%；**全局覆盖过 62%**。
+* **第五十六波新增**：曲线映射到骨架线（CreateCurveMappedToStroke 及参考线版）；纠正了「Stroke 要 IVGSubPath 不是 IVGCurve」这一历史误判。
 
 
