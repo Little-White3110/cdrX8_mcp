@@ -2,7 +2,7 @@
 
 > 目的：证明"还有多少没探"。每一行要么有对应的工具，要么有实测失败证据。
 > 环境：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）/ Python 3.11.9 64 位
-> 最近更新：2026-10-26 第四十九波（颜色分量读取 / 转调色板 / 按掩码复制属性）
+> 最近更新：2026-10-26 第五十波（形状斜切 / 子路径追加与抽出 / 焊接落地）
 
 ## 怎么得出这份清单
 
@@ -23,14 +23,14 @@
 | `IVGDocument` | 78 | 已用：Unit / Pages / AddPages / DeletePages / ActivePage / ActiveLayer / Selection / Save·SaveAs / ExportEx / ExportBitmap(不适用) / PublishToPDF / Undo / Redo / Begin·EndCommandGroup / FileName / Dirty / Name / StyleSheet / **Metadata / DataFields / ColorContext / ConvertToColorContext / Revert / Views / CreateView** / **设置：EditAcrossLayers / ApplyToDuplicate / CurvePrecision / Resolution / ReferencePoint / ShapeEnumDirection / TextFormatter / WorldScale / FacingPages / FirstPageOnRightSide / Layout / Unit / DrawingOriginX·Y / PreserveSelection** / **Keywords·Notes（可写，读需走 Metadata）** / **ToUnits / FromUnits / SampleColorAtPoint / SampleColorInArea / ShowAllHiddenObjects / SetLayout / Repeat / CreateImage / CreateColorStyles / InsertPages / HatchLibraries / SaveStyleSheet / LoadStyleSheet / CreateFill / CreateOutline（字符串格式无效）**；**第三十五波**：`AddPagesEx` / `InsertPagesEx`（定尺寸加页/插页）、`CreateArrowHead2/Ex/Ex2`（命名箭头）、`ResolveAllBitmapsLinks`、`SaveSettings`/`RestoreSettings`/`ResetSettings`（设置快照，调用无异常、可见效果未确认）、`CreateColor`（在 Application 上）/ `CreateUniformFill`；**第三十八波**：`CreateUniformFill(IVGColor)` 造填充对象 + `ShapeRange.ApplyFill` 批量上色、`CreateArrowHead2(Curve, Name)` 命名箭头；**第四十二波**：`CreateShapeRangeFromArray`、`ConvertToBitmapEx`（范围）、`AssignColorContext`、`SaveStyleSheetAsDefault`、`CreateArrowHeadEx` / `CreateArrowHeadEx2` / `CreateArrowHeadOptions`；**第四十三波**：`Export(FileName, Filter, Range, Options, PaletteOptions)`、`ExportBitmap(16 参，返回 ICorelExportFilter，必须 Finish())` |
 | `IVGPage` | 22 | **全覆盖**：SetSize / SelectSize / GetSize / CreateLayer / Activate / Delete / MoveTo / FindShape(s) / TextFind / TextReplace / GetGuides / UnlockAllShapes / GetObjectsBoundingBox(改用自算) / SelectShapesFromRectangle / Shapes / Layers / Orientation / **FindClosestSnapPoint** |
 | `IVGLayer` | 50 | 已用：Create*（矩形/椭圆/多边形/螺旋/网格/线/贝塞尔/艺术字/段落字/参考线/**角度参考线**/**位图 CreateBitmap·CreateBitmap2**/**OLE 文件 CreateOLEObjectFromFile**/**矩形造形 CreateRectangleRect·CreateEllipseRect**（第三十四波）/**曲线段 CreateCurveSegment**（第三十四波））/ Import / ImportEx / CreateCurve / Activate / Delete / MoveAbove / **MoveBelow / GetAbove / GetBelow / Paste / FindShape** / Visible / Editable / Printable / Master / **IsGuidesLayer（属性，不是方法）**；**第三十八波**：完整参数形态 `CreateRectangle(left,top,right,bottom,4 圆角)` / `CreateEllipse(left,top,right,bottom,起止角,pie)` / `CreatePolygon(left,top,right,bottom,sides,subpaths,complexity,star,starComplexity,maxComplexity)`；**第四十一波**：`CreateBitmap2(x,y,w,h,Image,Alpha)` 与 `CreateBitmapRect(IVGRect,Image,Alpha)`（都要 IVGImage + Alpha=None）；**第四十三波**：`PasteEx(IVGStructPasteOptions)`（返回 ShapeRange）；**第四十七波**：`CreateArtisticTextWide` / `CreateParagraphTextWide`（显式语言/字符集）、`ImportEx(FileName, Filter, Options)` |
-| `IVGShape` | 124 | 已用：几何 / Fill / Outline / Transparency / Locked / Name / Type / GetBoundingBox / Duplicate / Clone / Delete / **层级 / StepAndRepeat / Distribute / CreateBoundary / CreatePerspective / Separate / CreateEnvelopeFromCurve / CreateEnvelopeFromShape / CompareTo / CreateSelection / RemoveFromSelection / IsOnShape / Copy / Cut / CopyToLayer / MoveToLayer / Project / Unproject / CreateDocumentFrom / CreateExtrude / CreateLens / CreateBlend / OverprintFill / OverprintOutline / OverprintBitmap** / ConvertToCurves / ConvertToSymbol / Weld·Trim·Intersect / AddToPowerClip / CreateDropShadow·Contour·Envelope / AlignToPage·AlignToShape / Fillet·Chamfer·Scallop / Group / Ungroup / BreakApart / Combine；**第三十九波**：`GetMatrix` / `SetMatrix`（[d11,d12,d21,d22,tx,ty]，读回精确；tx/ty 是 X8 内部单位）、`IsTypeAnyOf`（传 list[int] 可用）、`IsOnShape`（2=内部 / 1=边界 / 0=外部）、`OrderIsInFrontOf`、`PlaceTextInside`、`DuplicateAsRange` / `CloneAsRange`、**扭曲三件套 `CreatePushPullDistortion` / `CreateTwisterDistortion` / `CreateZipperDistortion`**；**第四十波**：`GetPositionEx` / `SetPositionEx`（cdrReferencePoint 1~9 定位）、`FindSnapPoint(ReferenceData)`、`GetLinkedShapes(LinkType)`、`ConvertToBitmapEx(8 参)`、`GetOverprintFillState` / `GetOverprintOutlineState`；**第四十八波**：`CopyToLayerAsRange(layer)`（复制到指定图层并返回范围）、`AlignToShapeRange(alignType, range, textOrigin)`（对齐到另一批对象）；**第四十九波**：`CopyPropertiesFrom(源对象, 掩码)` 在**形状级**可用（掩码 4/8/15 会复制填充，1/2 不影响填充；范围级同名方法仍报错）|
+| `IVGShape` | 124 | 已用：几何 / Fill / Outline / Transparency / Locked / Name / Type / GetBoundingBox / Duplicate / Clone / Delete / **层级 / StepAndRepeat / Distribute / CreateBoundary / CreatePerspective / Separate / CreateEnvelopeFromCurve / CreateEnvelopeFromShape / CompareTo / CreateSelection / RemoveFromSelection / IsOnShape / Copy / Cut / CopyToLayer / MoveToLayer / Project / Unproject / CreateDocumentFrom / CreateExtrude / CreateLens / CreateBlend / OverprintFill / OverprintOutline / OverprintBitmap** / ConvertToCurves / ConvertToSymbol / Weld·Trim·Intersect / AddToPowerClip / CreateDropShadow·Contour·Envelope / AlignToPage·AlignToShape / Fillet·Chamfer·Scallop / Group / Ungroup / BreakApart / Combine；**第三十九波**：`GetMatrix` / `SetMatrix`（[d11,d12,d21,d22,tx,ty]，读回精确；tx/ty 是 X8 内部单位）、`IsTypeAnyOf`（传 list[int] 可用）、`IsOnShape`（2=内部 / 1=边界 / 0=外部）、`OrderIsInFrontOf`、`PlaceTextInside`、`DuplicateAsRange` / `CloneAsRange`、**扭曲三件套 `CreatePushPullDistortion` / `CreateTwisterDistortion` / `CreateZipperDistortion`**；**第四十波**：`GetPositionEx` / `SetPositionEx`（cdrReferencePoint 1~9 定位）、`FindSnapPoint(ReferenceData)`、`GetLinkedShapes(LinkType)`、`ConvertToBitmapEx(8 参)`、`GetOverprintFillState` / `GetOverprintOutlineState`；**第四十八波**：`CopyToLayerAsRange(layer)`（复制到指定图层并返回范围）、`AlignToShapeRange(alignType, range, textOrigin)`（对齐到另一批对象）；**第四十九波**：`CopyPropertiesFrom(源对象, 掩码)` 在**形状级**可用（掩码 4/8/15 会复制填充，1/2 不影响填充；范围级同名方法仍报错）；**第五十波**：`SkewEx(angleX, angleY, cx, cy)` 形状级斜切可用（`ApplyTransformMatrix` 仍不可用：`Application.MathUtils` 不存在，_造型不了矩阵对象_）|
 | `IVGShapeRange` | 131 | 已用：Group / Combine / AlignAndDistribute / ApplyFountainFill / SetOutlineProperties(不适用，改属性直写) / ConvertToCurves / Add / Count / **CreateParallelCurves / ConvertToBitmap / ConvertOutlineToObject / CreateBoundary / SetFillMode / SetPixelAlignedRendering / ApplyFill / ApplyOutline / CreateDocumentFrom**；**第三十三波**：`AlignRangeToPage` / **PageCenter / Grid / Point / Shape / ShapeRange**、`AddRange` / `RemoveRange`、`Unlock`、`BreakApartEx`、`ClearEffect`、`IndexOf` / `CountAnyOfType` / `ExistsAnyOfType` / `FindAnyOfType`、`GetPositionEx` / `SetPositionEx` / `RotateEx` / `SkewEx`；**空操作/不可用**：`UngroupAll`·`UngroupAllEx`·`UngroupEx`（实测调完对象数不变）、`Sort`（比较表达式语法未逆出）、`AllExcluding`（TypeError）、`SetSizeEx`/`StretchEx`（参数语义不明且会放大到离谱尺寸）；**第四十二波**：`Document.CreateShapeRangeFromArray([shape,…])` **接受 Python list**（配 `Exists` 校验），`ConvertToBitmapEx(8 参)` 整批位图化；**第四十七波**：`SetOutlineProperties`（14 参）/ `SetOutlinePropertiesEx`（15 参，含 Justification）可与 `Shape.Outline.SetProperties(Ex)` 一样全参调用；`AlignRangeToPage(cdrAlignType)` 直接对齐页边；`DeleteItem(i)` 会**连文档里的对象一起删**（已记入陷阱）|
 | `IVGFill` | 13 | 已用：ApplyUniformFill / ApplyFountainFill / ApplyTextureFill / **ApplyPatternFill（内存 PatternCanvas 可用；文件型 Pattern 仍需图像文件）** / ApplyPostscriptFill / ApplyNoFill / **GetCopy / CompareWith**；Hatch 需本机 Hatch 库（本机为空） |
 | `IVGOutline` | 15 | **第三十二波补齐（13/15）**：Width / Color / **Style（可赋自定义线型）** / StartArrow·EndArrow / LineCaps / LineJoin / BehindFill / ScaleWithShape / SetNoOutline / **NibStretch / NibAngle / MiterLimit / Justification**（可读写）/ **GetCopy / CopyAssign / CompareWith / ConvertToObject / SetProperties（14 参全实参可用）**；`PenWidth` 恒 0（派生）、`DashDotLength` 写入不生效、`ToString/StringAssign` 在 pywin32 包装类里不存在；**第四十五波**：`SetPropertiesEx`（15 参，多一个 Justification）实测可用 |
 | `IVGOutlineStyle` / `IVGOutlineStyles` | 6 / 6 | **新打通（第十一波）**：`CreateOutlineStyle(dash,gap[,dash,gap,…])` 生成虚拟线型（Index=-1），`OutlineStyles.AddStyle(virtual)` 注册后得到可用 Index，赋给 `Outline.Style` 即生效；`Save()` 可持久化 |
 | `IVGDataFields` / `IVGDataField` / `IVGDataItems` | 8 / 18 / 4 | **新打通（第十一波）**：`DataFields.Add(Name,"0")`、`IsPresent/Item`、`Shape.ObjectData.Add(DataField, Value)`、`DataItem.Value/FormattedValue` 可读写（对象级持久化数据字段） |
-| `IVGCurve` | 37 | 已用：Length / Area / SubPaths / Contour / CreateSubPath / GetCopy / **Nodes / Segments / Selection / FindNodeAtPoint / FindSegmentAtPoint / ReverseDirection / JoinTouchingSubpaths / RemoveOverlaps / GetPolyline / IsOnCurve / IsClockwise / Closed / GetCurveInfo**；数组入参（AppendSubpathFromPoints / CreateSubPathFromArray）不可用；CreateCurveMappedToStroke 类型不匹配；**第三十六波**：`AppendCurve`（把另一条曲线并成子路径）、`WeldWith`（返回新曲线）、`IsOnCurve(x,y,hot)`、`GetCopy`、`GetCurveInfo`（返回 com_struct 数组）|
-| `IVGSubPath` | 39 | 已用：CreateSubPath / AppendLineSegment / AppendCurveSegment2 / Closed / **Nodes / Segments / StartNode / EndNode / GetPointAt / GetPointPositionAt / GetTangentVectorAt / GetPerpendicularVectorAt / GetCurveSpeedAt / GetIntersections / ReverseDirection / Next / Previous / Extract / GetCopy**；求交/等分/切向已打通，点集数组仍取不回；`Next`·`Previous`·`GetCopy` 与曲线同名方法共享计数（审计按名字匹配，含跨接口误计）|
+| `IVGCurve` | 37 | 已用：Length / Area / SubPaths / Contour / CreateSubPath / GetCopy / **Nodes / Segments / Selection / FindNodeAtPoint / FindSegmentAtPoint / ReverseDirection / JoinTouchingSubpaths / RemoveOverlaps / GetPolyline / IsOnCurve / IsClockwise / Closed / GetCurveInfo**；数组入参（AppendSubpathFromPoints / CreateSubPathFromArray）不可用；CreateCurveMappedToStroke 类型不匹配；**第三十六波**：`AppendCurve`（把另一条曲线并成子路径）、`WeldWith`（返回新曲线）、`IsOnCurve(x,y,hot)`、`GetCopy`、`GetCurveInfo`（返回 com_struct 数组）；**第五十波**：`BindToDocument(doc)` —— `WeldWith` 返回的游离曲线必须先 Bind 再 `Layer.CreateCurve`，才能变回文档里的真形状（补上了焊接流程最后一环）|
+| `IVGSubPath` | 39 | 已用：CreateSubPath / AppendLineSegment / AppendCurveSegment2 / Closed / **Nodes / Segments / StartNode / EndNode / GetPointAt / GetPointPositionAt / GetTangentVectorAt / GetPerpendicularVectorAt / GetCurveSpeedAt / GetIntersections / ReverseDirection / Next / Previous / Extract / GetCopy**；求交/等分/切向已打通，点集数组仍取不回；`Next`·`Previous`·`GetCopy` 与曲线同名方法共享计数（审计按名字匹配，含跨接口误计）；**第五十波**：`AppendCurveSegment(x,y,起控长,起控角,终控长,终控角,atBegin)`（节点 +1、返回 IVGSegment）、`Extract(Shape)`（**把子路径抽成独立对象**，返回 `(新 Shape, …)`）|
 | `IVGNode` | 19 | **已覆盖（第五波纠正）**：`curve.Nodes` / `curve.SubPaths.Item(i).Nodes` 是**属性**；`GetPosition/SetPosition/Move/Type/Index/SubPathIndex/IsEnding/Selected/Delete/CreateSelection` 均可用；范围操作走 `curve.Nodes.Range(a,b)` → `IVGNodeRange`（Fillet/Chamfer/Scallop/Smoothen/SetType/Move/Rotate/Skew/Stretch/BreakApart/GetBoundingBox）；`app.CreateNodeRange()` 返回空集合；**第三十六波**：`Next()` / `Previous()`（**是方法不是属性**，返回 IVGNode）、`GetDistanceFrom`、`AveragePositionWith`、`JoinWith`（末端节点合并）、`GetPoint`（返回 IVGPoint）；`ConnectWith` / `ExtendSubPaths` 实测报「指定的节点必须在另一条曲线上」/「无法连接曲线」；**第四十七波**：`GetPoint()`（返回 IVGPoint）+ `SetPoint(point)` 可整颗搬运节点坐标 |
 | `IVGText` | 30 | 已用：Story（**Font / Size / Bold / Italic / Underline 读取**）/ GetSpaceProperties / SetSpaceProperties / GetAlignProperties / SetAlignProperties / FitToPath / FitTextToFrame / **GetContents / Range / ExportToFile / GetHyphenationSettings**；GetFontProperties 结构体返回默认值不可信；**第三十七波**：`FontProperties` / `SpaceProperties` / `AlignProperties` / `HyphenationSettings` 四个**属性**可读（返回 IVGStruct* 快照）；带下标/帧的 `*InRange` 版本返回的结构体字段是垃圾值（Size=1.17e-38），不可用；直接赋值 setter 会把字号写坏，**只读不写**；**第四十五波**：`BeginEdit()` 可用（进入文字编辑态）|
 | `IVGTextRange` | 35 | 已用：Text / Font / Size / Bold / Italic / Underline / ChangeCase / ApplyBulletEffect / ApplyDropCapEffect / ApplyNoEffect / InsertBefore / InsertAfter / **SetOpenTypeFeature / GetOpenTypeFeature / Delete / Copy / Paste / Straighten / FindRanges / EnumRanges / LeftIndent / RightIndent / FirstLineIndent / Tabs**；ApplyStyle 调用不报错但未观测到效果；**第三十七波**：`InsertBeforeWide` / `InsertAfterWide` / `ReplaceWide`（带语言/字符集/字体）、`Collapse` / `SetRange` / `InRange` / `IsSame` / `SetLineSpacing`、`Start`·`End`；`Evaluate` 的表达式语法未逆出（`len` 报 Identifier is not a method of global）|
@@ -82,7 +82,7 @@
 | **对象样式** | `cdr_style`（列出/从对象创建/派生/套用/改名/删除/读定义/改属性/**样式表 .cdst 导入导出**/**颜色样式与颜色协调**） | ✅ 第六/七/九波/**覆盖属性（override_props）·继承状态（inherited）·属性取值（get_property）·属性清除（clear_property）** | ✅ 第六/七/九/三十七波 |
 | **节点/线段** | `cdr_node`（列节点/列线段/移动/选中/删除/圆角/倒角/scallop/平滑/拉伸/旋转/斜切/断开/加节点/断线/控制点/按坐标查找/**前后邻居（Next·Previous）/节点间距/平均位置/末端节点合并**） | ✅ 第五/三十六波/**任意节点集合（arbitrary：CreateNodeRange + Add，支持 move/rotate/skew/stretch/autoreduce/smoothen/set_type/delete/fillet/chamfer/scallop/select）** | ✅ |
 | 文字排版 | `cdr_text`（字体字号粗斜体下划线 / 对齐 / 大小写 / 项目符号 / 首字下沉 / 行距字距 / 段落缩进 / **制表位** / 前后插入 / 沿路径 / 自适应 / 转曲 / 读取全文·区间·导出纯文本 / 字体属性读取·断字设置读取·格式段列表 / 区间删除·复制·粘贴·拉直 / 按格式查询区间（@font/@bold…） / OpenType 特性） | ✅ / **结构体快照（Font·Space·Align·Hyphenation）** / **区间宽接口（InsertBeforeWide·AfterWide·ReplaceWide·Collapse·SetRange·InRange·IsSame·SetLineSpacing）** | ✅ |
-| 布尔与整形 | `cdr_shape_ops`（weld/trim/intersect/combine/group/ungroup/break_apart/to_curves/to_symbol/powerclip/fillet/chamfer/scallop/step_repeat/distribute/boundary/perspective/separate/parallel_curves/rasterize/batch_outline_to_curves/fill_mode/pixel_aligned/range_boundary/envelope_from_shape/compare/project/unproject/to_document/extrude/lens/extrude_set/lens_set/effect_info/clear_effects/**blend/blend_set**/**unlock_all/ungroup_all/break_apart_ex/clear_effect/range_info/range_add/range_remove**） | ✅/**矩阵（matrix）·类型集合（is_type）·层序（in_front_of）·命中（is_on_shape）·扭曲（distort：pushpull/twister/zipper）·文字内嵌（place_text）·范围复制（duplicate_range/clone_range）**）| ✅/**参考点定位（position_ex）·吸附反查（find_snap）·链接对象（linked）·带参位图化（rasterize_ex）·叠印状态（overprint_state）**）| ✅/**range_from_list（对象列表建范围，可再 then=rotate_ex）/ range_bitmap（整批位图化）**）| ✅/**copy_to_layer_range（复制到其它图层）/ align_to_range（对齐到形状范围）**）| ✅/**copy_props（按掩码复制属性）**）| ✅ |
+| 布尔与整形 | `cdr_shape_ops`（weld/trim/intersect/combine/group/ungroup/break_apart/to_curves/to_symbol/powerclip/fillet/chamfer/scallop/step_repeat/distribute/boundary/perspective/separate/parallel_curves/rasterize/batch_outline_to_curves/fill_mode/pixel_aligned/range_boundary/envelope_from_shape/compare/project/unproject/to_document/extrude/lens/extrude_set/lens_set/effect_info/clear_effects/**blend/blend_set**/**unlock_all/ungroup_all/break_apart_ex/clear_effect/range_info/range_add/range_remove**） | ✅/**矩阵（matrix）·类型集合（is_type）·层序（in_front_of）·命中（is_on_shape）·扭曲（distort：pushpull/twister/zipper）·文字内嵌（place_text）·范围复制（duplicate_range/clone_range）**）| ✅/**参考点定位（position_ex）·吸附反查（find_snap）·链接对象（linked）·带参位图化（rasterize_ex）·叠印状态（overprint_state）**）| ✅/**range_from_list（对象列表建范围，可再 then=rotate_ex）/ range_bitmap（整批位图化）**）| ✅/**copy_to_layer_range（复制到其它图层）/ align_to_range（对齐到形状范围）**）| ✅/**copy_props（按掩码复制属性）**）| ✅/**skew_ex（形状级斜切）**）| ✅ |
 | 对齐 | `cdr_align`（左中右/上下中/等间距；`to=selection/page` 走 AlignAndDistribute；**`to=page_center/grid/point/shape/range` 走原生 AlignRangeTo***）+ `cdr_modify(align_to_shape/align_to_page)` | ✅ 第三十三波 |
 | 选择与查找 | `cdr_select`（加入/**移除/清空**）`cdr_find` | ✅ |
 | 图层 | `cdr_layers`（增删改/显隐/锁定/打印/移动/**上下相邻查询·下移·粘贴剪贴板**） | ✅ / **高级粘贴 paste_ex（CreateStructPasteOptions + PasteEx）** | ✅ |
@@ -93,7 +93,7 @@
 | **矩形对象** | `cdr_rect`（info / offset / inflate / union / intersect / contains / copy / create_rectangle（四角圆角）/ create_ellipse（角度+扇形）） | ✅ 第三十四波 |
 | **描边对象** | `cdr_outline`（info / set（含 SetProperties 全参）/ convert_to_object / copy / compare） | ✅ 第三十二波 |
 | 位图 | `cdr_bitmap`（信息/转色彩模式/重采样/裁剪/取消裁剪/取像素色·图像缓冲信息·调色板模式 0~9·双色调/内容替换 SetImageData/位图特效命令串 ApplyBitmapEffect/**链接信息·重新加载·解析链接**） | ✅（Trace 除外） / **调色板选项转换 paletted_options（ConvertToPaletted2 + 可选已打开调色板）**）| ✅（Trace 除外）|
-| 路径 | `cdr_path`（长度面积/偏移轮廓/追加子路径/折线点/反转方向·焊子路径·去重叠·参数取点·切/法向量·速度·交点·找节点/线段/**曲线合并（AppendCurve）/焊接（WeldWith）/命中判定（IsOnCurve）/曲线副本/曲线信息**） | ✅/**任意线段集合（segment_range：CreateSegmentRange + Add，set_type/add_node/select/remove_all）** | ✅ |
+| 路径 | `cdr_path`（长度面积/偏移轮廓/追加子路径/折线点/反转方向·焊子路径·去重叠·参数取点·切/法向量·速度·交点·找节点/线段/**曲线合并（AppendCurve）/焊接（WeldWith）/命中判定（IsOnCurve）/曲线副本/曲线信息**） | ✅/**任意线段集合（segment_range：CreateSegmentRange + Add，set_type/add_node/select/remove_all）** | ✅/**追加曲线段（append_curve_segment）·抽出子路径（extract_subpath）·焊接落地（weld_to_shape）**）| ✅ |
 | 导入导出 | `cdr_import`（**可传 import_options：外链位图/重采样/保留图层**） `cdr_export`（png/jpg/svg/pdf，可指定 DPI，可只导选区，**可传 export_options 控制抗锯齿/透明/压缩/尺寸**） | ✅ / **`export_api="document"`（Document.Export）/ `"bitmap"`（Document.ExportBitmap）** | ✅ / **`filter_id`（走 Layer.ImportEx，需导入过滤器号）** | ✅ |
 | 文档 | `cdr_doc`（概况/清选区/清撤销栈/调色板/箭头/箭头登记/单位换算·取色·显示隐藏·版式·重复操作/字体列表·调色板列表·调色板取色/固定调色板打开·颜色枚举·专色创建/图案画布创建（含区域变换）/纹理库列表/文档元数据读写/本地化元数据/自定义调色板创建/数据字段·对象数据·色彩管理·线型样式/文档设置读写/应用信息·文档回滚/色彩配置文件·文档颜色转换/用户偏好 KV/命名视图/网格设置/叠印读取/**应用+文档事件队列**） | ✅ / **颜色上下文深操作（color_context_info/copy/merge）** / **渐变变换矩阵（fountain_transform）** | ✅ / **CorelScriptTools 辅助对象（script_tools：英寸/磅↔内部单位、ASin、BuildDate）** | ✅ |
 | **对象数据** | `cdr_modify(changes={"data":{...}})` + `cdr_doc(action="object_data"/"data_fields"/"add_data_field")` | ✅ 第十一波 |
@@ -125,7 +125,8 @@
 | 剪贴板格式粘贴 / 形状日志 | `Layer.PasteSpecial("CorelDRAW 图形", …)` / `Document.LogCreateShape(shape)` | PasteSpecial 返回 False（格式串不对）；LogCreateShape 报 com_error | 高级粘贴用 `cdr_layers(action="paste_ex")`；Log* 不暴露 |
 
 | 导入/导出过滤器号不通用 | `Layer.ImportEx(path, 802, opts)` | 802 是 **PNG 导出**过滤器号，传给 ImportEx 时调用成功但 `shapes_added=0`（静默不导入）；传 0 让它自动判断才正常 | `cdr_import(filter_id=…)` 已暴露但标注需用**导入**过滤器号；X8 没有列出导入过滤器号的 API |
-| 范围删项会真删对象 | `ShapeRange.DeleteItem(1)` | 删完范围 Count 2→1，**页面对象数也从 2 变 1** | 只是想从范围里移除成员用 `range_remove`（`RemoveRange`），别用 DeleteItem || 文档级填充/描边工厂（字符串） | `Document.CreateFill("…")` / `CreateOutline("…")` | 传 CMYK/RGB 颜色串或 "UniformFill" 都只得到 **Type=0 / 宽度 0** 的空对象（字符串格式无效）| 填充/描边仍走 `cdr_modify` 或 `CreateUniformFill` |
+
+| 变换矩阵对象造不出来 | `Shape.ApplyTransformMatrix` / `Curve.ApplyTransformMatrix` | 需要 `IVGTransformMatrix`，而它的工厂在 `IVGMathUtils` 上，`Application.MathUtils` 根本不存在（AttributeError，CLSID 未注册）| 矩阵变换改用 `Shape.SetMatrix` + `cdr_modify(affine=…)` || 范围删项会真删对象 | `ShapeRange.DeleteItem(1)` | 删完范围 Count 2→1，**页面对象数也从 2 变 1** | 只是想从范围里移除成员用 `range_remove`（`RemoveRange`），别用 DeleteItem || 文档级填充/描边工厂（字符串） | `Document.CreateFill("…")` / `CreateOutline("…")` | 传 CMYK/RGB 颜色串或 "UniformFill" 都只得到 **Type=0 / 宽度 0** 的空对象（字符串格式无效）| 填充/描边仍走 `cdr_modify` 或 `CreateUniformFill` |
 | 页面自定义命令 | `Page.CustomCommand("", "", [])` | 报「未装载此命令」| 不暴露 |
 | 样式改父级 | `Style.SetBasedOn(父样式对象)` | 传 None 报「未找到样式 None」；而用 `CreateStyleFromShape` 连续创建两个样式时 `Styles.Find("名字")` 会找不到，列表里只显示一个 `name=null` 的样式，所以 SetBasedOn 无法稳定验证 | 派生样式仍用 `cdr_style(action="create", based_on=…)`；`set_based_on` 未暴露 || 范围级属性复制 | `ShapeRange.CopyPropertiesFrom(shape, mask)` | 报 `com_error: 执行方法 coVGShape::CopyPropertiesFrom 时发生意外`（掩码 1|2|4）| 属性复制请逐个对象用 `cdr_modify(changes={"fill_from"/"outline_from"})` || BSpline / 自定义效果 | `Layer.CreateBSpline(Source)` / `Shape.CreateCustomEffect(id, …)` / `Shape.CreateCustomDistortion(id, …)` | BSpline 报「类型不匹配」（Source 不是 Curve）；两个自定义效果都报「未装载此效果」（需要先装插件效果）| `Layer.CreateBSpline` 暂不可用；自定义效果需安装对应插件，不暴露 |
 | 数组入参（点集/形状集） | `Document.CreateCurveFitToPoints(Points, …)` / `Document.CreateCurveFromArray(Source, NumElements)` | 点集仍报 `TypeError: Python instance can not be converted to a COM object`；但 `CreateShapeRangeFromArray([shape,…])` **能接受 Python list**（传 1 个返回 Count=1）| 点集建曲线仍走逐点 AppendLineSegment || 叠印状态查询不对称 | `Shape.GetOverprintFillState()` / `GetOverprintOutlineState()` | 实测 outline 状态随开关变化（2→4），但 **fill 状态恒为 1**（开关前后都一样）；`RemoveFromContainer(1)` 报「参考的对象已不再存在」| 判断填充叠印请直接读布尔属性 `OverprintFill/OverprintOutline`（`cdr_shape_ops(op="overprint_state")` 一并返回）|| 矩阵平移量单位 | `Shape.SetMatrix(d11,d12,d21,d22,tx,ty)` / `GetMatrix` | 读回的初始矩阵 tx/ty 是 `-850000`、`-285000` 这类大数 —— X8 内部按 1/100000 单位存平移；写 `tx=5` 实际位移极小 | 矩阵读写本身精确（写什么读什么），但**不要拿它做毫米级平移**，平移请用 `cdr_modify(move=…)` || 调色板色/专色工厂 | `Application.CreatePaletteColor(name, index)` / `CreateSpotColor(name, tint, ?)` | 分别报「找不到颜色 PANTONE 185 C」「未找到颜色 MCP专色」—— 它们是从**已存在**的调色板/文档专色里取，不是新建 | 新建专色仍用 `cdr_doc(action="spot_color")`（CreateSpotColorByName + 已打开调色板） || 文字结构体写入 | `Text.FontProperties(frames, struct)` / `SpaceProperties(...)` 等 4 个 propget/putter | pywin32 里这些名字是**属性**：当方法调报 `TypeError: IVGStruct... object is not callable`；直接赋值（`text.FontProperties = struct`）不报错，但会把字号写成 1.17e-38 之类的垃圾值 | `Font/Space/Align/Hyphenation` 四个快照**只读**（`cdr_text(struct_info=true)`）；写字号/字体仍走 `cdr_text(font=…, size=…)` |
@@ -239,6 +240,8 @@
 >   `CreateFreeConnector` 报「未实现」；本机无符号库。
 > * 混合 **可用（第十七波）**：`CreateBlend` 传全参数且 `Path=None` 时成功；
 >   效果经 `Effects.Item(i).Blend`（IVGEffectBlend）读写 Steps/Spacing/Angle 等。
+> * 形状斜切 / 子路径追加与抽出 **可用（第五十波）**：`Shape.SkewEx`、`SubPath.AppendCurveSegment`、`SubPath.Extract`。
+> * 焊接落地 **可用（第五十波）**：`Curve.BindToDocument` + `Layer.CreateCurve`，把 `WeldWith` 的游离曲线变成真形状。
 > * 颜色分量读取 **可用（第四十九波）**：`CorelScriptGetComponent(模型号)` 返回 `(5000+模型号, v1..v7)`；`ConvertToPalette(调色板 GUID)` 可转指定调色板。
 > * 形状级属性复制 **可用（第四十九波）**：`Shape.CopyPropertiesFrom(源, 掩码)`。
 > * 颜色 Assign 家族 **可用（第四十八波）**：`FixedAssign`、`CorelScriptAssign`、`PaletteAssign(调色板 GUID, 序号)`、`Invalidate`。
@@ -340,7 +343,7 @@
 
 ```powershell
 python -m pytest -q              # 93 项纯逻辑
-python scripts/live_smoke.py     # 458 项端到端（真实 CorelDRAW）
+python scripts/live_smoke.py     # 462 项端到端（真实 CorelDRAW）
 ```
 
 联调断言覆盖了上表所有 ✅ 项。反解脚本属于过程产物，已按要求放在 `tmp/` 并在完成时清理；
@@ -348,25 +351,25 @@ python scripts/live_smoke.py     # 458 项端到端（真实 CorelDRAW）
 
 ---
 
-## 六、量化覆盖率（2026-10-26 第四十九波实测）
+## 六、量化覆盖率（2026-10-26 第五十波实测）
 
 方法：反解类型库拿到 196 个自动化类 / **1619** 个方法（已剔除 `QueryInterface` 等 COM 基础设施）；
 用 AST 扫描 `src/cdrx8_mcp/*.py`，收集所有 `.方法名(` 调用与 `setattr/getattr` 的属性名，
 与主干接口的方法名求交集。**注意：属性名（如 `curve.Nodes`）也会被计入**，所以本波数字含真实属性访问。
 
-**全局：965 / 1619 = 59.6%**（21.2% → … → 59.4% → 本轮 59.6%）
-**主干 20 接口：602 / 743 = 81.0%**
+**全局：975 / 1619 = 60.2%**（21.2% → … → 59.6% → **本轮 60.2%**）
+**主干 20 接口：607 / 743 = 81.7%**
 
 复现命令：`python scripts/coverage_audit.py`（会临时展开类型库到 `tmp/gen_py`，跑完自动清理）
 
 | 接口 | 方法数 | 已调用 | 覆盖 |
 |---|---:|---:|---:|
-| `IVGShape` | 123 | 105 | **85%** |
-| `IVGShapeRange` | 125 | 108 | **86%** |
-| `IVGSubPath` | 38 | 33 | **87%** |
+| `IVGShape` | 123 | 106 | **86%** |
+| `IVGShapeRange` | 125 | 109 | **87%** |
+| `IVGSubPath` | 38 | 35 | **92%** |
 | `IVGDocument` | 74 | 55 | **74%** |
 | `IVGPage` | 21 | 20 | **95%** |
-| `IVGCurve` | 36 | 27 | **75%** |
+| `IVGCurve` | 36 | 28 | **78%** |
 | `IVGLayer` | 49 | 36 | **73%** |
 | `IVGTextRange` | 31 | 30 | **97%** |
 | `IVGApplication` | 78 | 48 | **62%** |
@@ -381,10 +384,10 @@ python scripts/live_smoke.py     # 458 项端到端（真实 CorelDRAW）
 | `IVGTransparency` | 8 | 7 | **88%** |
 | `IVGStyle` | 15 | 13 | **87%** |
 | `IVGColorContext` | 6 | 4 | **67%** |
-| **合计** | **743** | **602** | **81.0%** |
+| **合计** | **743** | **607** | **81.7%** |
 
 > **怎么读这两个数**：
-> 1. 全局 59.6% 覆盖 1619 个方法（含变体与重复）；**主干 20 接口 81.0%**。
+> 1. 全局 **60.2%** 覆盖 1619 个方法（含变体与重复）；主干 20 接口 81.7%。
 > 2. 它是**方法/属性名匹配**的近似值，同名方法会跨接口误计。
 > 3. `IVGColor` 已到 **91%**：分量**写**走 `*Assign`，分量**读**走 `CorelScriptGetComponent`（`(5000+模型号, v1..v7)`）；纯 Python 只用于无 COM 场景的换算。
 > 4. 未调用方法多为变体（Wide/Ex/2/3 后缀）与事件订阅、CorelScriptTools/MathUtils。
@@ -1093,6 +1096,21 @@ python scripts/live_smoke.py     # 458 项端到端（真实 CorelDRAW）
 > 另：`Shape.CopyPropertiesFrom` 在**形状级**可用（范围级仍报「执行方法时发生意外」）；
 > `Layer.CreateCustomShape/CreateToolShape` 分别报「未装载此形状」/ com_error，不可用。
 
+## 七之四十八、第五十波已接入（2026-10-26，形状斜切 / 子路径追加与抽出 / 焊接落地）
+
+| 能力 | 落地位置 | 实测 |
+|---|---|---|
+| **形状级斜切** | `cdr_shape_ops(op="skew_ex", params={"angle_x":10,"cx":10,"cy":5})` | ✅ `Shape.SkewEx(10,0,10,5)`：bbox 宽度 20→21.763、x 偏到 -0.882 |
+| **子路径追加曲线段** | `cdr_path(action="append_curve_segment", params={x,y,start_ctrl_length,…})` | ✅ `SubPath.AppendCurveSegment` 7 参：节点 3→4，返回 IVGSegment |
+| **抽出子路径** | `cdr_path(action="extract_subpath", params={"subpath":1})` | ✅ `SubPath.Extract(shape)` 返回 `(新 Shape, …)`，抽出后是 type 3 曲线、页面对象 +1 |
+| **焊接结果落地** | `cdr_path(action="weld_to_shape", other=另一条曲线)` | ✅ `WeldWith` → `BindToDocument` → `Layer.CreateCurve`：游离曲线变回文档里的真形状（type 3、4 节点） |
+
+> **第五十波补齐了焊接流程的最后一环**：`Curve.WeldWith` 以前只返回"游离曲线"（不在文档里），
+> 现在用 `BindToDocument` + `Layer.CreateCurve` 能把它落成真形状 —— 这是前面几波一直缺的收尾步骤。
+> 另：`Shape.ApplyTransformMatrix` / `Curve.ApplyTransformMatrix` 仍不可用，因为矩阵工厂在
+> `IVGMathUtils` 上而 `Application.MathUtils` 根本不存在（CLSID 未注册）；
+> 矩阵变换继续用 `Shape.SetMatrix` + `cdr_modify(affine=…)`。
+
 ## 七之二、仍未接入（第三轮候选）
 
 | 能力 | 接口 | 为什么还没做 |
@@ -1119,11 +1137,11 @@ python scripts/live_smoke.py     # 458 项端到端（真实 CorelDRAW）
   自定义虚线、文档设置、文本区间编辑、自定义箭头、图案微调、文本格式查询、位图内容替换/链接、
   文档回滚、立体化/透镜/效果管理、位图特效命令串、混合、文档颜色转换、用户偏好 KV、OLE 嵌入、
   命名视图、网格设置、叠印、段落缩进、制表位、屏幕叠加层、应用/文档事件、导出/保存/导入选项、吸附点全家族、颜色对象分量、描边对象全量属性都已补上。
-* **方法级覆盖**：全局 59.6%（965/1619），**主干 20 接口 81.0%（602/743）**。
+* **方法级覆盖**：**全局 60.2%（975/1619）**，主干 20 接口 81.7%（607/743）。
 * **明确不可用**：位图描摹、文本导入、点集数组建曲线、尺寸标注/连接线（MathUtils 点对象
   不可创建）、符号库、文件型图案/影线填充（本机无库）、曲线贴笔触、OpenDocumentAsCopy、
   HTML 兼容文本、断字写入、填充字符串、文本尺寸查询、灰度→RGB 转换、真实应用偏好读取、
   文本分栏（SetColumns 数组参数）。
-* **第四十九波新增**：颜色分量读取（CorelScriptGetComponent，纠正了"分量不可读"的历史结论）、转指定调色板（ConvertToPalette）、形状级按掩码复制属性（CopyPropertiesFrom）。
+* **第五十波新增**：形状级斜切（SkewEx）、子路径追加曲线段/抽出成独立对象、焊接结果落地（BindToDocument + CreateCurve）；**全局覆盖首次过 60%**。
 
 

@@ -3590,8 +3590,8 @@ def main() -> int:
                       ape.get("to") == "page_edge" and ape.get("axes") == [1],
                       f"axes={ape.get('axes')}")
             p47 = os.path.join(os.getcwd(), "tmp",
-                               f"w47_src_{os.urandom(2).hex()}.png")
-            ex47 = server.cdr_export(w47_id, p47, "png", dpi=96)
+                               f"w47_src_{os.urandom(4).hex()}.png")
+            ex47 = server.cdr_export(w47_id, p47, "png", dpi=96, overwrite=True)
             if no_error("cdr_export(导入源)", ex47) and os.path.exists(p47):
                 im47 = server.cdr_import(w47_id, p47, filter_id=802)
                 if no_error("cdr_import(filter_id)", im47):
@@ -3709,6 +3709,48 @@ def main() -> int:
                       kcpy.get("applied") is True and kcpy.get("mask") == 4,
                       f"applied={kcpy.get('applied')} mask={kcpy.get('mask')}")
         no_error("关闭分量/属性测试文档", server.cdr_close(k49_id))
+
+    # ---------------- 15bd. 第五十波：形状斜切 / 子路径追加曲线段 / 抽出子路径 / 焊接落地 ----------------
+    print("\n[15bd] 第五十波：SkewEx·AppendCurveSegment·SubPath.Extract·WeldWith+BindToDocument")
+    f50_doc = server.cdr_open(preset="A4")
+    if "document_id" in f50_doc:
+        f50_id = f50_doc["document_id"]
+        f50r = server.cdr_create(f50_id, [
+            {"type": "rectangle", "x": 0, "y": 0, "width": 20, "height": 10},
+            {"type": "polyline", "points": [[0, 60], [20, 60], [40, 80]], "closed": False},
+            {"type": "curve_segment", "x1": 60, "y1": 60, "x2": 100, "y2": 60},
+            {"type": "curve_segment", "x1": 100, "y1": 60, "x2": 140, "y2": 90},
+        ])
+        if no_error("cdr_create(斜切/子路径测试)", f50r):
+            fR, fP, fC1, fC2 = [{"name": c["name"]} for c in f50r["created"]]
+            sk = server.cdr_shape_ops(f50_id, op="skew_ex", target=fR,
+                                      params={"angle_x": 10, "angle_y": 0,
+                                              "cx": 10, "cy": 5})
+            if no_error("cdr_shape_ops(skew_ex)", sk):
+                bb_before = (sk.get("bbox_before") or {})
+                bb_after = (sk.get("bbox_after") or {})
+                check("形状级斜切可用（SkewEx）",
+                      bb_after.get("width", 0) > bb_before.get("width", 0),
+                      f"{bb_before.get('width')} → {bb_after.get('width')}")
+            acs = server.cdr_path(f50_id, fP, action="append_curve_segment",
+                                  params={"x": 60, "y": 100, "subpath": 1})
+            if no_error("cdr_path(append_curve_segment)", acs):
+                check("子路径可追加曲线段（AppendCurveSegment）",
+                      (acs.get("nodes_after") or 0) > (acs.get("nodes_before") or 0),
+                      f"{acs.get('nodes_before')} → {acs.get('nodes_after')}")
+            ext = server.cdr_path(f50_id, fP, action="extract_subpath",
+                                  params={"subpath": 1})
+            if no_error("cdr_path(extract_subpath)", ext):
+                check("子路径可抽出成独立对象（SubPath.Extract）",
+                      ext.get("type_id") == 3 and bool(ext.get("shape")),
+                      f"type={ext.get('type_id')} name={ext.get('shape')}")
+            wts = server.cdr_path(f50_id, fC1, action="weld_to_shape", other=fC2)
+            if no_error("cdr_path(weld_to_shape)", wts):
+                check("焊接结果可落地成形状（BindToDocument + CreateCurve）",
+                      wts.get("type_id") == 3 and (wts.get("nodes") or 0) >= 3
+                      and bool(wts.get("bbox")),
+                      f"type={wts.get('type_id')} nodes={wts.get('nodes')}")
+        no_error("关闭斜切/子路径测试文档", server.cdr_close(f50_id))
 
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")

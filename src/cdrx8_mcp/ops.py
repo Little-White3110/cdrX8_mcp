@@ -2662,6 +2662,8 @@ PATH_ACTIONS = (
     "merge_curve", "weld_curve", "is_on_curve", "curve_copy", "curve_info",
     # 第四十一波：任意线段集合（Application.CreateSegmentRange + Add）
     "segment_range",
+    # 第五十波：子路径追加曲线段 / 抽出子路径 / 焊接结果落地
+    "append_curve_segment", "extract_subpath", "weld_to_shape",
 )
 
 
@@ -2974,6 +2976,73 @@ def path_ops(doc: Any, page_index: int | None, target: dict, action: str, *,
                         "first_segment": _n(lambda: int(srange.FirstSegment.Index)),
                         "last_segment": _n(lambda: int(srange.LastSegment.Index)),
                         **info()}
+            if act == "append_curve_segment":
+                # 实测：SubPath.AppendCurveSegment(x,y,起控长,起控角,终控长,终控角,atBegin)
+                spec = dict(params or {})
+                sub = _s(lambda: curve.SubPaths.Item(int(spec.get("subpath", 1))))
+                if sub is None:
+                    raise CdrBadArgument("append_curve_segment 取不到子路径")
+                before = _node_count(curve)
+                with atomic(doc, label):
+                    seg = sub.AppendCurveSegment(
+                        float(spec.get("x", 20.0)), float(spec.get("y", 20.0)),
+                        float(spec.get("start_ctrl_length", 5.0)),
+                        float(spec.get("start_ctrl_angle", 90.0)),
+                        float(spec.get("end_ctrl_length", 5.0)),
+                        float(spec.get("end_ctrl_angle", 45.0)),
+                        bool(spec.get("at_beginning", False)))
+                return {"action": act, "nodes_before": before,
+                        "nodes_after": _node_count(curve),
+                        "segment_type": _n(lambda: int(seg.Type)) if seg is not None else None,
+                        **info()}
+            if act == "extract_subpath":
+                # 实测：SubPath.Extract(Shape) 返回 (新 Shape, …)，把子路径抽成独立对象
+                spec = dict(params or {})
+                idx = int(spec.get("subpath", 1))
+                sub = _s(lambda: curve.SubPaths.Item(idx))
+                if sub is None:
+                    raise CdrBadArgument(f"子路径 {idx} 不存在")
+                before = _n(lambda: int(page.Shapes.Count), 0) or 0
+                with atomic(doc, label):
+                    got = sub.Extract(shape)
+                made = None
+                if isinstance(got, (tuple, list)):
+                    for cand in got:
+                        if cand is not None and _n(lambda c=cand: int(c.Type)) is not None:
+                            made = cand
+                            break
+                else:
+                    made = got
+                if made is None:
+                    raise CdrComFailure("SubPath.Extract 没有返回形状")
+                name = _ensure_name(made)
+                return {"action": act, "subpath": idx, "shape": name,
+                        "type_id": _n(lambda: int(made.Type)), "bbox": _bbox(made),
+                        "page_shapes_before": before,
+                        "page_shapes_after": _n(lambda: int(page.Shapes.Count), 0)}
+            if act == "weld_to_shape":
+                # 实测：Curve.WeldWith 返回"游离曲线"，再 BindToDocument + Layer.CreateCurve
+                # 才能真正落到文档里（这一步以前一直缺）
+                if not other:
+                    raise CdrBadArgument("weld_to_shape 需要 other（要焊接的另一个曲线对象）")
+                src = find_shape(doc, page, other)
+                src_curve = _s(lambda: src.Curve)
+                if src_curve is None:
+                    raise CdrBadArgument("other 不是曲线对象")
+                with atomic(doc, label):
+                    welded = curve.WeldWith(src_curve)
+                    if welded is None:
+                        raise CdrComFailure("Curve.WeldWith 返回空")
+                    welded.BindToDocument(doc)
+                    made = layer.CreateCurve(welded) if False else _active_layer(page).CreateCurve(welded)
+                if made is None:
+                    raise CdrComFailure("Layer.CreateCurve(焊接结果) 返回空")
+                name = _ensure_name(made)
+                return {"action": act, "welded_from": _s(lambda: str(src.Name)),
+                        "shape": name, "type_id": _n(lambda: int(made.Type)),
+                        "nodes": _n(lambda: int(made.Curve.Nodes.Count), 0),
+                        "bbox": _bbox(made),
+                        "page_shapes": _n(lambda: int(page.Shapes.Count), 0)}
             if act == "merge_curve":
                 # Curve.AppendCurve(Source)：把另一条曲线**追加成本曲线的子路径**
                 # （实测 2 节点曲线 → 4 节点 / 2 子路径，同一个对象里）
@@ -5542,6 +5611,8 @@ SHAPE_OPS = (
     "copy_to_layer_range", "align_to_range",
     # 第四十九波：按掩码复制属性
     "copy_props",
+    # 第五十波：形状级斜切（SkewEx）
+    "skew_ex",
 )
 
 
@@ -5802,6 +5873,19 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
                     "api": used,
                     "first_width": _round(_s(lambda: float(first.Outline.Width)))
                     if first is not None else None}
+        if op == "skew_ex":
+            spec = dict(params or {})
+            source = find_shape(doc, page, target or {})
+            before = _bbox(source)
+            with atomic(doc, label):
+                source.SkewEx(float(spec.get("angle_x", 0.0)),
+                              float(spec.get("angle_y", 0.0)),
+                              float(spec.get("cx", 0.0)),
+                              float(spec.get("cy", 0.0)))
+            return {"op": op, "bbox_before": before, "bbox_after": _bbox(source),
+                    "angles": [float(spec.get("angle_x", 0.0)),
+                               float(spec.get("angle_y", 0.0))],
+                    "center": [float(spec.get("cx", 0.0)), float(spec.get("cy", 0.0))]}
         if op == "copy_props":
             # 实测：Shape.CopyPropertiesFrom(source, 掩码) 可用；
             # 掩码 4/8/15 会把填充复制过来，1/2 不影响填充
