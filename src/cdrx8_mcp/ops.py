@@ -496,7 +496,7 @@ DOC_ACTIONS = ("info", "clear_selection", "clear_undo", "palette", "arrowhead",
                "assign_color_context", "stylesheet_default", "arrowhead_ex",
                # 第四十四波：颜色上下文深操作 / 渐变变换矩阵
                "color_context_info", "color_context_copy", "color_context_merge",
-               "fountain_transform",
+               "fountain_transform", "arrowhead_unnamed",
                # 第四十六波：CorelScriptTools（VBA 辅助对象）单位/数学/日期
                "script_tools")
 
@@ -515,7 +515,8 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
             pattern_lines: list | None = None, clear_canvas: bool = True,
             metadata: dict | None = None, palette_name: str | None = None,
             palette_path: str | None = None, palette_colors: list | None = None,
-            overwrite: bool = False, field_name: str | None = None,
+            overwrite: bool = False, code_page: int | None = None,
+            field_name: str | None = None,
             field_format: str = "0", settings: dict | None = None,
             register: bool = False, copy_areas: list | None = None,
             rotate_areas: list | None = None, flip_areas: list | None = None,
@@ -1295,6 +1296,24 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
                     "visible": bool(_s(lambda: bool(grid.Visible), False)),
                     "snap": bool(_s(lambda: bool(grid.Snap), False))}
     # arrowhead_named（第三十八波：Document.CreateArrowHead2 可给箭头命名）
+    if act == "arrowhead_unnamed":
+        # 实测：Document.CreateArrowHeadEx(Curve, cx, cy, tint, ?) 可用，但生成箭头 Name 为空
+        with mm_units(doc):
+            page = _page(doc, page_index)
+            shape = find_shape(doc, page, target or {})
+            curve = _s(lambda: shape.Curve)
+            if curve is None:
+                raise CdrBadArgument("arrowhead_unnamed 需要一条曲线对象")
+            cx = float(x if x is not None else 0.0)
+            cy = float(y if y is not None else 0.0)
+            head = _s(lambda: doc.CreateArrowHeadEx(curve, cx, cy,
+                                                    float(tint or 1.0), 0.0))
+            if head is None:
+                raise CdrComFailure("Document.CreateArrowHeadEx 返回空")
+            return {"action": act, "created": True,
+                    "name": _s(lambda: str(head.Name)),
+                    "center": [cx, cy],
+                    "note": "CreateArrowHeadEx 生成箭头 Name 为空；要命名用 arrowhead_ex（CreateArrowHeadEx2）"}
     if act == "arrowhead_named":
         with mm_units(doc):
             page = _page(doc, page_index)
@@ -1345,8 +1364,23 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
         out["build_date"] = (_round(_s(lambda: float(stamp)))
                              if isinstance(stamp, (int, float)) else
                              (str(stamp) if stamp is not None else None))
+        if code_page is not None:
+            app = _app_of(doc)
+            out["code_page"] = int(code_page)
+            if query:
+                # ConvertToUnicode(字节数组) ↔ ConvertFromUnicode(字符串)
+                try:
+                    out["unicode_from_bytes"] = str(app.ConvertToUnicode(
+                        bytes.fromhex(str(query)), int(code_page)))
+                except Exception as exc:  # noqa: BLE001
+                    out["unicode_from_bytes_error"] = str(exc)[:80]
+                try:
+                    out["unicode_to_bytes"] = str(app.ConvertFromUnicode(
+                        str(query), int(code_page)))
+                except Exception as exc:  # noqa: BLE001
+                    out["unicode_to_bytes_error"] = str(exc)[:80]
         out["note"] = ("CorelScriptTools 的值以 1/10000 mm 为单位：FromInches(1)=254000；"
-                       "ASin 返回弧度")
+                       "ASin 返回弧度；query+code_page 可做 Unicode↔ANSI 码页转换")
         return out
     if act == "color_context_info":
         ctx = _s(lambda: doc.ColorContext)
@@ -1360,7 +1394,11 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
                 "read_only": bool(_s(lambda: bool(ctx.ReadOnly), False)),
                 "rgb_profile": _s(lambda: str(ctx.RGBColorProfile.Name))[:120],
                 "cmyk_profile": _s(lambda: str(ctx.CMYKColorProfile.Name))[:120],
-                "gray_profile": _s(lambda: str(ctx.GrayscaleColorProfile.Name))[:120]}
+                "gray_profile": _s(lambda: str(ctx.GrayscaleColorProfile.Name))[:120],
+                # 实测：ColorProfile(模型号) 0=RGB / 1=CMYK / 2=灰度
+                "profiles_by_model": {
+                    str(m): (_s(lambda m=m: str(ctx.ColorProfile(m).Name)) or "")[:80]
+                    for m in (0, 1, 2)}}
     if act in {"color_context_copy", "color_context_merge"}:
         ctx = _s(lambda: doc.ColorContext)
         if ctx is None:
@@ -4782,7 +4820,9 @@ COLOR_OBJECT_ACTIONS = ("object_info", "object_name", "object_compare", "object_
                         # 第四十八波：固定调色板/脚本/调色板取色/失效
                         "object_palette", "object_invalidate",
                         # 第四十九波：分量读取（CorelScriptGetComponent）/ 转指定调色板
-                        "object_components", "object_convert_palette")
+                        "object_components", "object_convert_palette",
+                        # 第五十一波：颜色风格对象改写
+                        "object_modify_style_color")
 # 显式写法（而不是 getattr 动态调用）：既方便 grep，也让覆盖率审计能统计到
 COLOR_CONVERT_CALLS = {
     "rgb": lambda c: c.ConvertToRGB(),
@@ -4972,6 +5012,16 @@ def color_object_ops(action: str, *, color: Any = None, color2: Any = None,
         return {"action": act, "palette": color2, "before": before,
                 "after": _s(lambda: str(obj.ToString())),
                 "type_after": _n(lambda: int(obj.Type))}
+
+    if act == "object_modify_style_color":
+        # 实测：Color.ModifyColorStyleColor(目标颜色, ChangeWholeHarmony) 可调用
+        target = color2 if color2 is not None else "#FFFFFF"
+        src = _color_object(color if color is not None else "#000000")
+        dst = _color_object(target)
+        src.ModifyColorStyleColor(dst, False)
+        return {"action": act, "source": _s(lambda: str(src.ToString())),
+                "target": _s(lambda: str(dst.ToString())),
+                "note": "把颜色改为目标颜色的风格色表示（ChangeWholeHarmony=False）"}
 
     if act == "object_components":
         # 实测：Color.CorelScriptGetComponent(模型号, 0×7) 返回
@@ -6838,7 +6888,7 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
              range_delete: bool = False, range_copy: bool = False,
              range_paste: bool = False, range_straighten: bool = False,
              find_query: str | None = None, runs: bool = False,
-             begin_edit: bool = False,
+             begin_edit: bool = False, paragraph_format: dict | None = None,
              struct_info: bool = False,
              range_action: dict | None = None,
              label: str = "cdr_text") -> dict:
@@ -6857,7 +6907,7 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
         )) or any((to_curves, fit_frame, no_effect, to_paragraph, to_artistic,
                    select_all, align_to_baseline, range_delete, range_copy,
                    range_paste, range_straighten, clear_tabs)) or bool(tab_stops) \
-            or begin_edit
+            or begin_edit or paragraph_format is not None
         if not mutating:
             # 纯读取 / 导出：不建 undo 组，也不改动文档
             result: dict = {"applied": [], "warnings": [],
@@ -6991,6 +7041,54 @@ def set_text(doc: Any, page_index: int | None, target: dict, *, text: str | None
                 except Exception as exc:  # noqa: BLE001
                     warnings.append(f"复制文字属性失败：{exc}")
 
+            if paragraph_format:
+                # 实测：Application.CreateStructAlignProperties / SpaceProperties /
+                # HyphenationSettings 造出的结构体可直接喂给 Set*Properties(0, 结构体)，
+                # **但只对段落文本生效**（艺术字会报「该参数需要段落文本」）
+                spec = dict(paragraph_format)
+                app = _app_of(doc)
+                if any(k in spec for k in ("alignment", "left_indent", "right_indent",
+                                           "first_indent", "vertical_alignment")):
+                    ap = app.CreateStructAlignProperties()
+                    for key, attr in (("alignment", "Alignment"),
+                                      ("left_indent", "LeftIndent"),
+                                      ("right_indent", "RightIndent"),
+                                      ("first_indent", "FirstIndent"),
+                                      ("vertical_alignment", "VerticalAlignment")):
+                        if key in spec:
+                            try:
+                                setattr(ap, attr, spec[key])
+                            except Exception:
+                                pass
+                    shape.Text.SetAlignProperties(0, ap)
+                    applied.append("align_struct")
+                if any(k in spec for k in ("character_spacing", "word_spacing",
+                                           "line_spacing")):
+                    sp = app.CreateStructSpaceProperties()
+                    for key, attr in (("character_spacing", "CharacterSpacing"),
+                                      ("word_spacing", "WordSpacing"),
+                                      ("line_spacing", "LineSpacing")):
+                        if key in spec:
+                            try:
+                                setattr(sp, attr, float(spec[key]))
+                            except Exception:
+                                pass
+                    shape.Text.SetSpaceProperties(0, sp)
+                    applied.append("space_struct")
+                if any(k in spec for k in ("hyphenation", "hot_zone")):
+                    hp = app.CreateStructHyphenationSettings()
+                    if "hyphenation" in spec:
+                        try:
+                            hp.UseAutomaticHyphenation = int(bool(spec["hyphenation"]))
+                        except Exception:
+                            pass
+                    if "hot_zone" in spec:
+                        try:
+                            hp.HotZone = float(spec["hot_zone"])
+                        except Exception:
+                            pass
+                    shape.Text.SetHyphenationSettings(0, hp)
+                    applied.append("hyphenation_struct")
             if begin_edit:
                 try:
                     shape.Text.BeginEdit()

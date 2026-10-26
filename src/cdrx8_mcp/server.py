@@ -409,7 +409,8 @@ def cdr_text(document_id: str, target: dict, text: str | None = None,
              struct_info: bool = False, range_action: dict | None = None,
              expected_revision: int | None = None, snapshot_token: str | None = None,
              page_index: int | None = None,
-             begin_edit: bool = False) -> dict:
+             begin_edit: bool = False,
+             paragraph_format: dict | None = None) -> dict:
     """文字的排版级操作。
 
     内容与类型：text / contents（段落文本整体替换）/ find / replace_old+replace_new /
@@ -475,7 +476,7 @@ def cdr_text(document_id: str, target: dict, text: str | None = None,
             range_paste=range_paste, range_straighten=range_straighten,
             find_query=find_query, runs=runs,
             struct_info=struct_info, range_action=range_action,
-            begin_edit=begin_edit,
+            begin_edit=begin_edit, paragraph_format=paragraph_format,
         ), label="cdr_text")
         if not mutating:
             return result
@@ -1100,7 +1101,8 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
             grid_visible: bool | None = None, grid_snap: bool | None = None,
             grid_type: int | None = None,
             expected_revision: int | None = None, snapshot_token: str | None = None,
-            page_index: int | None = None) -> dict:
+            page_index: int | None = None,
+            code_page: int | None = None) -> dict:
     """文档级操作。
 
     action:
@@ -1199,7 +1201,7 @@ def cdr_doc(document_id: str, action: str = "info", target: dict | None = None,
                       grid_spacing_x=grid_spacing_x,
                       grid_spacing_y=grid_spacing_y,
                       grid_visible=grid_visible, grid_snap=grid_snap,
-                      grid_type=grid_type)
+                      grid_type=grid_type, code_page=code_page)
         if action == "info":
             return _com(lambda _b: ops.doc_ops(doc, "info", **kwargs), label="cdr_doc")
         if action in {"clear_selection", "units", "convert_units", "sample_color", "fonts",

@@ -3752,6 +3752,46 @@ def main() -> int:
                       f"type={wts.get('type_id')} nodes={wts.get('nodes')}")
         no_error("关闭斜切/子路径测试文档", server.cdr_close(f50_id))
 
+    # ---------------- 15be. 第五十一波：结构体工厂写入 / 上下文按模型取配置 / 风格色改写 / 无名箭头 ----------------
+    print("\n[15be] 第五十一波：CreateStruct*Properties 写入、ColorProfile(model)、ModifyColorStyleColor")
+    s51_doc = server.cdr_open(preset="A4")
+    if "document_id" in s51_doc:
+        s51_id = s51_doc["document_id"]
+        s51r = server.cdr_create(s51_id, [
+            {"type": "paragraph_text", "x": 20, "y": 20, "x2": 140, "y2": 80,
+             "text": "段落文本 Hello world", "size": 12},
+            {"type": "curve_segment", "x1": 20, "y1": 100, "x2": 80, "y2": 100},
+        ])
+        if no_error("cdr_create(结构体写入测试)", s51r):
+            s51t = {"name": s51r["created"][0]["name"]}
+            s51c = {"name": s51r["created"][1]["name"]}
+            pf51 = server.cdr_text(s51_id, s51t, paragraph_format={
+                "alignment": 3, "left_indent": 5.0, "character_spacing": 150.0,
+                "line_spacing": 180.0, "hot_zone": 8.0})
+            if no_error("cdr_text(paragraph_format)", pf51):
+                ap51 = pf51.get("applied") or []
+                check("结构体工厂可写入段落格式（CreateStruct*Properties）",
+                      "align_struct" in ap51 and "space_struct" in ap51,
+                      str(ap51))
+            ctx51 = server.cdr_doc(s51_id, action="color_context_info")
+            if no_error("cdr_doc(color_context_info)", ctx51):
+                pbm = ctx51.get("profiles_by_model") or {}
+                check("可按模型读色彩配置文件（ColorProfile(model)）",
+                      bool(pbm.get("0")) and bool(pbm.get("1")),
+                      f"rgb={pbm.get('0')} cmyk={pbm.get('1')}")
+            ms51 = server.cdr_color(action="object_modify_style_color",
+                                    color="#336699", color2="#000000")
+            if no_error("cdr_color(object_modify_style_color)", ms51):
+                check("颜色风格色改写可用（ModifyColorStyleColor）",
+                      bool(ms51.get("source")), str(ms51.get("source"))[:40])
+            ah51 = server.cdr_doc(s51_id, action="arrowhead_unnamed",
+                                  target=s51c, x=50, y=100)
+            if no_error("cdr_doc(arrowhead_unnamed)", ah51):
+                check("无名箭头变体可用（CreateArrowHeadEx）",
+                      ah51.get("created") is True and ah51.get("name") == "",
+                      f"name={ah51.get('name')!r}")
+        no_error("关闭结构体写入测试文档", server.cdr_close(s51_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,
