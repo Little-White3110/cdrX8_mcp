@@ -648,7 +648,7 @@ DOC_ACTIONS = ("info", "clear_selection", "clear_undo", "palette", "arrowhead",
                "outline_styles_save", "palette_find_color", "palette_insert_color",
                "palette_set_color", "palette_make_default", "views_add_active",
                "datafield_reorder", "bspline_resize", "ole_info",
-               "select_color_profile",
+               "datafield_info", "select_color_profile",
                "fountain_transform", "arrowhead_unnamed",
                # 第四十六波：CorelScriptTools（VBA 辅助对象）单位/数学/日期
                "script_tools")
@@ -1550,6 +1550,28 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
         out["note"] = ("CorelScriptTools 的值以 1/10000 mm 为单位：FromInches(1)=254000；"
                        "ASin 返回弧度；query+code_page 可做 Unicode↔ANSI 码页转换")
         return out
+    if act == "datafield_info":
+        # 实测：DataFields.Item(序号或名字) 都可取；Format 可读（写入会报「无法保存该值」）
+        fields = _s(lambda: doc.DataFields)
+        if fields is None:
+            raise CdrComFailure("取不到 DataFields")
+        count = _n(lambda: int(fields.Count), 0) or 0
+        result = {"action": act, "count": count, "fields": []}
+        for i in range(1, min(count, 20) + 1):
+            f = _s(lambda i=i: fields.Item(i))
+            if f is None:
+                continue
+            result["fields"].append({
+                "index": i,
+                "name": _s(lambda f=f: str(f.Name)),
+                "format": _s(lambda f=f: str(f.Format)),
+            })
+        first_name = (result["fields"][0]["name"]
+                      if result["fields"] else None)
+        if first_name:
+            by_name = _s(lambda first_name=first_name: fields.Item(first_name))
+            result["by_name_lookup"] = by_name is not None
+        return result
     if act in {"palette_find_color", "palette_insert_color", "palette_set_color",
                "palette_make_default"}:
         # 实测：IVGPalette 的 FindColor(返回索引 0=未找到) / MatchColor(返回匹配色) /
@@ -7966,6 +7988,15 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
                                        float(light_spec.get("bevel_angle", 45.0)),
                                        bool(light_spec.get("show_bevel_only", False)))
                         applied.append("bevel")
+                    if light_spec.get("copy_from"):
+                        src_shape = find_shape(doc, _page(doc, page_index),
+                                               light_spec["copy_from"])
+                        src_eff = _s(lambda: src_shape.Effects.Item(1))
+                        src_ext = (_s(lambda: src_eff.Extrude)
+                                   if src_eff is not None else None)
+                        if src_ext is not None:
+                            typed.CopyFrom(src_ext)
+                            applied.append("copy_from")
             result = {"op": op, "target": _s(lambda: str(shape.Name)),
                       "effect_type": _n(lambda: int(eff.Type)),
                       "applied": applied,

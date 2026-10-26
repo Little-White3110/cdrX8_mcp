@@ -4803,6 +4803,35 @@ def main() -> int:
                   bool(pc80.get("color")), str(pc80.get("color"))[:40])
         no_error("关闭 OLE 测试文档", server.cdr_close(o80_id))
 
+    # ---------------- 15ci. 第八十一波：立体化复制 / 数据字段详情 ----------------
+    print("\n[15ci] 第八十一波：EffectExtrude.CopyFrom·DataField 详情与按名取")
+    x81_doc = server.cdr_open(preset="A4")
+    if "document_id" in x81_doc:
+        x81_id = x81_doc["document_id"]
+        x81r = server.cdr_create(x81_id, [
+            {"type": "rectangle", "x": 0, "y": 0, "width": 20, "height": 10},
+            {"type": "rectangle", "x": 60, "y": 0, "width": 20, "height": 10},
+        ])
+        if no_error("cdr_create(立体化复制测试)", x81r):
+            x81a, x81b = [{"name": c["name"]} for c in x81r["created"]]
+            server.cdr_shape_ops(x81_id, op="extrude", target=x81a,
+                                 params={"depth": 20})
+            server.cdr_shape_ops(x81_id, op="extrude", target=x81b,
+                                 params={"depth": 10})
+            cf81 = server.cdr_shape_ops(x81_id, op="extrude_set", target=x81a,
+                                        effect={"copy_from": {"name": x81b["name"]}})
+            if no_error("cdr_shape_ops(extrude_set copy_from)", cf81):
+                check("立体化效果可复制（CopyFrom）",
+                      "copy_from" in (cf81.get("applied") or []),
+                      str(cf81.get("applied")))
+        df81 = server.cdr_doc(x81_id, action="datafield_info")
+        if no_error("cdr_doc(datafield_info)", df81):
+            check("数据字段详情可读（按名取也可用）",
+                  (df81.get("count") or 0) >= 1
+                  and df81.get("by_name_lookup") is True,
+                  f"count={df81.get('count')}")
+        no_error("关闭第八十一波测试文档", server.cdr_close(x81_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

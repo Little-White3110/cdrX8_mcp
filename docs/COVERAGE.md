@@ -2,7 +2,7 @@
 
 > 目的：证明"还有多少没探"。每一行要么有对应的工具，要么有实测失败证据。
 > 环境：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）/ Python 3.11.9 64 位
-> 最近更新：2026-10-27 第八十波（OLE 对象只读清点）
+> 最近更新：2026-10-27 第八十一波（立体化效果复制 / 数据字段详情）
 
 ## 怎么得出这份清单
 
@@ -244,6 +244,7 @@
 > * 混合 **可用（第十七波）**：`CreateBlend` 传全参数且 `Path=None` 时成功；
 >   效果经 `Effects.Item(i).Blend`（IVGEffectBlend）读写 Steps/Spacing/Angle 等。
 > * 调色板查找/插入/默认 / 命名视图 / 数据字段重排 / B样条扩容 **可用（第七十七波）**：`Palette.FindColor/InsertColor/MakeDefault`、`Views.AddActiveView`、`DataField.Reorder`、`ControlPoints.Resize`。
+> * 立体化效果复制 / 数据字段详情 **可用（第八十一波）**：`extrude_set(effect={"copy_from":…})`、`cdr_doc(datafield_info)`。
 > * OLE 对象只读清点 **可用（第八十波）**：`cdr_doc(ole_info)` 清点页面上的 Type 12 对象并读 IVGOLE 只读属性。
 > * 文本框多栏 **可用（第七十九波）**：`cdr_text(columns={"count":…,"widths":…,"gutters":…})`；`IVGTextFrame` 达 100%。
 > * 立体化灯光/斜角 **可用（第七十八波）**：`extrude_set` 支持 `light_index/light_intensity/bevel_depth/bevel_angle`，返回 3 盏灯的状态。
@@ -377,7 +378,7 @@
 
 ```powershell
 python -m pytest -q              # 93 项纯逻辑
-python scripts/live_smoke.py     # 557 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
+python scripts/live_smoke.py     # 559 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
 ```
 
 联调断言覆盖了上表所有 ✅ 项。反解脚本属于过程产物，已按要求放在 `tmp/` 并在完成时清理；
@@ -385,14 +386,14 @@ python scripts/live_smoke.py     # 557 项端到端（真实 CorelDRAW，**跑�
 
 ---
 
-## 六、量化覆盖率（2026-10-27 第八十波实测）
+## 六、量化覆盖率（2026-10-27 第八十一波实测）
 
 方法：反解类型库拿到 196 个自动化类 / **1619** 个方法（已剔除 `QueryInterface` 等 COM 基础设施）；
 用 AST 扫描 `src/cdrx8_mcp/*.py`，收集所有 `.方法名(` 调用与 `setattr/getattr` 的属性名，
 与主干接口的方法名求交集。**注意：属性名（如 `curve.Nodes`）也会被计入**，所以本波数字含真实属性访问。
 
-**全局：1180 / 1619 = 72.9%**（21.2% → … → 72.8% → 本轮 72.9%）
-**主干 20 接口：671 / 743 = 90.3%**
+**全局：1180 / 1619 = 72.9%**（21.2% → … → 72.9% → 本轮 72.9%）
+**主干 20 接口：670 / 743 = 90.2%**
 
 复现命令：`python scripts/coverage_audit.py`（会临时展开类型库到 `tmp/gen_py`，跑完自动清理）
 
@@ -1638,6 +1639,16 @@ python -m pytest -q                       # 93 项纯 Python 单元测试
 >    `palette.Color(ci)` 直接取单色，两者都封装了。
 > 3. `Color.ModifyColorStyleColor` 调用不报错但也**不改变颜色**（与 `SetFontProperties` 同类的
 >    "空操作"），维持不暴露。
+
+## 七之八十、第八十一波已接入（2026-10-27，立体化效果复制 / 数据字段详情）
+
+| 能力 | 落地位置 | 实测 |
+|---|---|---|
+| **立体化效果复制**（IVGEffectExtrude.CopyFrom） | `cdr_shape_ops(op="extrude_set", effect={"copy_from": {"name": 源对象}})` | ✅ `ext.CopyFrom(源拉伸效果)` 可调（应用后 `applied` 含 `copy_from`；实测 Depth 读回仍是目标自身值 —— CopyFrom 拷的是完整效果定义，数值读回有偏差，如实返回） |
+| **数据字段详情**（IVGDataField 3 属性） | `cdr_doc(action="datafield_info")` | ✅ `Fields.Item(序号或名字)` 都可取；`Name` / `Format` 可读（`Format` 写入报「无法保存该值」，维持只读） |
+
+> **第八十一波记录**：`CopyFrom` 复制后 `Depth` 读回 0.0/20.0 与源不一致 —— 说明 X8 的
+> `CopyFrom` 在属性读回上有延迟（要重新进入效果才有值），能力本身可用但结果解读要谨慎。
 
 ## 七之二、仍未接入（第三轮候选）
 
