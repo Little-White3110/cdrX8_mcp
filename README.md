@@ -7,9 +7,9 @@
 
 > **已在真机验证**：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）+ Python 3.11.9 64 位
 > - 单元测试 **93 项通过**
-> - 端到端联调（真实 CorelDRAW）**519/519 通过**
+> - 端到端联调（真实 CorelDRAW）**522/522 通过**
 > - 能力边界来自对 `vgcoreauto.tlb` 的反解（196 个自动化类 / 1619 个方法）+ 逐项实跑
-> - 方法级覆盖 **68.9%**（主干 20 接口 89.6%），可用 `python scripts/coverage_audit.py` 复现
+> - 方法级覆盖 **69.2%**（主干 20 接口 89.8%），可用 `python scripts/coverage_audit.py` 复现
 > - 完整清单见 [docs/COVERAGE.md](docs/COVERAGE.md)
 
 ---
@@ -186,7 +186,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ---
 
-## X8 特有问题（155 条，全部实测）
+## X8 特有问题（156 条，全部实测）
 
 这些是 **X8 与 2024+ 的差异**，也是本项目存在的主要理由。
 
@@ -347,6 +347,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 | 153 | **`IVGToolShapeAttributes` 的 12 个 `Set*` 只是配置，注册不了工具** | `CreateToolShapeAttributes()` 造出的对象上 `SetCanResize/SetCanRotate/SetCanSkew/…/SetDefaultShapename` 12 个方法都能调（12/12），但 X8 的 `RegisterToolShape` 不可用，所以配置完无法真正注册成工具。另 `IVGOutlineStyle` 的 `DashCount`/`DashLength(i)`/`GapLength(i)` **只读可用、写入不生效** | 已封装 `cdr_doc(tool_shape_attributes)` 与 `cdr_doc(outline_style_dash)`，并在返回值里注明"只配置不注册" |
 | 154 | **克隆体的 Name 与源对象完全相同** | `Shape.Clone(dx, dy)` 生成的克隆体`Name` 与源对象一模一样（`inspect` 里会出现两个同名对象），按名字找不到克隆体，`CloneLink` 也就无从下手。另 `page.Grid` 不存在（网格走 `cdr_doc(grid/set_grid)`）、`shape.Symbol` 需要符号库形状、`Style.Fill.SaveFill/LoadFill` 参数形态未通 | `cdr_modify(clone=…)` 已强制给克隆体改名；圆角/克隆链/投影偏移分别由 `corners` / `clone_links` / `drop_shadow` 三个 op 提供 |
 | 155 | **`Dimension.Linear` 是对象不是布尔值** | 早期用 `bool(dim.Linear)` 探测，看起来"返回 True"，实际它是 **IVGDimensionLinear 对象**（`SetReverseTerminatorLength`、`ReverseTerminators` 都在里面）。另外 `Page.Grid` 不存在，`Document.Grid` 才是 `IVGGrid` | 已封装 `cdr_doc(set_grid, settings={"frequency":…})` 与 `cdr_shape_ops(dimension_set, params={"reverse_terminator_length":…})` |
+| 156 | **`StyleFill.SaveFill` 第二参是 `IVGFillMetadata` 对象；`TreeManager` 在 Document 上** | `SaveFill(path, True)` / `(path, 0)` 都报 `TypeError`，正确第二参是 `Application.CreateFillMetadata()` 造出来的元数据对象；`LoadFill` 同理。对象树入口是 `Document.TreeManager`（`Application` 上没有 `TreeManager`） | 已封装 `cdr_style(fill_file)` 与 `cdr_doc(tree_manager)`；`IVGExtrudeVanishingPoint.Share` 传另一消失点仍「类型不匹配」，不暴露 |
 
 改代码前请先读 [`src/cdrx8_mcp/constants.py`](src/cdrx8_mcp/constants.py) 里的注释。
 
@@ -396,7 +397,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ```powershell
 python -m pytest -q                # 93 项逻辑测试，任何平台可跑
-python scripts/live_smoke.py       # 519 项端到端（跑前先确认没有残留 CorelDRW 进程）
+python scripts/live_smoke.py       # 522 项端到端（跑前先确认没有残留 CorelDRW 进程）
 python scripts/live_smoke.py --keep   # 保留文档方便肉眼看效果
 python scripts/coverage_audit.py   # 覆盖率审计（复现 README/COVERAGE 里的数字）
 ```

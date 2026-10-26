@@ -4407,6 +4407,42 @@ def main() -> int:
                       f"applied={dl68.get('applied')} type={dl68.get('linear_type')}")
         no_error("关闭双色调/网格测试文档", server.cdr_close(w68_id))
 
+    # ---------------- 15bw. 第六十九波：对象树管理 / 样式填充存盘 ----------------
+    print("\n[15bw] 第六十九波：IVGTreeManager、IVGStyleFill.SaveFill/LoadFill")
+    t69_doc = server.cdr_open(preset="A4")
+    if "document_id" in t69_doc:
+        t69_id = t69_doc["document_id"]
+        tm69 = server.cdr_doc(t69_id, action="tree_manager",
+                             settings={"create_group_node": True, "clean": True})
+        if no_error("cdr_doc(tree_manager)", tm69):
+            check("对象树可建/清组节点（TreeManager）",
+                  {"create_group_node", "clean_group_node"} <= set(
+                      tm69.get("applied") or []),
+                  str(tm69.get("applied")))
+        t69r = server.cdr_create(t69_id, [
+            {"type": "rectangle", "x": 0, "y": 0, "width": 20, "height": 10,
+             "fill": "#0B1621"}])
+        if no_error("cdr_create(样式填充测试)", t69r):
+            t69a = {"name": t69r["created"][0]["name"]}
+            server.cdr_style(t69_id, action="create", target=t69a,
+                             category="fill", style_name="SF69")
+            f69 = os.path.join(os.getcwd(), "tmp",
+                               f"w69style_{os.urandom(2).hex()}.cpf")
+            sv69 = server.cdr_style(t69_id, action="fill_file", style_name="SF69",
+                                    sheet_path=f69, property="save")
+            if no_error("cdr_style(fill_file save)", sv69):
+                check("样式填充可存盘（StyleFill.SaveFill）",
+                      sv69.get("direction") == "save"
+                      and sv69.get("metadata_ok") is True,
+                      f"ok={sv69.get('ok')} type={sv69.get('fill_type')}")
+            ld69 = server.cdr_style(t69_id, action="fill_file", style_name="SF69",
+                                    sheet_path=f69, property="load")
+            if no_error("cdr_style(fill_file load)", ld69):
+                check("样式填充可读取（StyleFill.LoadFill）",
+                      ld69.get("direction") == "load",
+                      f"ok={ld69.get('ok')}")
+        no_error("关闭对象树/样式填充测试文档", server.cdr_close(t69_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

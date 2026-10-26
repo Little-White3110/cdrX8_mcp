@@ -562,7 +562,7 @@ DOC_ACTIONS = ("info", "clear_selection", "clear_undo", "palette", "arrowhead",
                "color_context_info", "color_context_copy", "color_context_merge",
                "color_context_create", "proof_color_settings",
                "app_status", "palette_manager",
-               "outline_style_dash", "tool_shape_attributes",
+               "outline_style_dash", "tool_shape_attributes", "tree_manager",
                "fountain_transform", "arrowhead_unnamed",
                # 第四十六波：CorelScriptTools（VBA 辅助对象）单位/数学/日期
                "script_tools")
@@ -1461,6 +1461,34 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
         out["note"] = ("CorelScriptTools 的值以 1/10000 mm 为单位：FromInches(1)=254000；"
                        "ASin 返回弧度；query+code_page 可做 Unicode↔ANSI 码页转换")
         return out
+    if act == "tree_manager":
+        # 实测：Document.TreeManager → IVGTreeManager
+        # （SelectedNodeCount / FirstSelectedNode / VirtualLayer 可读，
+        #   CreateGroupNode() / CleanGroupNode(node) 可用）
+        tm = _s(lambda: doc.TreeManager)
+        if tm is None:
+            raise CdrComFailure("取不到 TreeManager")
+        spec = dict(settings or {})
+        applied = []
+        node = None
+        if spec.get("create_group_node"):
+            node = _s(lambda: tm.CreateGroupNode())
+            if node is not None:
+                applied.append("create_group_node")
+        if node is not None and spec.get("clean"):
+            tm.CleanGroupNode(node)
+            applied.append("clean_group_node")
+        vlayer = _s(lambda: tm.VirtualLayer)
+        first = _s(lambda: tm.FirstSelectedNode)
+        return {"action": act,
+                "selected_node_count": _n(lambda: int(tm.SelectedNodeCount), 0),
+                "first_selected": (([(_s(lambda: str(first.Name)) or "")[:60]]
+                                    if first is not None else None)),
+                "virtual_layer": ((_s(lambda: str(vlayer.Name)) or "")[:60]
+                                  if vlayer is not None else None),
+                "node": _s(lambda: str(node))[:60] if node is not None else None,
+                "applied": applied}
+
     if act in {"outline_style_dash", "tool_shape_attributes"}:
         app = _app_of(doc)
         if act == "outline_style_dash":
@@ -4048,7 +4076,8 @@ def node_ops(doc: Any, page_index: int | None, target: dict, action: str, *,
 STYLE_ACTIONS = ("list", "get", "create", "apply", "rename", "delete",
                  "set_property", "derived", "export_sheet", "import_sheet",
                  "color_styles", "create_color_styles", "override_props", "inherited",
-                 "get_property", "clear_property", "set_based_on", "assign")
+                 "get_property", "clear_property", "set_based_on", "assign",
+                 "fill_file")
 STYLE_MUTATIONS = {"create", "apply", "rename", "delete", "set_property",
                    "import_sheet", "create_color_styles", "set_based_on", "assign"}
 STYLE_CATEGORIES = ("fill", "outline", "character", "paragraph")
@@ -4151,6 +4180,27 @@ def style_ops(doc: Any, page_index: int | None, action: str, *,
                     "readable_properties": _style_readable_props(style),
                     "derived": _style_derived(style),
                     "definition": (_s(lambda: str(style.ToString()), "") or "")[:1200]}
+        if act == "fill_file":
+            # 实测：Style.Fill 是 IVGStyleFill，SaveFill(FileName, Metadata) /
+            # LoadFill(FileName, Metadata) 都**接受路径 + IVGFillMetadata**
+            # （metadata 由 Application.CreateFillMetadata() 造；返回 False 表示没存成功）
+            style = _find_style(doc, name)
+            sf = _s(lambda: style.Fill)
+            if sf is None:
+                raise CdrComFailure("取不到 Style.Fill")
+            if not sheet_path:
+                raise CdrBadArgument("fill_file 需要 sheet_path（.cpf 文件路径）")
+            meta = _s(lambda: _app_of(doc).CreateFillMetadata())
+            direction = str(property or "save").lower()
+            if direction == "load":
+                got = _s(lambda: sf.LoadFill(str(sheet_path), meta))
+                ok = bool(got[0]) if isinstance(got, (tuple, list)) and got else False
+                return {"action": act, "direction": "load", "file": str(sheet_path),
+                        "ok": ok, "raw": str(got)[:80]}
+            ok = bool(_s(lambda: sf.SaveFill(str(sheet_path), meta), False))
+            return {"action": act, "direction": "save", "file": str(sheet_path),
+                    "ok": ok, "fill_type": _n(lambda: int(sf.Type)),
+                    "metadata_ok": meta is not None}
         if act == "set_based_on":
             # 实测：Style.SetBasedOn(父样式**名称字符串**) —— 传样式对象会「类型不匹配」
             style = _find_style(doc, name)

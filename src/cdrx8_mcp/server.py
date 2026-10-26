@@ -846,6 +846,17 @@ def cdr_style(document_id: str, action: str = "list",
                 resolved_sheet = str(resolve_read_path(sheet_path))
             elif act == "export_sheet":
                 resolved_sheet = str(resolve_write_path(sheet_path, overwrite=True)[0])
+            elif act == "fill_file":
+                # save 走写路径；load 走读路径
+                if str(property or "save").lower() == "load":
+                    try:
+                        resolved_sheet = str(resolve_read_path(sheet_path))
+                    except Exception:  # noqa: BLE001
+                        resolved_sheet = str(resolve_write_path(
+                            sheet_path, overwrite=True)[0])
+                else:
+                    resolved_sheet = str(resolve_write_path(sheet_path,
+                                                            overwrite=True)[0])
         kwargs = dict(target=target, category=category, name=style_name,
                       new_name=new_name, based_on=based_on, property=property,
                       value=value, sheet_path=resolved_sheet,
