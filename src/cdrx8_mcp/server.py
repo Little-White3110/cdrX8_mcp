@@ -1234,7 +1234,8 @@ def cdr_view(document_id: str, action: str = "refresh",
              distance: float = 10.0, text: str | None = None,
              x2: float | None = None, y2: float | None = None,
              radius: float = 20.0, color: int = 0x0000FF,
-             width: int = 2) -> dict:
+             width: int = 2, target: dict | None = None,
+             page_index: int | None = None) -> dict:
     """视图/窗口操作。
 
     action:
@@ -1255,7 +1256,8 @@ def cdr_view(document_id: str, action: str = "refresh",
         return _com(lambda _b: ops.view_ops(doc, action, x=x, y=y,
                                            distance=distance, text=text,
                                            x2=x2, y2=y2, radius=radius,
-                                           color=color, width=width),
+                                           color=color, width=width,
+                                           target=target, page_index=page_index),
                     label="cdr_view")
 
     return _guard(_run)

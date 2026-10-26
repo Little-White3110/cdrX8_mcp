@@ -2,7 +2,7 @@
 
 > 目的：证明"还有多少没探"。每一行要么有对应的工具，要么有实测失败证据。
 > 环境：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）/ Python 3.11.9 64 位
-> 最近更新：2026-10-26 第六十四波（标注对象 / 图框内容 / 辅助线 / 文本框链接）
+> 最近更新：2026-10-26 第六十五波（视口缩放 / 混合效果 / 调色板管理 / 进度条）
 
 ## 怎么得出这份清单
 
@@ -243,6 +243,7 @@
 >   `CreateFreeConnector` 报「未实现」；本机无符号库。
 > * 混合 **可用（第十七波）**：`CreateBlend` 传全参数且 `Path=None` 时成功；
 >   效果经 `Effects.Item(i).Blend`（IVGEffectBlend）读写 Steps/Spacing/Angle 等。
+> * 视口缩放/混合效果/调色板管理/进度条 **可用（第六十五波）**：`ActiveWindow.ActiveView` 15 个缩放方法、`Shape.Effects.Item(1).Blend`、`Application.PaletteManager`、`Application.Status`。
 > * 标注/图框/辅助线/文本框链接 **可用（第六十四波）**：`Shape.Dimension`、`Shape.PowerClip`、`Shape.Guide`、`Text.Frames.Item(i).LinkTo/UnLink`。
 > * 样式改父级/复制 **可用（第六十三波）**：`Style.SetBasedOn(名称串)`、`Style.Assign(样式对象)`；`IVGStyle` 达 100%。
 > * 副本打开 / 字体结构体工厂 **可用（第六十二波）**：`OpenDocumentAsCopy(path, 选项)`、`CreateStructFontProperties()`。
@@ -361,7 +362,7 @@
 
 ```powershell
 python -m pytest -q              # 93 项纯逻辑
-python scripts/live_smoke.py     # 503 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
+python scripts/live_smoke.py     # 510 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
 ```
 
 联调断言覆盖了上表所有 ✅ 项。反解脚本属于过程产物，已按要求放在 `tmp/` 并在完成时清理；
@@ -369,14 +370,14 @@ python scripts/live_smoke.py     # 503 项端到端（真实 CorelDRAW，**跑�
 
 ---
 
-## 六、量化覆盖率（2026-10-26 第六十四波实测）
+## 六、量化覆盖率（2026-10-26 第六十五波实测）
 
 方法：反解类型库拿到 196 个自动化类 / **1619** 个方法（已剔除 `QueryInterface` 等 COM 基础设施）；
 用 AST 扫描 `src/cdrx8_mcp/*.py`，收集所有 `.方法名(` 调用与 `setattr/getattr` 的属性名，
 与主干接口的方法名求交集。**注意：属性名（如 `curve.Nodes`）也会被计入**，所以本波数字含真实属性访问。
 
-**全局：1056 / 1619 = 65.2%**（21.2% → … → 64.2% → 本轮 65.2%）
-**主干 20 接口：665 / 743 = 89.5%**（本轮新增覆盖主要在 4 个**非主干**接口）
+**全局：1081 / 1619 = 66.8%**（21.2% → … → 65.2% → 本轮 66.8%）
+**主干 20 接口：665 / 743 = 89.5%**（本轮新增 25 个方法全在**非主干**接口）
 
 复现命令：`python scripts/coverage_audit.py`（会临时展开类型库到 `tmp/gen_py`，跑完自动清理）
 
@@ -405,7 +406,7 @@ python scripts/live_smoke.py     # 503 项端到端（真实 CorelDRAW，**跑�
 | **合计** | **743** | **665** | **89.5%** |
 
 > **怎么读这两个数**：
-> 1. 全局 **65.2%** 覆盖 1619 个方法（含变体与重复）；主干 20 接口 89.5%。
+> 1. 全局 **66.8%** 覆盖 1619 个方法（含变体与重复）；主干 20 接口 89.5%。
 > 2. 它是**方法/属性名匹配**的近似值，同名方法会跨接口误计。
 > 3. `IVGColor` 已到 **91%**：分量**写**走 `*Assign`，分量**读**走 `CorelScriptGetComponent`（`(5000+模型号, v1..v7)`）；纯 Python 只用于无 COM 场景的换算。
 > 4. 未调用方法多为变体（Wide/Ex/2/3 后缀）与事件订阅、CorelScriptTools/MathUtils。
@@ -1347,6 +1348,21 @@ python scripts/live_smoke.py     # 503 项端到端（真实 CorelDRAW，**跑�
 > 四类合计 **13 个方法**，把全局覆盖从 64.2% 推到 **65.2%** ——
 > 说明"主干 20 接口之外还有长尾可挖"，这一波之后的主攻方向会转向这些对象接口。
 
+## 七之六十四、第六十五波已接入（2026-10-26，视口缩放 / 混合效果 / 调色板管理 / 进度条）
+
+> 继续走"主干之外"路线，这一波又吃下 **25 个方法**、4 个此前 0 覆盖的接口。
+
+| 能力 | 落地位置 | 实测 |
+|---|---|---|
+| **视口缩放**（IVGActiveView **15/15**） | `cdr_view(action="zoom_fit_page"/"zoom_fit_width"/"zoom_fit_height"/"zoom_all_objects"/"zoom_selection"/"actual_size"/"zoom_in"/"zoom_out"/"zoom_in_at_point"/"set_view_point"/"view_area"/"set_view_area"/"fit_area"/"fit_shape"/"fit_shape_range")` | ✅ `ActiveWindow.ActiveView`：`SetActualSize`→100%、`ZoomIn`→200%、`ToFitShape`→1963%、`GetViewArea` 返回 4 个值，全部真实改变视口 |
+| **混合效果**（IVGEffectBlend 3 方法） | `cdr_shape_ops(op="blend_effect", params={"split":5})` | ✅ `Shape.Effects.Item(1).Blend` → `Split` / `FuseStart` / `FuseEnd` 可用（Steps/Mode 可读；`CopyFrom` 需要另一条有效混合） |
+| **调色板管理器**（IVGPaletteManager 3/3） | `cdr_doc(action="palette_manager")` | ✅ `Application.PaletteManager`：`PaletteCount`=66、`GetPalette(n)` 取名、`LoadAllPalettes()`、`LoadPalette(n)` |
+| **应用进度条**（IVGAppStatus 4/4） | `cdr_doc(action="app_status", settings={"begin":true,"max":3,"update":1,"message":0,"end":true})` | ✅ `BeginProgress(上限, 0)` / `UpdateProgress` / `SetProgressMessage` / `EndProgress`；`Progress` 从 -1 → 1 |
+
+> **第六十五波方法**：`IVGActiveView` 的 15 个缩放/取景方法是本次最大一块，入口是
+> **`Application.ActiveWindow.ActiveView`**；`IVGAppStatus` 的入口是 **`Application.Status`**，
+> 注意 `BeginProgress` 第二个参数是 **int**（传字符串会 `ValueError`）。
+
 ## 七之二、仍未接入（第三轮候选）
 
 | 能力 | 接口 | 为什么还没做 |
@@ -1373,11 +1389,11 @@ python scripts/live_smoke.py     # 503 项端到端（真实 CorelDRAW，**跑�
   自定义虚线、文档设置、文本区间编辑、自定义箭头、图案微调、文本格式查询、位图内容替换/链接、
   文档回滚、立体化/透镜/效果管理、位图特效命令串、混合、文档颜色转换、用户偏好 KV、OLE 嵌入、
   命名视图、网格设置、叠印、段落缩进、制表位、屏幕叠加层、应用/文档事件、导出/保存/导入选项、吸附点全家族、颜色对象分量、描边对象全量属性都已补上。
-* **方法级覆盖**：**全局 65.2%（1056/1619）**，主干 20 接口 89.5%（665/743）。
+* **方法级覆盖**：**全局 66.8%（1081/1619）**，主干 20 接口 89.5%（665/743）。
 * **明确不可用**：位图描摹、文本导入、点集数组建曲线、尺寸标注/连接线（MathUtils 点对象
   不可创建）、符号库、文件型图案/影线填充（本机无库）、曲线贴笔触、OpenDocumentAsCopy、
   HTML 兼容文本、断字写入、填充字符串、文本尺寸查询、灰度→RGB 转换、真实应用偏好读取、
   文本分栏（SetColumns 数组参数）。
-* **第六十四波新增**：标注对象（IVGDimension 100%）、图框内容（IVGPowerClip 100%）、辅助线几何（IVGGuide 100%）、文本框链接（IVGTextFrame 40%）—— 主攻方向转向**主干之外的对象接口**。
+* **第六十五波新增**：视口缩放（IVGActiveView 100%）、混合效果（EffectBlend）、调色板管理器（PaletteManager 100%）、进度条（AppStatus 100%）—— 全局覆盖到 66.8%。
 
 

@@ -4246,6 +4246,58 @@ def main() -> int:
                       str(ul64.get("applied")))
         no_error("关闭标注/图框测试文档", server.cdr_close(x64_id))
 
+    # ---------------- 15bs. 第六十五波：视口缩放 / 混合效果 / 调色板管理 / 进度条 ----------------
+    print("\n[15bs] 第六十五波：IVGActiveView 缩放·IVGEffectBlend·IVGPaletteManager·IVGAppStatus")
+    v65_doc = server.cdr_open(preset="A4")
+    if "document_id" in v65_doc:
+        v65_id = v65_doc["document_id"]
+        v65r = server.cdr_create(v65_id, [
+            {"type": "ellipse", "x": 0, "y": 0, "width": 10, "height": 10},
+            {"type": "ellipse", "x": 60, "y": 0, "width": 10, "height": 10},
+        ])
+        if no_error("cdr_create(视口/混合测试)", v65r):
+            vA, vB = [{"name": c["name"]} for c in v65r["created"]]
+            z65 = server.cdr_view(v65_id, action="actual_size")
+            if no_error("cdr_view(actual_size)", z65):
+                check("视口可设为实际大小（ActiveView.SetActualSize）",
+                      z65.get("zoom_after") == 100.0, f"zoom={z65.get('zoom_after')}")
+            zi65 = server.cdr_view(v65_id, action="zoom_in")
+            if no_error("cdr_view(zoom_in)", zi65):
+                check("视口可放大（ActiveView.ZoomIn）",
+                      (zi65.get("zoom_after") or 0) > (zi65.get("zoom_before") or 0),
+                      f"{zi65.get('zoom_before')} → {zi65.get('zoom_after')}")
+            va65 = server.cdr_view(v65_id, action="view_area")
+            if no_error("cdr_view(view_area)", va65):
+                check("视口区域可读（GetViewArea）",
+                      len(va65.get("area") or []) == 4, str(va65.get("area")))
+            fs65 = server.cdr_view(v65_id, action="fit_shape", target=vA)
+            if no_error("cdr_view(fit_shape)", fs65):
+                check("可缩放到指定对象（ToFitShape）",
+                      (fs65.get("zoom_after") or 0) > 100.0,
+                      f"zoom={fs65.get('zoom_after')}")
+            server.cdr_shape_ops(v65_id, op="blend", target=vA, other=vB)
+            be65 = server.cdr_shape_ops(v65_id, op="blend_effect", target=vA,
+                                        params={"split": 5.0})
+            if no_error("cdr_shape_ops(blend_effect)", be65):
+                check("混合效果可拆分（EffectBlend.Split）",
+                      "split" in (be65.get("applied") or []),
+                      str(be65.get("applied")))
+            st65 = server.cdr_doc(v65_id, action="app_status",
+                                  settings={"begin": True, "max": 3, "update": 1,
+                                            "end": True})
+            if no_error("cdr_doc(app_status)", st65):
+                check("应用进度条可用（AppStatus）",
+                      st65.get("progress") == 1
+                      and {"begin", "update", "end"} <= set(st65.get("applied") or []),
+                      f"progress={st65.get('progress')}")
+            pm65 = server.cdr_doc(v65_id, action="palette_manager")
+            if no_error("cdr_doc(palette_manager)", pm65):
+                check("调色板管理器可读（PaletteManager）",
+                      (pm65.get("palette_count") or 0) > 0
+                      and bool(pm65.get("first_palettes")),
+                      f"count={pm65.get('palette_count')}")
+        no_error("关闭视口/混合测试文档", server.cdr_close(v65_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

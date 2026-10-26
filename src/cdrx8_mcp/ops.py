@@ -388,6 +388,10 @@ def save_as_copy(doc: Any, path: str, *, options: dict | None = None) -> dict:
 
 
 VIEW_ACTIONS = ("refresh", "activate", "new_window", "to_screen", "to_document",
+                "zoom_fit_page", "zoom_fit_width", "zoom_fit_height",
+                "zoom_all_objects", "zoom_selection", "actual_size", "zoom_in",
+                "zoom_out", "zoom_in_at_point", "set_view_point", "view_area",
+                "set_view_area", "fit_area", "fit_shape", "fit_shape_range",
                 "distance_to_screen", "distance_to_document",
                 "overlay_text", "overlay_rect", "overlay_line",
                 "overlay_circle", "overlay_clear")
@@ -398,11 +402,65 @@ def view_ops(doc: Any, action: str, *, x: float | None = None, y: float | None =
              distance: float = 10.0, text: str | None = None,
              x2: float | None = None, y2: float | None = None,
              radius: float = 20.0, color: int = 0x0000FF,
-             width: int = 2) -> dict:
+             width: int = 2, target: dict | None = None,
+             page_index: int | None = None) -> dict:
     """视图/窗口操作（IVGWindow，实测可用）。"""
     act = (action or "refresh").lower()
     if act not in VIEW_ACTIONS:
         raise CdrBadArgument(f"未知 action {action!r}；可用：{', '.join(VIEW_ACTIONS)}")
+    if act in {"zoom_fit_page", "zoom_fit_width", "zoom_fit_height",
+               "zoom_all_objects", "zoom_selection", "actual_size", "zoom_in",
+               "zoom_out", "zoom_in_at_point", "set_view_point", "view_area",
+               "set_view_area", "fit_area", "fit_shape", "fit_shape_range"}:
+        # 实测：Application.ActiveWindow.ActiveView 是 IVGActiveView，
+        # 15 个缩放/取景方法全部可用（Zoom 会随操作变化）
+        app = _app_of(doc)
+        view = _s(lambda: app.ActiveWindow.ActiveView)
+        if view is None:
+            raise CdrComFailure("取不到 ActiveView")
+        before = _round(_s(lambda: float(view.Zoom)))
+        if act == "zoom_fit_page":
+            view.ToFitPage()
+        elif act == "zoom_fit_width":
+            view.ToFitPageWidth()
+        elif act == "zoom_fit_height":
+            view.ToFitPageHeight()
+        elif act == "zoom_all_objects":
+            view.ToFitAllObjects()
+        elif act == "zoom_selection":
+            view.ToFitSelection()
+        elif act == "actual_size":
+            view.SetActualSize()
+        elif act == "zoom_in":
+            view.ZoomIn()
+        elif act == "zoom_out":
+            view.ZoomOut()
+        elif act == "zoom_in_at_point":
+            view.ZoomInAtPoint(float(x or 0.0), float(y or 0.0))
+        elif act == "set_view_point":
+            view.SetViewPoint(float(x or 0.0), float(y or 0.0), 0)
+        elif act == "view_area":
+            area = _s(lambda: view.GetViewArea(0.0, 0.0, 0.0, 0.0))
+            return {"action": act, "view_type": _n(lambda: int(view.Type)),
+                    "zoom": before,
+                    "area": ([_round(float(v)) for v in area]
+                             if isinstance(area, (tuple, list)) else None)}
+        elif act == "set_view_area":
+            view.SetViewArea(float(x or 0.0), float(y or 0.0),
+                             float(x2 or 100.0), float(y2 or 100.0))
+        elif act == "fit_area":
+            view.ToFitArea(float(x or 0.0), float(y or 0.0),
+                           float(x2 or 100.0), float(y2 or 100.0))
+        elif act == "fit_shape":
+            view.ToFitShape(find_shape(doc, _page(doc, None), target or {}))
+        else:
+            rng = selection_range(doc)
+            if _n(lambda: int(rng.Count), 0) < 1:
+                raise CdrBadArgument("fit_shape_range 需要先选中对象")
+            view.ToFitShapeRange(rng)
+        return {"action": act, "zoom_before": before,
+                "zoom_after": _round(_s(lambda: float(view.Zoom))),
+                "view_type": _n(lambda: int(view.Type))}
     if act == "new_window":
         # 实测：Application.ActiveWindow.NewWindow() 可开新窗口（Document 上没有这个方法）
         win = _s(lambda: _app_of(doc).ActiveWindow.NewWindow())
@@ -503,6 +561,7 @@ DOC_ACTIONS = ("info", "clear_selection", "clear_undo", "palette", "arrowhead",
                # 第四十四波：颜色上下文深操作 / 渐变变换矩阵
                "color_context_info", "color_context_copy", "color_context_merge",
                "color_context_create", "proof_color_settings",
+               "app_status", "palette_manager",
                "fountain_transform", "arrowhead_unnamed",
                # 第四十六波：CorelScriptTools（VBA 辅助对象）单位/数学/日期
                "script_tools")
@@ -1389,6 +1448,58 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
         out["note"] = ("CorelScriptTools 的值以 1/10000 mm 为单位：FromInches(1)=254000；"
                        "ASin 返回弧度；query+code_page 可做 Unicode↔ANSI 码页转换")
         return out
+    if act in {"app_status", "palette_manager"}:
+        app = _app_of(doc)
+        if act == "palette_manager":
+            # 实测：Application.PaletteManager → IVGPaletteManager
+            # （PaletteCount / GetPalette(index) / LoadAllPalettes / LoadPalette）
+            pm = _s(lambda: app.PaletteManager)
+            if pm is None:
+                raise CdrComFailure("取不到 PaletteManager")
+            applied = []
+            if settings and settings.get("load_all"):
+                pm.LoadAllPalettes()
+                applied.append("load_all_palettes")
+            if palette_index is not None:
+                try:
+                    pm.LoadPalette(int(palette_index))
+                    applied.append("load_palette")
+                except Exception:
+                    pass
+            count = _n(lambda: int(pm.PaletteCount), 0) or 0
+            names = []
+            for i in range(1, min(count, 10) + 1):
+                pal = _s(lambda i=i: pm.GetPalette(i))
+                if pal is not None:
+                    names.append(_s(lambda pal=pal: str(pal.Name))[:40])
+            return {"action": act, "palette_count": count,
+                    "first_palettes": names, "applied": applied,
+                    "open_palettes": _n(lambda: int(pm.OpenPalettes.Count), 0)}
+        # app_status：进度条（实测 BeginProgress/UpdateProgress/SetProgressMessage/
+        # EndProgress 四个都可用，Progress 会随 UpdateProgress 变化）
+        st = _s(lambda: app.Status)
+        if st is None:
+            raise CdrComFailure("取不到 Application.Status")
+        spec = dict(settings or {})
+        applied = []
+        if spec.get("begin") is not None:
+            st.BeginProgress(int(spec.get("max", 10)), 0)
+            applied.append("begin")
+        if spec.get("update") is not None:
+            st.UpdateProgress(int(spec["update"]))
+            applied.append("update")
+        if spec.get("message") is not None:
+            st.SetProgressMessage(int(spec["message"]))
+            applied.append("message")
+        progress = _n(lambda: int(st.Progress))
+        aborted = bool(_s(lambda: bool(st.Aborted), False))
+        if spec.get("end"):
+            st.EndProgress()
+            applied.append("end")
+        return {"action": act, "progress": progress, "aborted": aborted,
+                "applied": applied,
+                "note": "进度条 API；BeginProgress(上限, 0) 后 Progress 从 -1 变 0"}
+
     if act == "color_context_create":
         # 实测：Application.CreateColorContext2(配置名串, RenderingIntent, BlendingColorModel)
         # —— 配置名串直接用 ColorContext.ColorProfileNameList（逗号分隔）；**RenderingIntent 有效范围 1~4**
@@ -6007,6 +6118,8 @@ SHAPE_OPS = (
     "set_size_ex", "stretch_ex", "all_excluding",
     # 第六十四波：标注对象 / 图框内容 / 辅助线几何
     "dimension_info", "dimension_set", "powerclip_extract", "guide_info", "guide_set",
+    # 第六十五波：混合效果对象（IVGEffectBlend）
+    "blend_effect",
     # 第四十九波：按掩码复制属性
     "copy_props",
     # 第五十波：形状级斜切（SkewEx）
@@ -6313,6 +6426,37 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
                     "excluded": list(exclude), "result_count": count,
                     "names": [_s(lambda i=i: str(got.Item(i).Name))
                               for i in range(1, min(count, 20) + 1)]}
+        if op == "blend_effect":
+            # 实测：形状混合后 shape.Effects.Item(1).Blend 就是 IVGEffectBlend，
+            # FuseStart / FuseEnd / Split 可用（CopyFrom 需要另一条有效混合）
+            source = find_shape(doc, page, target or {})
+            effects = _s(lambda: source.Effects)
+            if effects is None or (_n(lambda: int(effects.Count), 0) or 0) < 1:
+                raise CdrBadArgument("目标没有效果（先用 blend 创建混合）")
+            eff = _s(lambda: effects.Item(1))
+            blend = _s(lambda: eff.Blend) if eff is not None else None
+            if blend is None:
+                raise CdrBadArgument("该效果不是混合（Type 不是 blend）")
+            spec = dict(params or {})
+            applied = []
+            with atomic(doc, label):
+                if spec.get("fuse_start"):
+                    blend.FuseStart()
+                    applied.append("fuse_start")
+                if spec.get("fuse_end"):
+                    blend.FuseEnd()
+                    applied.append("fuse_end")
+                if spec.get("split") is not None:
+                    made = _s(lambda: blend.Split(float(spec["split"])))
+                    applied.append("split")
+            return {"op": op, "effect_type": _n(lambda: int(eff.Type)),
+                    "steps": _n(lambda: int(blend.Steps)),
+                    "mode": _n(lambda: int(blend.Mode)),
+                    "start_shape": _s(lambda: str(blend.StartShape.Name)),
+                    "end_shape": _s(lambda: str(blend.EndShape.Name)),
+                    "applied": applied,
+                    "split_shape": (_s(lambda: str(made.Name))
+                                    if spec.get("split") is not None else None)}
         if op in {"dimension_info", "dimension_set"}:
             # 实测：标注形状的 `Shape.Dimension` 就是 IVGDimension
             source = find_shape(doc, page, target or {})
