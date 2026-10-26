@@ -4092,6 +4092,45 @@ def main() -> int:
                       str(fhc60.get("applied")))
         no_error("关闭剖面线测试文档", server.cdr_close(h60_id))
 
+    # ---------------- 15bo. 第六十一波：中心定尺寸 / 中心拉伸 / 范围排除 ----------------
+    print("\n[15bo] 第六十一波：Shape.SetSizeEx / StretchEx / ShapeRange.AllExcluding")
+    s61_doc = server.cdr_open(preset="A4")
+    if "document_id" in s61_doc:
+        s61_id = s61_doc["document_id"]
+        s61r = server.cdr_create(s61_id, [
+            {"type": "rectangle", "x": 0, "y": 0, "width": 20, "height": 10},
+            {"type": "rectangle", "x": 40, "y": 0, "width": 10, "height": 10},
+            {"type": "rectangle", "x": 60, "y": 0, "width": 10, "height": 10},
+        ])
+        if no_error("cdr_create(定尺寸测试)", s61r):
+            s61a = {"name": s61r["created"][0]["name"]}
+            sz61 = server.cdr_shape_ops(s61_id, op="set_size_ex", target=s61a,
+                                        params={"cx": 10, "cy": 5, "width": 40,
+                                                "height": 30})
+            if no_error("cdr_shape_ops(set_size_ex)", sz61):
+                bb61 = sz61.get("bbox_after") or {}
+                check("可按中心定尺寸（SetSizeEx）",
+                      bb61.get("width") == 40.0 and bb61.get("height") == 30.0,
+                      f"{bb61.get('width')}×{bb61.get('height')}")
+            st61 = server.cdr_shape_ops(s61_id, op="stretch_ex", target=s61a,
+                                        params={"cx": 10, "cy": 5, "stretch_x": 2.0,
+                                                "stretch_y": 0.5})
+            if no_error("cdr_shape_ops(stretch_ex)", st61):
+                bb61b = st61.get("bbox_after") or {}
+                check("可按中心拉伸（StretchEx）",
+                      bb61b.get("width") == 80.0 and bb61b.get("height") == 15.0,
+                      f"{bb61b.get('width')}×{bb61b.get('height')}")
+            for n61 in [c["name"] for c in s61r["created"][1:]]:
+                server.cdr_select(s61_id, name=n61)
+            ex61 = server.cdr_shape_ops(s61_id, op="all_excluding",
+                                        params={"exclude": [1]})
+            if no_error("cdr_shape_ops(all_excluding)", ex61):
+                check("范围可排除成员（AllExcluding，1 基索引）",
+                      (ex61.get("source_count") or 0) == 2
+                      and (ex61.get("result_count") or 0) == 1,
+                      f"{ex61.get('source_count')} → {ex61.get('result_count')}")
+        no_error("关闭定尺寸测试文档", server.cdr_close(s61_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

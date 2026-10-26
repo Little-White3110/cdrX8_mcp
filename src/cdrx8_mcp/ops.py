@@ -5969,6 +5969,8 @@ SHAPE_OPS = (
     "range_outline_apply",
     # 第五十四波：同层相邻对象遍历（GetNext / GetPrevious）
     "sibling",
+    # 第六十一波：按中心定尺寸/拉伸（SetSizeEx / StretchEx）与范围排除
+    "set_size_ex", "stretch_ex", "all_excluding",
     # 第四十九波：按掩码复制属性
     "copy_props",
     # 第五十波：形状级斜切（SkewEx）
@@ -6233,6 +6235,48 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
                     "api": used,
                     "first_width": _round(_s(lambda: float(first.Outline.Width)))
                     if first is not None else None}
+        if op in {"set_size_ex", "stretch_ex"}:
+            # 实测：SetSizeEx(CenterX, CenterY, Width, Height) 以中心定尺寸；
+            # StretchEx(CenterX, CenterY, StretchX, StretchY, StretchCharactersSize) 以中心按倍数拉伸
+            spec = dict(params or {})
+            use_range = bool(spec.get("use_range", False))
+            target_obj = None
+            if use_range:
+                target_obj = selection_range(doc)
+                if _n(lambda: int(target_obj.Count), 0) < 1:
+                    raise CdrBadArgument("use_range=true 时需要有选中对象")
+            else:
+                target_obj = find_shape(doc, page, target or {})
+            before = _bbox(target_obj)
+            cx = float(spec.get("cx", 0.0))
+            cy = float(spec.get("cy", 0.0))
+            with atomic(doc, label):
+                if op == "set_size_ex":
+                    target_obj.SetSizeEx(cx, cy, float(spec.get("width", 10.0)),
+                                         float(spec.get("height", 10.0)))
+                else:
+                    target_obj.StretchEx(cx, cy, float(spec.get("stretch_x", 1.0)),
+                                         float(spec.get("stretch_y", 1.0)),
+                                         bool(spec.get("stretch_characters", False)))
+            after = _bbox(target_obj)
+            return {"op": op, "scope": "range" if use_range else "shape",
+                    "center": [cx, cy], "bbox_before": before, "bbox_after": after}
+        if op == "all_excluding":
+            # 实测：ShapeRange.AllExcluding(索引数组) 用 **1 基**索引排除成员，
+            # 返回新的 ShapeRange（Python list 直接可用）
+            spec = dict(params or {})
+            exclude = spec.get("exclude") or []
+            sr_src = selection_range(doc)
+            if _n(lambda: int(sr_src.Count), 0) < 1:
+                raise CdrBadArgument("all_excluding 需要先选中对象")
+            got = _s(lambda: sr_src.AllExcluding(list(exclude)))
+            if got is None:
+                raise CdrComFailure("ShapeRange.AllExcluding 返回空")
+            count = _n(lambda: int(got.Count), 0) or 0
+            return {"op": op, "source_count": _n(lambda: int(sr_src.Count), 0),
+                    "excluded": list(exclude), "result_count": count,
+                    "names": [_s(lambda i=i: str(got.Item(i).Name))
+                              for i in range(1, min(count, 20) + 1)]}
         if op == "sibling":
             # 实测：Shape.GetNext(方向) / GetPrevious(方向) 返回 IVGShape（同级对象）
             spec = dict(params or {})

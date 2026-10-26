@@ -7,9 +7,9 @@
 
 > **已在真机验证**：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）+ Python 3.11.9 64 位
 > - 单元测试 **93 项通过**
-> - 端到端联调（真实 CorelDRAW）**491/491 通过**
+> - 端到端联调（真实 CorelDRAW）**494/494 通过**
 > - 能力边界来自对 `vgcoreauto.tlb` 的反解（196 个自动化类 / 1619 个方法）+ 逐项实跑
-> - 方法级覆盖 **63.4%**（主干 20 接口 88.3%），可用 `python scripts/coverage_audit.py` 复现
+> - 方法级覆盖 **63.9%**（主干 20 接口 89.0%），可用 `python scripts/coverage_audit.py` 复现
 > - 完整清单见 [docs/COVERAGE.md](docs/COVERAGE.md)
 
 ---
@@ -70,7 +70,7 @@ python -m cdrx8_mcp              # 启动 MCP 服务器（stdio）
 | `cdr_text` | 排版级：内容 / 字体 / 字号 / 粗斜体 / 下划线 / 对齐 / 大小写 / 项目符号 / 首字下沉 / 行距字距 / 段落缩进 / **制表位** / 前后插入 / 沿路径 / 自适应 / 转曲 / 艺术字↔段落字互转 / 段落内容读写与替换 / 文本区间 / 区间删除·复制·粘贴·拉直 / 读取全文·指定区间·导出纯文本 / **字体属性读取·断字设置读取·格式段列表·按格式查询区间（@font/@bold）** / OpenType 特性 / **四个结构体快照（struct_info：字体·间距·对齐·断字）** / **区间宽接口（range_action：插入·替换·折叠·重设·判等·包含·行距）** / **进入编辑态（begin_edit）** / **结构体工厂写段落格式（paragraph_format：对齐·缩进·字距·行距·连字符，支持 range_start 走 *InRange 区间）** / **区间结构体读取（range_struct：字体·间距·对齐·连字符，1 基）** |
 | `cdr_replace_text` | 全文档文字替换（底层用 X8 原生 `Page.TextReplace`） |
 | `cdr_select` | 按名字 / 类型 / 矩形框选，加入选择集；**可移除或清空选择集** |
-| `cdr_shape_ops` | **布尔与整形**：weld / trim / intersect / combine / group / ungroup / break_apart / to_curves / **outline_to_curves** / to_symbol / powerclip / fillet / chamfer / scallop / **step_repeat / distribute / boundary / perspective / separate / parallel_curves / rasterize / batch_outline_to_curves / fill_mode / pixel_aligned / range_boundary / envelope_from_shape / compare / project / unproject / to_document / extrude / lens / extrude_set / lens_set / effect_info / clear_effects / blend / blend_set / **unlock_all / ungroup_all / break_apart_ex / clear_effect / range_info / range_add / range_remove / apply_fill（Fill 工厂批量上色）/ **matrix（矩阵读写）/ is_type / in_front_of / is_on_shape / distort（pushpull·twister·zipper）/ place_text（文字内嵌）/ duplicate_range · clone_range / **position_ex（9 个参考点）/ find_snap（按引用反查吸附点）/ linked（链接对象）/ rasterize_ex（带参位图化）/ overprint_state / **range_from_list（对象列表建范围）/ range_bitmap（整批位图化）/ range_outline（整批描边 14/15 参）/ copy_to_layer_range（复制到其它图层）/ align_to_range（对齐到形状范围）/ copy_props（按掩码复制属性）/ skew_ex（形状级斜切）/ range_outline_apply（整批套描边）/ ungroup_all·ungroup_all_ex·ungroup_ex（解组家族）/ sibling（同层相邻遍历）** |
+| `cdr_shape_ops` | **布尔与整形**：weld / trim / intersect / combine / group / ungroup / break_apart / to_curves / **outline_to_curves** / to_symbol / powerclip / fillet / chamfer / scallop / **step_repeat / distribute / boundary / perspective / separate / parallel_curves / rasterize / batch_outline_to_curves / fill_mode / pixel_aligned / range_boundary / envelope_from_shape / compare / project / unproject / to_document / extrude / lens / extrude_set / lens_set / effect_info / clear_effects / blend / blend_set / **unlock_all / ungroup_all / break_apart_ex / clear_effect / range_info / range_add / range_remove / apply_fill（Fill 工厂批量上色）/ **matrix（矩阵读写）/ is_type / in_front_of / is_on_shape / distort（pushpull·twister·zipper）/ place_text（文字内嵌）/ duplicate_range · clone_range / **position_ex（9 个参考点）/ find_snap（按引用反查吸附点）/ linked（链接对象）/ rasterize_ex（带参位图化）/ overprint_state / **range_from_list（对象列表建范围）/ range_bitmap（整批位图化）/ range_outline（整批描边 14/15 参）/ copy_to_layer_range（复制到其它图层）/ align_to_range（对齐到形状范围）/ copy_props（按掩码复制属性）/ skew_ex（形状级斜切）/ set_size_ex（按中心定尺寸）/ stretch_ex（按中心拉伸）/ all_excluding（范围排除）/ range_outline_apply（整批套描边）/ ungroup_all·ungroup_all_ex·ungroup_ex（解组家族）/ sibling（同层相邻遍历）** |
 | `cdr_align` | 对齐与分布（左中右 / 上下中 / 等间距；`to=selection/page`，**以及原生范围对齐 `to=page_edge/page_center/grid/point/shape/range`**） |
 | `cdr_find` | 按名字或类型查找（跨图层） |
 | `cdr_style` | **对象样式**：列出 / 从对象创建（fill·outline·character·paragraph）/ **基于已有样式派生** / 按名套用 / 改名 / 删除 / **读可读属性·改属性** / 列派生样式 / **样式表 .cdst 导入导出** / **颜色样式与颜色协调** / **覆盖属性（override_props）·继承状态（inherited）·属性取值（get_property）·属性清除** |
@@ -186,7 +186,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ---
 
-## X8 特有问题（146 条，全部实测）
+## X8 特有问题（147 条，全部实测）
 
 这些是 **X8 与 2024+ 的差异**，也是本项目存在的主要理由。
 
@@ -338,6 +338,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 | 144 | **点集参数要的是 `IVGPointRange` 对象，不是 Python list** | `Curve.AppendSubpathFromPoints(list)` 报 `TypeError: Python instance can not be converted`，一直被判"数组入参不可用"。其实参数类型是 `IVGPointRange`，而它**有现成来源**：`SubPath.GetEvenlySpacedPoints(间距, 缩放)` 直接返回，`AddPointXY`/`RemoveAll` 可随意造点集。拿到后 `CreateCurveFitToPoints(AndCusps)`、`AppendSubpath*Points` 全部可用 | 已封装 `cdr_path(action="fit_to_points"/"append_points")` |
 | 145 | **`ApplyHatchFill` 的第 2 参必须是整数序号** | `Fill.ApplyHatchFill(库名, "ANGLE", …)` 报「发生意外」被判不可用；传 **int**（0/1/2/5/10/50…均可）、库名传空串即可 → `Fill.Type = 10`。`ApplyCustomHatchFill` 18 参的 Style 可传 None。`Document.HatchLibraries` 报错不影响填充 | 已封装 `cdr_modify(fill={"type":"hatch"/"hatch_custom"})` |
 | 146 | **`GetMatrix` 也会让 `IsOnShape` 失效** | 之前只记了 SetMatrix；长跑里「先 GetMatrix 再 IsOnShape」会稳定返回 0（单独跑正常）。把命中判定挪到矩阵读取之前即恢复 | 冒烟里已把 `is_on_shape` 放到 `matrix` 之前；调用方若两者都用，注意这个顺序 |
+| 147 | **`SetSizeEx`/`StretchEx` 前两参是中心点；`AllExcluding` 要索引数组（1 基）** | 第 33 波把 `SetSizeEx`/`StretchEx` 判成「参数语义不明、会放大到离谱尺寸」，其实是把**中心点**当左上角传：`SetSizeEx(cx, cy, 宽, 高)`、`StretchEx(cx, cy, X倍数, Y倍数, 缩放文字)`。`AllExcluding([1])` 接受 Python list、索引 **1 基**（传 None 才报 TypeError） | 已封装 `cdr_shape_ops(op="set_size_ex"/"stretch_ex"，可加 use_range) / "all_excluding"` |
 
 改代码前请先读 [`src/cdrx8_mcp/constants.py`](src/cdrx8_mcp/constants.py) 里的注释。
 
@@ -387,7 +388,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ```powershell
 python -m pytest -q                # 93 项逻辑测试，任何平台可跑
-python scripts/live_smoke.py       # 491 项端到端（跑前先确认没有残留 CorelDRW 进程）
+python scripts/live_smoke.py       # 494 项端到端（跑前先确认没有残留 CorelDRW 进程）
 python scripts/live_smoke.py --keep   # 保留文档方便肉眼看效果
 python scripts/coverage_audit.py   # 覆盖率审计（复现 README/COVERAGE 里的数字）
 ```
