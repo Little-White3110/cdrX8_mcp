@@ -1604,6 +1604,13 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
         count = _n(lambda: int(wins.Count), 0) or 0
         spec = dict(settings or {})
         result = {"action": act, "count": count}
+        if spec.get("arrange") is not None:
+            # 实测：Windows.Arrange(mode) 可调用（0/1/2 都接受）
+            wins.Arrange(int(spec["arrange"]))
+            result["arranged"] = int(spec["arrange"])
+        if spec.get("close_all"):
+            wins.CloseAll()
+            result["closed_all"] = True
         if spec.get("find_caption"):
             found = _s(lambda: wins.FindWindow(str(spec["find_caption"])))
             result["found"] = found is not None
@@ -6537,6 +6544,8 @@ SHAPE_OPS = (
     "hatch_fill", "fountain_colors", "ellipse_geometry",
     # 第七十二波：包络效果对象（IVGEffectEnvelope）
     "envelope_object",
+    # 第七十四波：拉伸消失点共享
+    "extrude_vp_share",
     # 第四十九波：按掩码复制属性
     "copy_props",
     # 第五十波：形状级斜切（SkewEx）
@@ -7635,6 +7644,27 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
 
         shape = find_shape(doc, page, target or {})
 
+        if op == "extrude_vp_share":
+            # 实测：IVGExtrudeVanishingPoint.Share(源) 传**拉伸效果对象**才会返回布尔
+            # （传另一个消失点会「类型不匹配」）
+            source = find_shape(doc, page, target or {})
+            spec = dict(params or {})
+            if not other:
+                raise CdrBadArgument("extrude_vp_share 需要 other（提供源消失点的拉伸对象）")
+            src_shape = find_shape(doc, page, other)
+            with atomic(doc, label):
+                eff = _s(lambda: source.Effects.Item(1))
+                ext = _s(lambda: eff.Extrude) if eff is not None else None
+                vp = _s(lambda: ext.VanishingPoint) if ext is not None else None
+                src_eff = _s(lambda: src_shape.Effects.Item(1))
+                src_ext = _s(lambda: src_eff.Extrude) if src_eff is not None else None
+                if vp is None or src_ext is None:
+                    raise CdrComFailure("源或目标没有拉伸效果")
+                ok = bool(_s(lambda: bool(vp.Share(src_ext)), False))
+            return {"op": op, "shared": ok,
+                    "position": [_round(_s(lambda: float(vp.PositionX))),
+                                 _round(_s(lambda: float(vp.PositionY)))],
+                    "source": _s(lambda: str(src_shape.Name))}
         if op in {"extrude", "lens", "extrude_set", "lens_set", "clear_effects",
                   "blend", "blend_set"}:
             with atomic(doc, label):

@@ -3183,7 +3183,8 @@ def main() -> int:
             mA, mB, mT, mM = ({"name": ma}, {"name": mb}, {"name": mt},
                               {"name": mm})
             # 注意顺序：GetMatrix 之后再调 IsOnShape 可能失效（实测在长跑里会返回 0），
-            # 所以命中判定放在矩阵读取之前
+            # 所以命中判定放在矩阵读取之前；另外先把视口归位（缩放异常时 IsOnShape 也会返回 0）
+            server.cdr_view(m_id, action="actual_size")
             ins_shape = server.cdr_shape_ops(m_id, op="is_on_shape", target=mA,
                                              x=30, y=130)
             edge_shape = server.cdr_shape_ops(m_id, op="is_on_shape", target=mA,
@@ -4594,6 +4595,33 @@ def main() -> int:
                       and bool(frames73[0].get("column_widths")),
                       f"cols={frames73[0].get('column_widths') if frames73 else None}")
         no_error("关闭叠加层/文本框测试文档", server.cdr_close(o73_id))
+
+    # ---------------- 15cb. 第七十四波：拉伸消失点共享 / 窗口排列 ----------------
+    print("\n[15cb] 第七十四波：ExtrudeVanishingPoint.Share（传拉伸效果）·Windows.Arrange")
+    e74_doc = server.cdr_open(preset="A4")
+    if "document_id" in e74_doc:
+        e74_id = e74_doc["document_id"]
+        e74r = server.cdr_create(e74_id, [
+            {"type": "rectangle", "x": 0, "y": 0, "width": 20, "height": 10},
+            {"type": "rectangle", "x": 60, "y": 0, "width": 20, "height": 10},
+        ])
+        if no_error("cdr_create(消失点测试)", e74r):
+            e74a, e74b = [{"name": c["name"]} for c in e74r["created"]]
+            for n74 in (e74a, e74b):
+                server.cdr_shape_ops(e74_id, op="extrude", target=n74,
+                                     params={"depth": 20})
+            sv74 = server.cdr_shape_ops(e74_id, op="extrude_vp_share",
+                                        target=e74a, other=e74b)
+            if no_error("cdr_shape_ops(extrude_vp_share)", sv74):
+                check("拉伸消失点可共享（Share 传拉伸效果）",
+                      sv74.get("shared") is True and sv74.get("position") is not None,
+                      f"shared={sv74.get('shared')} pos={sv74.get('position')}")
+            ar74 = server.cdr_doc(e74_id, action="windows", settings={"arrange": 1})
+            if no_error("cdr_doc(windows arrange)", ar74):
+                check("窗口可排列（Windows.Arrange）",
+                      ar74.get("arranged") == 1,
+                      f"arranged={ar74.get('arranged')}")
+        no_error("关闭消失点/窗口测试文档", server.cdr_close(e74_id))
 
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")

@@ -7,9 +7,9 @@
 
 > **已在真机验证**：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）+ Python 3.11.9 64 位
 > - 单元测试 **93 项通过**
-> - 端到端联调（真实 CorelDRAW）**537/537 通过**
+> - 端到端联调（真实 CorelDRAW）**539/539 通过**
 > - 能力边界来自对 `vgcoreauto.tlb` 的反解（196 个自动化类 / 1619 个方法）+ 逐项实跑
-> - 方法级覆盖 **71.6%**（主干 20 接口 90.2%），可用 `python scripts/coverage_audit.py` 复现
+> - 方法级覆盖 **71.8%**（主干 20 接口 90.2%），可用 `python scripts/coverage_audit.py` 复现
 > - 完整清单见 [docs/COVERAGE.md](docs/COVERAGE.md)
 
 ---
@@ -186,7 +186,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ---
 
-## X8 特有问题（159 条，全部实测）
+## X8 特有问题（160 条，全部实测）
 
 这些是 **X8 与 2024+ 的差异**，也是本项目存在的主要理由。
 
@@ -351,6 +351,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 | 157 | **UI 自动化整族因缺 GUID 不可达** | `Application.FrameWork`（ICUIFrameWork）→ `.Automation`（ICUIAutomation）能拿到对象，但所有方法都要**命令栏/菜单项 GUID**：`ICUICommandBar` 没有 `Guid` 属性，`GetActiveMenuItemGuid(i)` 在无菜单打开时返回空串。另 `ColorContext.SetColorProfile(模型号, 配置文件)` 要求**配置文件的 ColorModel 与模型号一致** | UI 自动化不暴露；色彩配置文件已封装 `cdr_doc(set_color_profile)`（自动按模型挑配置） |
 | 158 | **同一批 TLB 里 Get 类方法的参数风格不一致** | `IVGHatchFill.GetFillScale()` / `GetLineScale()` 是**零参**（传 `(0.0)` 会 TypeError），而 `IVGOutlineStyle.DashLength(i)` 要索引；`IVGEllipse.GetRadius()` 零参返回 `(x, y)` tuple。另 `Palettes.CreateFromSelection` 在选区里没有可取色对象时返回空，需退回整篇文档 | 已按"先试零参、再试带参"的写法封装 `hatch_fill` / `ellipse_geometry` / `palette_from` |
 | 159 | **`Shape.CreateEnvelope` 的 PresetIndex 是 1 基** | 传 0 报「参数 PresetIndex 超出范围」，传 1 才能建出包络；`effect.Envelope` 的 `Select(预设)` / `CreateFrom(形状)` / `CopyFrom(另一包络)` / `CopyFromCurve(曲线,…)` 都可用，但 `CopyFromShape` 的五参形态未通 | 已封装 `cdr_shape_ops(op="envelope_object")`；屏幕手柄走 `cdr_view(action="overlay_handle")` |
+| 160 | **`IVGExtrudeVanishingPoint.Share` 要传拉伸效果而不是消失点** | `Share(另一个消失点)` 报「类型不匹配」，`Share(effect.Extrude)` 才返回布尔；另 `IsOnShape` 在视口缩放异常时会返回 0（长跑里偶发，测试前先 `actual_size` 归位） | 已封装 `cdr_shape_ops(op="extrude_vp_share")`、`cdr_doc(action="windows", settings={"arrange":1})` |
 
 改代码前请先读 [`src/cdrx8_mcp/constants.py`](src/cdrx8_mcp/constants.py) 里的注释。
 
@@ -400,7 +401,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ```powershell
 python -m pytest -q                # 93 项逻辑测试，任何平台可跑
-python scripts/live_smoke.py       # 537 项端到端（跑前先确认没有残留 CorelDRW 进程）
+python scripts/live_smoke.py       # 539 项端到端（跑前先确认没有残留 CorelDRW 进程）
 python scripts/live_smoke.py --keep   # 保留文档方便肉眼看效果
 python scripts/coverage_audit.py   # 覆盖率审计（复现 README/COVERAGE 里的数字）
 ```

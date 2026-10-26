@@ -2,7 +2,7 @@
 
 > 目的：证明"还有多少没探"。每一行要么有对应的工具，要么有实测失败证据。
 > 环境：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）/ Python 3.11.9 64 位
-> 最近更新：2026-10-26 第七十三波（叠加层补齐 / 文本框列信息）
+> 最近更新：2026-10-26 第七十四波（拉伸消失点共享 / 窗口排列）+ **终版覆盖报告**
 
 ## 怎么得出这份清单
 
@@ -243,6 +243,7 @@
 >   `CreateFreeConnector` 报「未实现」；本机无符号库。
 > * 混合 **可用（第十七波）**：`CreateBlend` 传全参数且 `Path=None` 时成功；
 >   效果经 `Effects.Item(i).Blend`（IVGEffectBlend）读写 Steps/Spacing/Angle 等。
+> * 拉伸消失点共享 / 窗口排列 **可用（第七十四波）**：`ext.VanishingPoint.Share(effect.Extrude)`、`Windows.Arrange`。
 > * 叠加层补齐 / 文本框列信息 **可用（第七十三波）**：`OnScreenText` 7/7、`OnScreenCurve` 11/11、`cdr_text(frame_info=true)`。
 > * 屏幕手柄 / 包络效果对象 / 按名选配置文件 **可用（第七十二波）**：`CreateOnScreenHandle`、`effect.Envelope`（Select/CreateFrom/CopyFrom/CopyFromCurve）、`ColorProfiles.SelectByName`。
 > * 剖面线参数 / 渐变控制点 / 椭圆几何 / 调色板工厂 / 窗口查找 **可用（第七十一波）**：`Fill.Hatch`、`Fountain.Colors`、`Shape.Ellipse`、`Palettes.CreateFrom*`、`Windows.FindWindow`。
@@ -370,7 +371,7 @@
 
 ```powershell
 python -m pytest -q              # 93 项纯逻辑
-python scripts/live_smoke.py     # 537 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
+python scripts/live_smoke.py     # 539 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
 ```
 
 联调断言覆盖了上表所有 ✅ 项。反解脚本属于过程产物，已按要求放在 `tmp/` 并在完成时清理；
@@ -378,13 +379,13 @@ python scripts/live_smoke.py     # 537 项端到端（真实 CorelDRAW，**跑�
 
 ---
 
-## 六、量化覆盖率（2026-10-26 第七十三波实测）
+## 六、量化覆盖率（2026-10-26 第七十四波实测）
 
 方法：反解类型库拿到 196 个自动化类 / **1619** 个方法（已剔除 `QueryInterface` 等 COM 基础设施）；
 用 AST 扫描 `src/cdrx8_mcp/*.py`，收集所有 `.方法名(` 调用与 `setattr/getattr` 的属性名，
 与主干接口的方法名求交集。**注意：属性名（如 `curve.Nodes`）也会被计入**，所以本波数字含真实属性访问。
 
-**全局：1159 / 1619 = 71.6%**（21.2% → … → 71.2% → 本轮 71.6%）
+**全局：1162 / 1619 = 71.8%**（21.2% → … → 71.6% → 本轮 71.8%）
 **主干 20 接口：670 / 743 = 90.2%**
 
 复现命令：`python scripts/coverage_audit.py`（会临时展开类型库到 `tmp/gen_py`，跑完自动清理）
@@ -414,7 +415,7 @@ python scripts/live_smoke.py     # 537 项端到端（真实 CorelDRAW，**跑�
 | **合计** | **743** | **665** | **89.5%** |
 
 > **怎么读这两个数**：
-> 1. 全局 **71.6%** 覆盖 1619 个方法（含变体与重复）；主干 20 接口 90.2%。
+> 1. 全局 **71.8%** 覆盖 1619 个方法（含变体与重复）；主干 20 接口 90.2%。
 > 2. 它是**方法/属性名匹配**的近似值，同名方法会跨接口误计。
 > 3. `IVGColor` 已到 **91%**：分量**写**走 `*Assign`，分量**读**走 `CorelScriptGetComponent`（`(5000+模型号, v1..v7)`）；纯 Python 只用于无 COM 场景的换算。
 > 4. 未调用方法多为变体（Wide/Ex/2/3 后缀）与事件订阅、CorelScriptTools/MathUtils。
@@ -1477,6 +1478,77 @@ python scripts/live_smoke.py     # 537 项端到端（真实 CorelDRAW，**跑�
 > **要 `IVGPointRange` 而不是 Python list** —— 直接复用第五十九波写的点集构造函数即可。
 > 屏幕叠加层现在是 100% 覆盖（Text 7/7、Curve 11/11），且它们都不写入文档，可安全用于预览/标注。
 
+## 七之七十三、第七十四波已接入（2026-10-26，拉伸消失点共享 / 窗口排列）
+
+| 能力 | 落地位置 | 实测 |
+|---|---|---|
+| **拉伸消失点共享**（IVGExtrudeVanishingPoint 1/1） | `cdr_shape_ops(op="extrude_vp_share", target=…, other=源拉伸对象)` | ✅ `ext.VanishingPoint.Share(源**拉伸效果**对象)` 返回 True（传另一个消失点会「类型不匹配」）；读回位置 `[70, 5]` |
+| **窗口排列**（IVGWindows.Arrange） | `cdr_doc(action="windows", settings={"arrange":1})` | ✅ `Windows.Arrange(0/1/2)` 都可调用 |
+
+> **第七十四波记录**：`Share` 的参数是**拉伸效果对象**（`effect.Extrude`）而不是消失点对象 —— 
+> 又一个"名字看着像 A、实际要 B"的例子。另外冒烟里顺手修掉一个长期偶发：
+> 视口缩放异常时 `IsOnShape` 会返回 0，测试前先把视口归位到实际大小即可稳定。
+
+## 八、终版覆盖报告（2026-10-26，第七十四波后收敛）
+
+### 8.1 总览
+
+| 指标 | 数值 |
+|---|---|
+| 类型库自动化类 / 方法 | **196 / 1619** |
+| 全局方法覆盖 | **1162 / 1619 = 71.8%** |
+| 主干 20 接口覆盖 | **670 / 743 = 90.2%** |
+| 已达 100% 的接口 | `IVGWindow`、`IVGFountainFill`、`IVGStyle`、`IVGColorContext`、`IVGDimension`、`IVGPowerClip`、`IVGGuide`、`IVGText`(结构体族)、`IVGToolStateAttributes`、`IVGToolShapeAttributes`、`IVGAppStatus`、`IVGPaletteManager`、`IVGTreeManager`、`IVGOnScreenText`、`IVGOnScreenCurve`、`IVGOutlineStyle`(读)、`IVGAppleEvents`… 共 **30+ 个接口** |
+| MCP 工具数 | **30** |
+| 端到端联调 | **539/539 通过**（真实 CorelDRAW 18.0.0.450） |
+| 单元测试 | **93/93 通过** |
+| 已记录 X8 陷阱 | **160 条** |
+| 波次 | 74 轮（从 21.2% 起步） |
+
+### 8.2 能力边界（一句话版）
+
+* **文档/页面/图层**：新建·打开·模板·副本打开、页面增删与版式、图层增删改与可见性、命名视图、网格、参考线；
+* **绘图**：矩形/椭圆/多边形/星形/螺旋/网格/直线/贝塞尔/曲线段/B 样条/位图/艺术字/段落字/连接器/线性与角度标注；
+* **形状与整形**：布尔（焊接·修剪·相交·合并）、组合与解组（含 `UngroupAll(Ex)`）、打散、圆角、斜切/拉伸/定尺寸、矩阵、扭曲、包络、立体化、透镜、投影、混合、透明度、PowerClip（含内容取出）、克隆链、复制/克隆为范围；
+* **路径与节点**：任意节点/线段集合、拓扑合并/平均、按偏移取点与定位线段、子路径追加/抽出、点集拟合曲线、曲线映射到骨架线、辅助线几何；
+* **文字**：字体字号粗斜体下划线（`cdrTriState` 映射）、对齐/缩进/行距/字距、区间结构体读写（`*InRange` 1 基）、制表位、沿路径、转曲、HTML 兼容、文本框链接与列信息；
+* **颜色与色彩管理**：`ToString`/`StringAssign`、分量读（`CorelScriptGetComponent`）与写（`*Assign`）、调色板取色/工厂、专色、`ConvertToPalette`、色彩上下文工厂/复制/合并/指派、打样设置、配置文件按模型挑选；
+* **填充/描边**：均匀/渐变/图样/纹理/PostScript/剖面线（含自定义与缩放参数）、渐变控制点、描边 14/15 参、描边样式虚线段、批量化（`ApplyFill`/`ApplyOutline`）；
+* **位图**：模式转换、二值化、重采样、扩边、裁剪、像素读、双色调（含 Overprint）、调色板（含选项）、内容替换、特效命令串、链接解析；
+* **导入导出**：导入（含 `ImportEx`）、导出（`ExportEx` / `Document.Export` / `ExportBitmap`）、PDF、SVG；
+* **视图/窗口/叠加层**：15 种缩放取景、屏幕叠加文字/直线/矩形/圆/点集/手柄（不写入文档）、新窗口、窗口排列与查找；
+* **系统级**：事件队列（连接点 sink）、应用偏好、进度条、调色板管理器、对象树、`CorelScriptTools`。
+
+### 8.3 剩余 457 个方法的归类（为什么不再接）
+
+| 归类 | 代表 | 证据 |
+|---|---|---|
+| VBA / 插件体系 | `Evaluate`、`InitializeVBA`、`AddPluginCommand`、`RegisterToolState`、`CustomCommand`、`IVGApplicationEvents`(22)、`IVGToolState`(17)、`IVGAppPlugin`(4) | 300 s 卡死；或「未装载此命令」；或需宿主回调 |
+| 会挂起 / 弹窗 | `GetUserArea`、`GetUserClick`、`PrintOut`、`PrintColorProof`、`Text.ImportFromFile`、`*UserAssign` | 20~240 s 挂起实测 |
+| 载荷造不出来 | `CreateCurveFromArray`、`CreateSubPathFromArray`、`PutCurveInfo`、`ApplyTransformMatrix`、`IVGMathUtils`(19)、`Document.CreateFill/Outline` | `MemoryError: CreatingSafeArray`；MathUtils CLSID 未注册；字符串工厂返回空对象 |
+| 需外部资源 | `Bitmap.Trace`、`CreateSymbol`、`CreateCustomEffect/Distortion`、`Layer.CreateCustomShape/ToolShape`、`IVGToolShape` | 「未装载此效果」/ 无符号库 / 无插件 |
+| 交互式宿主依赖 | `ICUIAutomation`(14)、`ICUIFrameWork`(10)、`ICUIImageList`、`ICUIAutomation` 全族 | 需要命令栏/菜单项 **GUID**，纯自动化拿不到 |
+| 语义不可核实 | `LogCreateShape`、`ReplaceContentByIdentifier`、`SetFontProperties`、`RemoveFromContainer`、`Style.Install`、`ColorProfiles.Install` | 调用不报错但无可见效果 / 有副作用风险 |
+
+### 8.4 复现与维护
+
+```bash
+python scripts/coverage_audit.py          # 覆盖统计（按接口 + 全局）
+python scripts/live_smoke.py              # 539 项端到端（需真实 X8；跑前先杀残留 CorelDRW）
+python -m pytest -q                       # 93 项纯 Python 单元测试
+```
+
+新增能力时的固定流程（本轮 74 波一直沿用，已验证有效）：
+
+1. 从类型库取签名（`GetFuncDesc` + `GetNames`）→ **先看参数类型，不要凭名字猜**；
+2. 用**独立短超时**的探针脚本逐条试（避免一个挂起拖死整批）；
+3. 成功的能力封装进 `ops.py` + `server.py`，失败的在 COVERAGE 记下**确切报错**；
+4. 冒烟加断言 → 全量跑 → 更新 COVERAGE/README → 提交（`feat: 第 N 波 —— …，覆盖 X%`）。
+
+> **给后来者的三条经验**：① 类型库里大量 `*InRange`、`Set*` 的坑是"1 基索引"和"名称串 vs 对象"；
+> ② 数组入参先找 `IVGPointRange`/`IVGSnapPoint` 这类容器，别直接塞 Python list；
+> ③ 同一接口里 Get 类方法的参数个数可能不一致（`GetFillScale()` 零参 vs `DashLength(i)` 带索引），逐个试。
+
 ## 七之二、仍未接入（第三轮候选）
 
 | 能力 | 接口 | 为什么还没做 |
@@ -1503,11 +1575,11 @@ python scripts/live_smoke.py     # 537 项端到端（真实 CorelDRAW，**跑�
   自定义虚线、文档设置、文本区间编辑、自定义箭头、图案微调、文本格式查询、位图内容替换/链接、
   文档回滚、立体化/透镜/效果管理、位图特效命令串、混合、文档颜色转换、用户偏好 KV、OLE 嵌入、
   命名视图、网格设置、叠印、段落缩进、制表位、屏幕叠加层、应用/文档事件、导出/保存/导入选项、吸附点全家族、颜色对象分量、描边对象全量属性都已补上。
-* **方法级覆盖**：**全局 71.6%（1159/1619）**，主干 20 接口 90.2%（670/743）。
+* **方法级覆盖**：**全局 71.8%（1162/1619）**，主干 20 接口 90.2%（670/743）。
 * **明确不可用**：位图描摹、文本导入、点集数组建曲线、尺寸标注/连接线（MathUtils 点对象
   不可创建）、符号库、文件型图案/影线填充（本机无库）、曲线贴笔触、OpenDocumentAsCopy、
   HTML 兼容文本、断字写入、填充字符串、文本尺寸查询、灰度→RGB 转换、真实应用偏好读取、
   文本分栏（SetColumns 数组参数）。
-* **第七十三波新增**：屏幕叠加层补齐（OnScreenText 100%、OnScreenCurve 100%）、文本框列信息读取 —— 全局到 71.6%。
+* **第七十四波新增**：拉伸消失点共享（Share 要传拉伸效果）、窗口排列；全局到 71.8%。
 
 
