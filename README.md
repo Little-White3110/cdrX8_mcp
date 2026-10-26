@@ -7,9 +7,9 @@
 
 > **已在真机验证**：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）+ Python 3.11.9 64 位
 > - 单元测试 **93 项通过**
-> - 端到端联调（真实 CorelDRAW）**482/482 通过**
+> - 端到端联调（真实 CorelDRAW）**486/486 通过**
 > - 能力边界来自对 `vgcoreauto.tlb` 的反解（196 个自动化类 / 1619 个方法）+ 逐项实跑
-> - 方法级覆盖 **62.6%**（主干 20 接口 86.5%），可用 `python scripts/coverage_audit.py` 复现
+> - 方法级覆盖 **62.8%**（主干 20 接口 87.1%），可用 `python scripts/coverage_audit.py` 复现
 > - 完整清单见 [docs/COVERAGE.md](docs/COVERAGE.md)
 
 ---
@@ -78,8 +78,8 @@ python -m cdrx8_mcp              # 启动 MCP 服务器（stdio）
 | `cdr_node` | **节点/线段级编辑（第五波打通）**：列节点·列线段 / 移动·选中·删除 / 圆角·倒角· scallop·平滑 / 拉伸·旋转·斜切·断开 / 加节点·断线 / 读写贝塞尔控制点 / 按坐标找节点与线段 / **前后邻居（Next·Previous）·节点间距·平均位置·末端节点合并·任意不连续节点集合（arbitrary：move/rotate/skew/stretch/autoreduce/smoothen/set_type/delete/fillet/chamfer/scallop）·**节点坐标搬运（copy_point：GetPoint/SetPoint）** |
 | `cdr_bitmap` | 位图：信息 / 转色彩模式（rgb·cmyk·gray·bw）/ **阈值二值化** / **调色板模式 0~9（9=自定义调色板）** / **双色调 0~3（可给 .cpd 预设）** / **取像素颜色** / 图像缓冲信息 / 重采样 / **扩边** / 裁剪 / **内容替换（SetImageData，支持色块/像素绘制）** / **位图特效命令串（ApplyBitmapEffect）** / **链接信息·重新加载·解析链接** / **调色板选项转换（paletted_options：颜色数·抖动·指定调色板）** |
 | `cdr_rect` | **矩形对象（IVGRect）**：读派生值 / 平移 / 四边外扩内缩 / 并 / 交 / 点包含 / 复制；**按矩形造形**（CreateRectangleRect 带四角圆角、CreateEllipseRect 带角度/扇形） |
-| `cdr_color` | **颜色运算**：解析成 HEX/RGB/CMYK/Gray/HLS/Lab、转换、两色混合（纯 Python）；**X8 颜色对象**：`object_info` / `object_name` / `object_compare`（IsSame·IsSimilar·距离）/ `object_blend`（原地混合）/ `object_copy` / `object_string_assign` / `object_convert`（8 种模型原地转换）/ `object_fixed`（USER·TRU·PAN_PROC）/ `object_assign`（分量直写，含套版色·固定调色板 fixed·脚本式 script）/ **`object_model`（HSB·CMY·BW·YIQ·Fixed·CreateColorEx 工厂）/ `object_from_string`（颜色串造色）/ `object_palette`（按调色板 GUID 取专色）/ `object_invalidate` / **`object_components`（CorelScriptGetComponent 读分量）/ `object_convert_palette`（转指定调色板）/ `object_modify_style_color`（ModifyColorStyleColor）** |
-| `cdr_doc` | **文档级**：概况 / 清空选择集 / 清撤销栈 / **登记调色板** / **用曲线生成自定义箭头（可登记全局箭头库）/ 命名箭头（CreateArrowHead2）** / **单位换算** / **取色（点/区域）** / **字体列表** / **调色板列表·取色·固定调色板打开·颜色枚举·专色创建·自定义调色板创建** / **图案画布创建（含区域变换）** / **纹理库列表** / **文档元数据读写·本地化元数据** / **数据字段·对象数据·色彩管理·线型样式·叠印读取** / **文档设置读写** / **应用信息·文档回滚** / **色彩配置文件·文档颜色转换** / **用户偏好 KV** / **命名视图** / **网格设置** / **应用/文档事件队列** / **显示隐藏对象** / **页面版式** / **重复上一操作**  / **COM 单位换算（convert_units）** / **文档设置快照（save_settings·restore_settings·reset_settings，实验性）** / **解析全部位图链接（resolve_links）** / **指派色彩上下文（assign_color_context）** / **样式表设为默认（stylesheet_default）** / **命名箭头变体（arrowhead_ex）** / **颜色上下文深操作（color_context_info/copy/merge）** / **渐变变换矩阵（fountain_transform）** / **CorelScriptTools 辅助对象（script_tools）** |
+| `cdr_color` | **颜色运算**：解析成 HEX/RGB/CMYK/Gray/HLS/Lab、转换、两色混合（纯 Python）；**X8 颜色对象**：`object_info` / `object_name` / `object_compare`（IsSame·IsSimilar·距离）/ `object_blend`（原地混合）/ `object_copy` / `object_string_assign` / `object_convert`（8 种模型原地转换）/ `object_fixed`（USER·TRU·PAN_PROC）/ `object_assign`（分量直写，含套版色·固定调色板 fixed·脚本式 script）/ **`object_model`（HSB·CMY·BW·YIQ·Fixed·CreateColorEx 工厂）/ `object_from_string`（颜色串造色）/ `object_palette`（按调色板 GUID 取专色）/ `object_invalidate` / **`object_components`（CorelScriptGetComponent 读分量）/ `object_convert_palette`（转指定调色板）/ `object_modify_style_color`（ModifyColorStyleColor）/ `object_palette_factory`（CreatePaletteColor）/ `object_from_spot`（CreateSpotColor）** |
+| `cdr_doc` | **文档级**：概况 / 清空选择集 / 清撤销栈 / **登记调色板** / **用曲线生成自定义箭头（可登记全局箭头库）/ 命名箭头（CreateArrowHead2）** / **单位换算** / **取色（点/区域）** / **字体列表** / **调色板列表·取色·固定调色板打开·颜色枚举·专色创建·自定义调色板创建** / **图案画布创建（含区域变换）** / **纹理库列表** / **文档元数据读写·本地化元数据** / **数据字段·对象数据·色彩管理·线型样式·叠印读取** / **文档设置读写** / **应用信息·文档回滚** / **色彩配置文件·文档颜色转换** / **用户偏好 KV** / **命名视图** / **网格设置** / **应用/文档事件队列** / **显示隐藏对象** / **页面版式** / **重复上一操作**  / **COM 单位换算（convert_units）** / **文档设置快照（save_settings·restore_settings·reset_settings，实验性）** / **解析全部位图链接（resolve_links）** / **指派色彩上下文（assign_color_context）** / **样式表设为默认（stylesheet_default）** / **命名箭头变体（arrowhead_ex）** / **颜色上下文深操作（color_context_info/copy/merge）** / **渐变变换矩阵（fountain_transform）** / **CorelScriptTools 辅助对象（script_tools）** / **色彩上下文工厂（color_context_create）** / **打样设置（proof_color_settings）** |
 | `cdr_view` | **视图**：刷新重绘 / 激活窗口 / **新窗口（new_window）** / 文档↔屏幕坐标换算 / **屏幕距离↔文档距离** / **屏幕叠加层（文字/矩形/直线/圆，不写入文档）** |
 | `cdr_snap` | **吸附点**：对象吸附点枚举（类型掩码过滤）/ **自动点·包围盒点·对象点·边上点定址** / **新增用户吸附点（GUID）** / **文档·应用级自由点** / 最近吸附点查询（页面级与集合级）/ 移动（相对+绝对）/ 删除 / 方向 / 选择 / **SnapPointRange 批量（Move·Delete·Add·Remove·Find·ChangeDirection·SetAutoSnap）** |
 | `cdr_outline` | **描边对象**：全量属性读取（宽度/颜色/线型/线帽/连接/笔尖角度与拉伸/斜接/对齐/箭头）/ 写入（含 `SetProperties` 14 参与 `SetPropertiesEx` 15 参两条全参路径）/ **描边转曲线对象** / 复制描边 / 描边比较 |
@@ -186,7 +186,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ---
 
-## X8 特有问题（142 条，全部实测）
+## X8 特有问题（143 条，全部实测）
 
 这些是 **X8 与 2024+ 的差异**，也是本项目存在的主要理由。
 
@@ -334,6 +334,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 | 140 | **连接器/标注的端点是 `IVGSnapPoint`，由 `CreateSnapPoint(x,y)` 产出** | `Layer.CreateConnector/CreateLinearDimension` 要的端点不是 `IVGPoint`（它没有可写的 x/y），而是 `Application.CreateSnapPoint(x, y)` 返回的 `IVGSnapPoint`。拿到它之后连接器三件套 + 线性/角度标注（22 参 / 18 参）一次全通 | 已封装 `cdr_create(type="connector"/"right_angle_connector"/"linear_dimension"/"angular_dimension")`；`SHAPE_TYPES` 补 14 与 19 |
 | 141 | **`CreateCurveMappedToStroke` 的 Stroke 要 `IVGSubPath` 不是 `IVGCurve`** | 第 32 波判「类型不匹配」是因为传了整条 Curve。正确：`Curve.CreateCurveMappedToStroke(子路径, ScaleY, SelfWeld)`；参考线版再要两个 `IVGPoint`（`Node.GetPoint()`）。返回新 Curve，`Layer.CreateCurve` 后成 Type 3 | 已封装 `cdr_path(action="map_to_stroke", other=骨架线, params={"scale_y":…,"use_reference_line":…})` |
 | 142 | **文字 `*InRange` 结构体：方法名无 `Get` 前缀 + StartIndex 1 基** | 第 37 波判它们"字段全是垃圾"其实是两个错叠加：正确写法是 `Text.FontPropertiesInRange(start, count, indexing)`（没有 `Get` 前缀，`GetFontPropertiesInRange` 根本不存在）；且 `StartIndex` **从 1 开始**（传 0 才返回 `Size=0 / Style=16` 的假值）。写入端 `Set*PropertiesInRange` 同样 1 基。另外 `SetFontProperties(frames, 结构体)` 不报错但对可见文本**无效** | 已封装 `cdr_text(range_struct={…})` 与 `paragraph_format={"range_start":1,…}` |
+| 143 | **色彩上下文/打样的 `RenderingIntent` 是 1~4；调色板工厂第一参是 GUID** | `CreateColorContext2(名称串, intent, model)` 与 `CreateProofColorSettings(名称, intent, bool)` 的 `RenderingIntent` **有效范围 1~4**（传 0 报「超出范围」，第 18 波就是这样判死的）；`CreatePaletteColor`/`CreateSpotColor` 第一参要**调色板 GUID**（之前传名字被判「取色不是新建」）。`CreateSpotColor` 还需要含专色的调色板 | 已封装 `color_context_create` / `proof_color_settings` / `object_palette_factory` / `object_from_spot` |
 
 改代码前请先读 [`src/cdrx8_mcp/constants.py`](src/cdrx8_mcp/constants.py) 里的注释。
 
@@ -383,7 +384,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ```powershell
 python -m pytest -q                # 93 项逻辑测试，任何平台可跑
-python scripts/live_smoke.py       # 482 项端到端（跑前先确认没有残留 CorelDRW 进程）
+python scripts/live_smoke.py       # 486 项端到端（跑前先确认没有残留 CorelDRW 进程）
 python scripts/live_smoke.py --keep   # 保留文档方便肉眼看效果
 python scripts/coverage_audit.py   # 覆盖率审计（复现 README/COVERAGE 里的数字）
 ```

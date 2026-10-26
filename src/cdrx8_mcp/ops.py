@@ -496,6 +496,7 @@ DOC_ACTIONS = ("info", "clear_selection", "clear_undo", "palette", "arrowhead",
                "assign_color_context", "stylesheet_default", "arrowhead_ex",
                # 第四十四波：颜色上下文深操作 / 渐变变换矩阵
                "color_context_info", "color_context_copy", "color_context_merge",
+               "color_context_create", "proof_color_settings",
                "fountain_transform", "arrowhead_unnamed",
                # 第四十六波：CorelScriptTools（VBA 辅助对象）单位/数学/日期
                "script_tools")
@@ -1382,6 +1383,50 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
         out["note"] = ("CorelScriptTools 的值以 1/10000 mm 为单位：FromInches(1)=254000；"
                        "ASin 返回弧度；query+code_page 可做 Unicode↔ANSI 码页转换")
         return out
+    if act == "color_context_create":
+        # 实测：Application.CreateColorContext2(配置名串, RenderingIntent, BlendingColorModel)
+        # —— 配置名串直接用 ColorContext.ColorProfileNameList（逗号分隔）；**RenderingIntent 有效范围 1~4**
+        app = _app_of(doc)
+        names = _s(lambda: str(doc.ColorContext.ColorProfileNameList))
+        if not names:
+            raise CdrComFailure("取不到 ColorProfileNameList")
+        intent = int(rendering_intent if rendering_intent is not None else 2)
+        model_id = int(model if isinstance(model, int) else 1)
+        if not 1 <= intent <= 4:
+            raise CdrBadArgument("RenderingIntent 有效范围是 1~4（0 会报越界）")
+        ctx = _s(lambda: app.CreateColorContext2(str(names), intent, model_id))
+        if ctx is None:
+            raise CdrComFailure("CreateColorContext2 返回空")
+        return {"action": act, "profile_names": str(names)[:300],
+                "rendering_intent": _n(lambda: int(ctx.RenderingIntent)),
+                "blending_model": _n(lambda: int(ctx.BlendingColorModel)),
+                "profiles": _n(lambda: int(ctx.ColorProfiles.Count), 0),
+                "read_only": bool(_s(lambda: bool(ctx.ReadOnly), False))}
+    if act == "proof_color_settings":
+        # 实测：CreateProofColorSettings(配置名, RenderingIntent(1~4), 保留颜色值) 返回
+        # IVGProofColorSettings（ColorContext / ShowOutOfGamutWarning / OutOfGamutColor …）
+        app = _app_of(doc)
+        profile = str(profile_name or "Japan Color 2001 Coated")
+        intent = int(rendering_intent if rendering_intent is not None else 1)
+        if not 1 <= intent <= 4:
+            raise CdrBadArgument("RenderingIntent 有效范围是 1~4")
+        proof = _s(lambda: app.CreateProofColorSettings(
+            profile, intent, bool(settings.get("preserve_color_values", False))
+            if isinstance(settings, dict) else False))
+        if proof is None:
+            raise CdrComFailure("CreateProofColorSettings 返回空")
+        ctx = _s(lambda: proof.ColorContext)
+        return {"action": act, "profile": profile, "rendering_intent": intent,
+                "preserve_color_values": bool(_s(lambda: bool(proof.PreserveColorValues),
+                                                 False)),
+                "show_out_of_gamut": bool(_s(lambda: bool(proof.ShowOutOfGamutWarning),
+                                             False)),
+                "out_of_gamut_transparency": _n(
+                    lambda: int(proof.OutOfGamutTransparency)),
+                "context_rendering_intent": (_n(lambda: int(ctx.RenderingIntent))
+                                             if ctx is not None else None),
+                "context_profiles": (_n(lambda: int(ctx.ColorProfiles.Count), 0)
+                                     if ctx is not None else 0)}
     if act == "color_context_info":
         ctx = _s(lambda: doc.ColorContext)
         if ctx is None:
@@ -4960,7 +5005,9 @@ COLOR_OBJECT_ACTIONS = ("object_info", "object_name", "object_compare", "object_
                         # 第四十九波：分量读取（CorelScriptGetComponent）/ 转指定调色板
                         "object_components", "object_convert_palette",
                         # 第五十一波：颜色风格对象改写
-                        "object_modify_style_color")
+                        "object_modify_style_color",
+                        # 第五十八波：调色板工厂 / 专色工厂
+                        "object_palette_factory", "object_from_spot")
 # 显式写法（而不是 getattr 动态调用）：既方便 grep，也让覆盖率审计能统计到
 COLOR_CONVERT_CALLS = {
     "rgb": lambda c: c.ConvertToRGB(),
@@ -5150,6 +5197,30 @@ def color_object_ops(action: str, *, color: Any = None, color2: Any = None,
         return {"action": act, "palette": color2, "before": before,
                 "after": _s(lambda: str(obj.ToString())),
                 "type_after": _n(lambda: int(obj.Type))}
+
+    if act in {"object_palette_factory", "object_from_spot"}:
+        # 实测：Application.CreatePaletteColor(调色板 GUID, 序号) 可用（TRUMATCH → CMYK255,TRU,…）；
+        # CreateSpotColor(调色板 GUID, 专色ID, Tint) 需要**含专色**的调色板，否则报「未找到指定的对象」
+        app = _app_of(None)
+        if not isinstance(color2, str) or not color2:
+            raise CdrBadArgument(f"{act} 需要 color2 = 调色板 Identifier（GUID）")
+        vals = list(values or [])
+        if act == "object_palette_factory":
+            idx = int(vals[0]) if vals else 1
+            obj = app.CreatePaletteColor(color2, idx)
+            if obj is None:
+                raise CdrComFailure("CreatePaletteColor 返回空")
+            return {"action": act, "palette": color2, "color_index": idx,
+                    "to_string": _s(lambda: str(obj.ToString())),
+                    "type": _n(lambda: int(obj.Type))}
+        spot_id = int(vals[0]) if vals else 1
+        tint = int(vals[1]) if len(vals) > 1 else 100
+        obj = app.CreateSpotColor(color2, spot_id, tint)
+        if obj is None:
+            raise CdrComFailure("CreateSpotColor 返回空")
+        return {"action": act, "palette": color2, "spot_id": spot_id, "tint": tint,
+                "to_string": _s(lambda: str(obj.ToString())),
+                "type": _n(lambda: int(obj.Type))}
 
     if act == "object_modify_style_color":
         # 实测：Color.ModifyColorStyleColor(目标颜色, ChangeWholeHarmony) 可调用

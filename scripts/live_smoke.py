@@ -3992,6 +3992,45 @@ def main() -> int:
                       f"align={(rs57.get('align') or {}).get('Alignment')}")
         no_error("关闭区间结构体测试文档", server.cdr_close(r57_id))
 
+    # ---------------- 15bl. 第五十八波：调色板/专色工厂 + 色彩上下文/打样设置 ----------------
+    print("\n[15bl] 第五十八波：CreatePaletteColor·CreateSpotColor·CreateColorContext2·CreateProofColorSettings")
+    f58_doc = server.cdr_open(preset="A4")
+    if "document_id" in f58_doc:
+        f58_id = f58_doc["document_id"]
+        server.cdr_doc(f58_id, action="palette_open_fixed", palette_id=1)
+        pid58 = (((server.cdr_doc(f58_id, action="palettes").get("palettes")
+                   or [{}])[0]) or {}).get("identifier")
+        if pid58:
+            pcf = server.cdr_color(action="object_palette_factory", color2=pid58,
+                                   values=[5])
+            if no_error("cdr_color(object_palette_factory)", pcf):
+                check("可按调色板造色（CreatePaletteColor）",
+                      "PAN_SPOT" in str(pcf.get("to_string"))
+                      or "TRU" in str(pcf.get("to_string")),
+                      str(pcf.get("to_string"))[:50])
+            scf = server.cdr_color(action="object_from_spot", color2=pid58,
+                                   values=[5, 100])
+            if no_error("cdr_color(object_from_spot)", scf):
+                check("可造专色（CreateSpotColor，需含专色调色板）",
+                      "PAN_SPOT" in str(scf.get("to_string")),
+                      str(scf.get("to_string"))[:50])
+        cc58 = server.cdr_doc(f58_id, action="color_context_create",
+                              rendering_intent=2)
+        if no_error("cdr_doc(color_context_create)", cc58):
+            check("可造色彩上下文（CreateColorContext2，intent 1~4）",
+                  cc58.get("rendering_intent") == 2
+                  and (cc58.get("profiles") or 0) >= 3,
+                  f"intent={cc58.get('rendering_intent')} "
+                  f"profiles={cc58.get('profiles')}")
+        pc58 = server.cdr_doc(f58_id, action="proof_color_settings",
+                              profile_name="Japan Color 2001 Coated",
+                              rendering_intent=1)
+        if no_error("cdr_doc(proof_color_settings)", pc58):
+            check("可造打样色彩设置（CreateProofColorSettings）",
+                  (pc58.get("context_profiles") or 0) >= 1,
+                  f"profiles={pc58.get('context_profiles')}")
+        no_error("关闭色彩工厂测试文档", server.cdr_close(f58_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,
