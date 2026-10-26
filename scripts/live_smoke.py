@@ -4372,6 +4372,41 @@ def main() -> int:
                       f"offset={ds67.get('offset')} opacity={ds67.get('opacity')}")
         no_error("关闭圆角/克隆测试文档", server.cdr_close(u67_id))
 
+    # ---------------- 15bv. 第六十八波：双色调子对象 / 网格频率 / 线性标注子对象 ----------------
+    print("\n[15bv] 第六十八波：IVGDuotone·IVGDuotoneOverprint·IVGGrid.SetFrequency·IVGDimensionLinear")
+    w68_doc = server.cdr_open(preset="A4")
+    if "document_id" in w68_doc:
+        w68_id = w68_doc["document_id"]
+        w68r = server.cdr_create(w68_id, [
+            {"type": "bitmap", "x": 0, "y": 0, "width": 30, "height": 30,
+             "color": "#CC8844"},
+            {"type": "linear_dimension", "x1": 0, "y1": 80, "x2": 40, "y2": 80},
+        ])
+        if no_error("cdr_create(双色调/网格测试)", w68r):
+            wB, wD = [{"name": c["name"]} for c in w68r["created"]]
+            duo68 = server.cdr_bitmap(w68_id, wB, action="duotone", duotone_type=1)
+            if no_error("cdr_bitmap(duotone)", duo68):
+                check("双色调子对象可读改（IVGDuotoneOverprint.SetValues）",
+                      (duo68.get("overprint_count") or 0) >= 1
+                      and duo68.get("overprint_set") is True,
+                      f"count={duo68.get('overprint_count')} "
+                      f"set={duo68.get('overprint_set')}")
+            g68 = server.cdr_doc(w68_id, action="set_grid",
+                                 settings={"frequency": [4, 4]})
+            if no_error("cdr_doc(set_grid frequency)", g68):
+                check("网格可按频率设置（IVGGrid.SetFrequency）",
+                      g68.get("frequency") == [4.0, 4.0]
+                      and (g68.get("spacing_x") or 0) > 0,
+                      f"freq={g68.get('frequency')} spacing={g68.get('spacing_x')}")
+            dl68 = server.cdr_shape_ops(w68_id, op="dimension_set", target=wD,
+                                        params={"reverse_terminator_length": 2.0})
+            if no_error("cdr_shape_ops(dimension_set linear)", dl68):
+                check("线性标注子对象可设（IVGDimensionLinear）",
+                      "reverse_terminator_length" in (dl68.get("applied") or [])
+                      and dl68.get("linear_type") is not None,
+                      f"applied={dl68.get('applied')} type={dl68.get('linear_type')}")
+        no_error("关闭双色调/网格测试文档", server.cdr_close(w68_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

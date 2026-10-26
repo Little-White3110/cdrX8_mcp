@@ -1346,6 +1346,18 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
             if grid is None:
                 raise CdrBadArgument("该文档没有 Grid")
             if act == "set_grid":
+                # 实测：Document.Grid 是 IVGGrid，SetFrequency(x, y) 按"每单位多少格"设置
+                if isinstance(settings, dict) and settings.get("frequency"):
+                    freq = settings["frequency"]
+                    fx, fy = (freq if isinstance(freq, (list, tuple)) and len(freq) >= 2
+                              else (freq, freq))
+                    grid.SetFrequency(float(fx), float(fy))
+                    return {"action": act, "frequency": [float(fx), float(fy)],
+                            "spacing_x": _round(_s(lambda: float(grid.SpacingX))),
+                            "spacing_y": _round(_s(lambda: float(grid.SpacingY))),
+                            "type": _n(lambda: int(grid.Type)),
+                            "visible": bool(_s(lambda: bool(grid.Visible), False)),
+                            "snap": bool(_s(lambda: bool(grid.Snap), False))}
                 if grid_spacing_x is not None:
                     grid.SpacingX = float(grid_spacing_x)
                 if grid_spacing_y is not None:
@@ -2870,7 +2882,37 @@ def bitmap_action(doc: Any, page_index: int | None, target: dict, action: str, *
                 ink_count = _n(lambda: int(duo.InkCount), 1)
                 for idx, spec in enumerate(inks[:ink_count], 1):
                     duo.Inks(idx).Color = _color(doc, spec)
+                # 实测：IVGDuotone 还有 GetCopy / CopyAssign / ResetOverprints / Load / Save；
+                # 转完之后 bmp.Duotone 就能拿到当前的 IVGDuotone，再取 Overprints(i)
+                # 得到 IVGDuotoneOverprint（SetValues / Reset）
+                duo_copy = _s(lambda: duo.GetCopy())
+                if duo_copy is not None:
+                    duo.CopyAssign(duo_copy)
                 bmp.ConvertToDuotone(duo)
+                live_duo = _s(lambda: bmp.Duotone)
+                res: dict = {"action": act,
+                             "mode": _n(lambda: int(bmp.Mode)),
+                             "ink_count": ink_count}
+                if live_duo is not None:
+                    res["overprint_count"] = _n(
+                        lambda: int(live_duo.OverprintCount), 0)
+                    res["overprints"] = _n(lambda: int(live_duo.OverprintCount), 0)
+                    over = _s(lambda: live_duo.Overprints(1))
+                    if over is not None:
+                        res["overprint_cyan"] = _n(lambda: int(over.Cyan))
+                        try:
+                            over.SetValues(10, 20, 30, 40)
+                            res["overprint_set"] = True
+                            over.Reset()
+                            res["overprint_reset"] = True
+                        except Exception:
+                            res["overprint_set"] = False
+                    live_duo.ResetOverprints()
+                    duo_path = preset or ""
+                    if isinstance(preset, str) and preset:
+                        live_duo.Save(str(preset))
+                        res["saved_to"] = str(preset)
+                return res
             elif act == "paletted_options":
                 # 实测：Application.CreateStructPaletteOptions() + Bitmap.ConvertToPaletted2(opts)
                 # 可指定 NumColors / DitherType / PaletteType，并可挂已打开的调色板
@@ -6660,6 +6702,15 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
                                 applied.append(key)
                             except Exception:
                                 continue
+                    linear_obj = _s(lambda: dim.Linear)
+                    if linear_obj is not None and spec.get(
+                            "reverse_terminator_length") is not None:
+                        try:
+                            linear_obj.SetReverseTerminatorLength(
+                                float(spec["reverse_terminator_length"]))
+                            applied.append("reverse_terminator_length")
+                        except Exception:
+                            pass
                     for key, attr in (("precision", "Precision"),
                                       ("prefix", "Prefix"), ("suffix", "Suffix"),
                                       ("boxed_text", "BoxedText"),
@@ -6675,7 +6726,13 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
                                 applied.append(key)
                             except Exception:
                                 continue
+            linear_info = _s(lambda: dim.Linear)
             return {"op": op,
+                    "linear_type": (_n(lambda: int(linear_info.Type))
+                                    if linear_info is not None else None),
+                    "reverse_terminators": (
+                        bool(_s(lambda: bool(linear_info.ReverseTerminators), False))
+                        if linear_info is not None else None),
                     "precision": _n(lambda: int(dim.Precision)),
                     "prefix": _s(lambda: str(dim.Prefix)),
                     "suffix": _s(lambda: str(dim.Suffix)),
