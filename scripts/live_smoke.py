@@ -5218,6 +5218,19 @@ def main() -> int:
               "ok" if bd93.get("hint") and mx93.get("hint") else "缺少 hint")
         no_error("关闭第九十三波测试文档", server.cdr_close(e93_id))
 
+    # ---------------- 15cu. 第九十四波：cdr_import 前置校验 ----------------
+    im94 = server.cdr_import("no-such-doc", "Z:/definitely-missing/in94.svg")
+    check("导入源文件不存在时给明确错误 + 建议",
+          im94.get("error") == "bad_argument"
+          and "不存在" in str(im94.get("message") or "")
+          and bool(im94.get("hint")),
+          str(im94.get("message"))[:44])
+    im94b = server.cdr_import("no-such-doc", "C:/Windows")
+    check("导入路径是目录时给出可读错误",
+          im94b.get("error") == "bad_argument"
+          and "不是文件" in str(im94b.get("message") or ""),
+          str(im94b.get("message"))[:40])
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

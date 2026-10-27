@@ -2,7 +2,7 @@
 
 > 目的：证明"还有多少没探"。每一行要么有对应的工具，要么有实测失败证据。
 > 环境：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）/ Python 3.11.9 64 位
-> 最近更新：2026-10-28 第九十三波（**健壮性**：cdr_export 前置校验 / 统一 hint）
+> 最近更新：2026-10-28 第九十四波（**健壮性**：cdr_import 前置校验，与 export 对称）
 
 ## 怎么得出这份清单
 
@@ -384,7 +384,7 @@
 
 ```powershell
 python -m pytest -q              # 93 项纯逻辑
-python scripts/live_smoke.py     # 608 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
+python scripts/live_smoke.py     # 610 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
 ```
 
 联调断言覆盖了上表所有 ✅ 项。反解脚本属于过程产物，已按要求放在 `tmp/` 并在完成时清理；
@@ -1513,7 +1513,7 @@ python scripts/live_smoke.py     # 608 项端到端（真实 CorelDRAW，**跑�
 | 主干 20 接口覆盖 | **670 / 743 = 90.2%** |
 | 已达 100% 的接口 | `IVGWindow`、`IVGFountainFill`、`IVGStyle`、`IVGColorContext`、`IVGDimension`、`IVGPowerClip`、`IVGGuide`、`IVGText`(结构体族)、`IVGToolStateAttributes`、`IVGToolShapeAttributes`、`IVGAppStatus`、`IVGPaletteManager`、`IVGTreeManager`、`IVGOnScreenText`、`IVGOnScreenCurve`、`IVGOutlineStyle`(读)、`IVGAppleEvents`… 共 **30+ 个接口** |
 | MCP 工具数 | **31**（含 cdr_help 能力目录） |
-| 端到端联调 | **608/608 通过**（真实 CorelDRAW 18.0.0.450） |
+| 端到端联调 | **610/610 通过**（真实 CorelDRAW 18.0.0.450） |
 | 单元测试 | **98/98 通过**（含 5 项目录防漂移） |
 | 已记录 X8 陷阱 | **170 条** |
 | 波次 | 87 轮（从 21.2% 起步） |
@@ -1833,6 +1833,19 @@ ope` + 「先创建目录或换目录」 |
 > **为什么改这个**：导出是整条链路最后一步，也是最容易因为路径问题失败的一步。
 > 之前失败只回一个 COM 错误码，用户（尤其 agent）不知道是路径问题还是格式问题，
 > 只能瞎试。现在三类失败都指向**具体怎么改**，且推断逻辑让 `format` 可以省略。
+
+## 七之九十三、第九十四波已接入（2026-10-28，cdr_import 前置校验，与 export 对称）
+
+| 场景 | 改进前 → 改进后 |
+|---|---|
+| 源文件不存在 | COM 报错 → `源文件不存在：<路径>` + 「检查拼写，用绝对路径」 |
+| path 是目录 | COM 报错 → `path 不是文件：<目录>` + 「需要具体文件」 |
+| 没有扩展名 | X8 猜不到过滤器 → `源文件没有扩展名` + 「补全 .svg/.png/.ai」 |
+| 空文件 | 导入后才失败 → 前置 `warnings`：源文件 0 字节，导入可能失败 |
+
+> 至此**导入与导出的前置校验对称**：两端都在碰 CorelDRAW 之前把「路径类错误」变成
+> 带解决方案的参数错误。这类错误原本要花一次 COM 往返 + 一次错误翻译才能定位，
+> 现在零往返。
 
 ## 七之二、仍未接入（第三轮候选）
 

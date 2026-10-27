@@ -1842,6 +1842,25 @@ def cdr_import(document_id: str, path: str, center: bool = True,
         filter_id: 显式指定导入过滤器编号（走 Layer.ImportEx；默认 0 让 X8 自己判断）
     """
     def _run():
+        # 前置校验：文件不存在/不是文件/无扩展名/空文件，先给明确提示再进 COM
+        src = os.path.abspath(path or "")
+        if not path:
+            return {"error": "bad_argument", "message": "path 不能为空",
+                    "hint": "传源文件绝对路径，如 path=\"C:/in.svg\""}
+        if not os.path.exists(src):
+            return {"error": "bad_argument", "message": f"源文件不存在：{src}",
+                    "hint": "检查路径拼写；用绝对路径更稳妥"}
+        if not os.path.isfile(src):
+            return {"error": "bad_argument", "message": f"path 不是文件：{src}",
+                    "hint": "cdr_import 需要具体文件，不是目录"}
+        if not os.path.splitext(src)[1]:
+            return {"error": "bad_argument",
+                    "message": f"源文件没有扩展名：{os.path.basename(src)}",
+                    "hint": "X8 靠扩展名判断过滤器；请补全（如 .svg/.png/.ai）",
+                    }
+        pre_warnings: list[str] = []
+        if os.path.getsize(src) == 0:
+            pre_warnings.append("源文件大小为 0 字节，导入可能失败")
         src = resolve_read_path(path)
         doc, sess = _with_doc(document_id)
         warnings = _check_view(sess, expected_revision, snapshot_token, doc)
