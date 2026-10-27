@@ -2,7 +2,7 @@
 
 > 目的：证明"还有多少没探"。每一行要么有对应的工具，要么有实测失败证据。
 > 环境：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）/ Python 3.11.9 64 位
-> 最近更新：2026-10-27 第八十四波（主窗口控制 / 屏幕矩形 / 状态栏 / GMS 路径）
+> 最近更新：2026-10-27 第八十五波（图像列表登记 ICUIImageList）
 
 ## 怎么得出这份清单
 
@@ -244,6 +244,7 @@
 > * 混合 **可用（第十七波）**：`CreateBlend` 传全参数且 `Path=None` 时成功；
 >   效果经 `Effects.Item(i).Blend`（IVGEffectBlend）读写 Steps/Spacing/Angle 等。
 > * 调色板查找/插入/默认 / 命名视图 / 数据字段重排 / B样条扩容 **可用（第七十七波）**：`Palette.FindColor/InsertColor/MakeDefault`、`Views.AddActiveView`、`DataField.Reorder`、`ControlPoints.Resize`。
+> * 图像列表登记 **可用（第八十五波）**：`cdr_doc(imagelist_info)`，`AddBitmap(键, ICUIBitmapImage)`。
 > * 主窗口控制 / 屏幕矩形 / 状态栏 / GMS 路径 **可用（第八十四波）**：`frame_maximize/restore/tile/combine`、`screen_rect`、`status_text`、`gms_info`。
 > * 立体化双灯 / 剪贴板 / 组件检测 **可用（第八十三波）**：`extrude_set(effect={"lights":[…]})`、`clipboard_info`、`components_info`。
 > * 点集容器编辑 **可用（第八十二波）**：`point_range_edit`（Reverse/AddPoints/InsertPoint/RemoveAdjacentDuplicates）与 `fit_to_points(reverse=true)`。
@@ -381,7 +382,7 @@
 
 ```powershell
 python -m pytest -q              # 93 项纯逻辑
-python scripts/live_smoke.py     # 570 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
+python scripts/live_smoke.py     # 571 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
 ```
 
 联调断言覆盖了上表所有 ✅ 项。反解脚本属于过程产物，已按要求放在 `tmp/` 并在完成时清理；
@@ -389,13 +390,13 @@ python scripts/live_smoke.py     # 570 项端到端（真实 CorelDRAW，**跑�
 
 ---
 
-## 六、量化覆盖率（2026-10-27 第八十四波实测）
+## 六、量化覆盖率（2026-10-27 第八十五波实测）
 
 方法：反解类型库拿到 196 个自动化类 / **1619** 个方法（已剔除 `QueryInterface` 等 COM 基础设施）；
 用 AST 扫描 `src/cdrx8_mcp/*.py`，收集所有 `.方法名(` 调用与 `setattr/getattr` 的属性名，
 与主干接口的方法名求交集。**注意：属性名（如 `curve.Nodes`）也会被计入**，所以本波数字含真实属性访问。
 
-**全局：1193 / 1619 = 73.7%**（21.2% → … → 73.3% → 本轮 73.7%）
+**全局：1197 / 1619 = 73.9%**（21.2% → … → 73.7% → 本轮 73.9%）
 **主干 20 接口：670 / 743 = 90.2%**
 
 复现命令：`python scripts/coverage_audit.py`（会临时展开类型库到 `tmp/gen_py`，跑完自动清理）
@@ -1695,6 +1696,19 @@ python -m pytest -q                       # 93 项纯 Python 单元测试
 > `ICUIAutomation` 14 个方法**和 `ICUIDataContext`/`ICUIViewHost` 等 dock 族 —— 比之前判断的窄。
 > 另：`GMSManager.RunMacro` 需要**已加载的宏工程**（格式「模块.宏」），纯自动化不可用；
 > `Bitmap.TraceSettings` 不存在（入口在 Trace 调用内部）。
+
+## 七之八十四、第八十五波已接入（2026-10-27，图像列表登记）
+
+| 能力 | 落地位置 | 实测 |
+|---|---|---|
+| **图像列表登记**（ICUIImageList 4/5） | `cdr_doc(action="imagelist_info", settings={"key":"MCP 图标"})` | ✅ `AddBitmap(键, ICUIBitmapImage)`（**第二参是 CreateBitmapImage() 的产物，不是 IVGBitmap**）、`ImageCount`=1、`ImageExists`=True、`ImageKeys` 可读 |
+
+> **第八十五波记录（含一次重要反思）**：这波花了很久，卡点不是 COM 而是**我自己的补丁把分支
+> 插进了别人 `return` 之后的死代码区** —— `imagelist_info`/`status_text`/`gms_info` 三个分支
+> 有两次都被插到 `clipboard_info`/`assign_color_context`/`screen_rect` 的 `return` 后面，
+> 永远不可达，表现为「报的错来自下一个无关分支的 `find_shape`」。
+> **教训**：给这种巨型 `if act == ...` 链加分支时，锚点必须选**顶层 `    if act ==`**
+> （4 格缩进）而不是 8 格缩进的嵌套行，改完立刻用 `pytest` + 一次单点调用验证可达性。
 
 ## 七之二、仍未接入（第三轮候选）
 

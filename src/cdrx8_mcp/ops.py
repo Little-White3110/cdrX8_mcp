@@ -671,6 +671,7 @@ DOC_ACTIONS = ("info", "clear_selection", "clear_undo", "palette", "arrowhead",
                "datafield_info", "select_color_profile",
                "clipboard_info", "components_info",
                "screen_rect", "status_text", "gms_info",
+               "imagelist_info",
                "fountain_transform", "arrowhead_unnamed",
                # 第四十六波：CorelScriptTools（VBA 辅助对象）单位/数学/日期
                "script_tools")
@@ -864,6 +865,39 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
                 "type": _n(lambda p=palette: int(p.Type)),
             })
         return {"action": act, "count": count, "palettes": items}
+    if act == "imagelist_info":
+        # 实测：ICUIApplication.CreateImageList() → ICUIImageList，
+        # AddBitmap(键, ICUIBitmapImage) —— 第二参是 CreateBitmapImage() 的产物
+        # （不是 IVGBitmap！）；ImageCount / ImageExists / ImageKeys / RemoveImage 可用
+        app = _app_of(doc)
+        fw = _s(lambda: app.FrameWork)
+        if fw is None:
+            raise CdrComFailure("取不到 FrameWork")
+        uiapp = _s(lambda: fw.Application)
+        if uiapp is None:
+            raise CdrComFailure("取不到 FrameWork.Application")
+        spec = dict(settings or {})
+        il = _s(lambda: uiapp.CreateImageList())
+        if il is None:
+            raise CdrComFailure("CreateImageList 返回空")
+        bi = _s(lambda: uiapp.CreateBitmapImage())
+        added = None
+        if bi is not None:
+            key = str(spec.get("key") or "mcp 图标")
+            try:
+                il.AddBitmap(key, bi)
+                added = key
+            except Exception as exc:  # noqa: BLE001
+                return {"action": act, "add_error": str(exc)[:80]}
+        keys = _s(lambda: il.ImageKeys)
+        return {"action": act,
+                "image_count": _n(lambda: int(il.ImageCount), 0),
+                "added_key": added,
+                "exists": (bool(_s(lambda: bool(il.ImageExists(added)), False))
+                           if added else None),
+                "keys": str(keys)[:80],
+                "note": "ICUIBitmapImage 的 Valid/Width/Height 恒为 0（空图），"
+                "但可登记进 ImageList"}
     if act == "palette_color":
         app = _app_of(doc)
         pi = int(palette_index if palette_index is not None else 1)
@@ -1728,6 +1762,14 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
         count = _n(lambda: int(wins.Count), 0) or 0
         spec = dict(settings or {})
         result = {"action": act, "count": count}
+        if spec.get("frame_windows"):
+            fws = _s(lambda: app.FrameWork.FrameWindows)
+            if fws is not None:
+                result["frame_windows"] = [
+                    {"caption": _s(lambda i=i: str(fws.Item(i).Caption))[:40],
+                     "is_active": bool(_s(lambda i=i: bool(
+                         fws.Item(i).IsActive), False))}
+                    for i in range(1, min(_n(lambda: int(fws.Count), 0) or 0, 8) + 1)]
         if spec.get("arrange") is not None:
             # 实测：Windows.Arrange(mode) 可调用（0/1/2 都接受）
             wins.Arrange(int(spec["arrange"]))
@@ -1878,21 +1920,21 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
         uiapp = _s(lambda: fw.Application)
         if uiapp is None:
             raise CdrComFailure("取不到 FrameWork.Application")
-        if act == "screen_rect":
-            spec = dict(settings or {})
-            rect = _s(lambda: uiapp.CreateScreenRect(
-                int(spec.get("left", 0)), int(spec.get("top", 0)),
-                int(spec.get("right", 300)), int(spec.get("bottom", 200))))
-            return {"action": act, "created": rect is not None}
-        if act == "status_text":
-            spec = dict(settings or {})
-            st = _s(lambda: uiapp.CreateStatusText())
-            if st is None:
-                raise CdrComFailure("CreateStatusText 返回空")
-            caption = str(spec.get("caption") or "MCP 状态")
-            st.SetCaptionText(caption)
-            return {"action": act, "caption_set": caption}
-        # gms_info
+    if act == "screen_rect":
+        spec = dict(settings or {})
+        rect = _s(lambda: uiapp.CreateScreenRect(
+            int(spec.get("left", 0)), int(spec.get("top", 0)),
+            int(spec.get("right", 300)), int(spec.get("bottom", 200))))
+        return {"action": act, "created": rect is not None}
+    if act == "status_text":
+        spec = dict(settings or {})
+        st = _s(lambda: uiapp.CreateStatusText())
+        if st is None:
+            raise CdrComFailure("CreateStatusText 返回空")
+        caption = str(spec.get("caption") or "MCP 状态")
+        st.SetCaptionText(caption)
+        return {"action": act, "caption_set": caption}
+    if act == "gms_info":
         gms = _s(lambda: app.GMSManager)
         if gms is None:
             raise CdrComFailure("取不到 GMSManager")

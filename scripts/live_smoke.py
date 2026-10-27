@@ -4932,6 +4932,21 @@ def main() -> int:
                   bool(gi84.get("gms_path")), str(gi84.get("gms_path"))[:40])
         no_error("关闭第八十四波测试文档", server.cdr_close(u84_id))
 
+    # ---------------- 15cm. 第八十五波：图像列表登记（ICUIImageList） ----------------
+    print("\n[15cm] 第八十五波：ICUIImageList.AddBitmap（键登记）")
+    i85_doc = server.cdr_open(preset="A4")
+    if "document_id" in i85_doc:
+        i85_id = i85_doc["document_id"]
+        il85 = server.cdr_doc(i85_id, action="imagelist_info",
+                              settings={"key": "MCP 图标"})
+        if no_error("cdr_doc(imagelist_info)", il85):
+            check("图像列表可登记位图（ImageList.AddBitmap）",
+                  il85.get("image_count") == 1
+                  and il85.get("added_key") == "MCP 图标"
+                  and il85.get("exists") is True,
+                  f"count={il85.get('image_count')} key={il85.get('added_key')}")
+        no_error("关闭图像列表测试文档", server.cdr_close(i85_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,
