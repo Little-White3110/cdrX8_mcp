@@ -4990,6 +4990,58 @@ def main() -> int:
                   f"installed={cp86.get('installed')}")
         no_error("关闭第八十六波测试文档", server.cdr_close(i86_id))
 
+    # ---------------- 15co. 第八十七波：SetLight* 方法 / 点距 / 剖面线原点 / B样条插点 ----------------
+    print("\n[15co] 第八十七波：Extrude.SetLightPresent/Intensity/Position·Point.DistanceTo·HatchPattern.SetOrigin·BSpline.InsertControlPoints")
+    w87_doc = server.cdr_open(preset="A4")
+    if "document_id" in w87_doc:
+        w87_id = w87_doc["document_id"]
+        w87r = server.cdr_create(w87_id, [
+            {"type": "rectangle", "x": 0, "y": 0, "width": 20, "height": 10},
+            {"type": "curve_segment", "x1": 0, "y1": 40, "x2": 40, "y2": 40},
+            {"type": "rectangle", "x": 50, "y": 0, "width": 30, "height": 20},
+        ])
+        if no_error("cdr_create(第八十七波)", w87r):
+            wA, wS, wH = [{"name": c["name"]} for c in w87r["created"]]
+            server.cdr_shape_ops(w87_id, op="extrude", target=wA,
+                                 params={"depth": 20})
+            lt87 = server.cdr_shape_ops(w87_id, op="extrude_set", target=wA,
+                                        effect={"lights": [
+                                            {"present": True, "intensity": 90,
+                                             "position": 3},
+                                            {"present": True, "intensity": 55}]})
+            if no_error("cdr_shape_ops(extrude_set SetLight*)", lt87):
+                l87 = (lt87.get("extrude") or {}).get("lights") or []
+                on87 = [x for x in l87 if x.get("present")]
+                check("立体化灯光用正式方法调（SetLightPresent/Intensity/Position）",
+                      len(on87) == 2
+                      and {x.get("intensity") for x in on87} == {90, 55},
+                      f"on={[(x.get('index'), x.get('intensity')) for x in on87]}")
+            pm87 = server.cdr_shape_ops(w87_id, op="point_math", other=wS,
+                                        params={"spacing": 10, "index_a": 1,
+                                                "index_b": 2})
+            if no_error("cdr_shape_ops(point_math)", pm87):
+                check("点间距离可算（IVGPoint.DistanceTo）",
+                      (pm87.get("distance") or 0) > 9.0,
+                      f"distance={pm87.get('distance')}")
+            server.cdr_modify(w87_id, wH,
+                              {"fill": {"type": "hatch", "index": 1,
+                                        "back": "#FFFFFF"}})
+            hp87 = server.cdr_shape_ops(w87_id, op="hatch_fill", target=wH,
+                                        params={"pattern_origin": [2, 3]})
+            if no_error("cdr_shape_ops(hatch_fill pattern_origin)", hp87):
+                check("剖面线图案原点可设（HatchPattern.SetOrigin/GetOrigin）",
+                      (hp87.get("pattern") or {}).get("origin") == [2.0, 3.0],
+                      str(hp87.get("pattern")))
+            bs87 = server.cdr_doc(w87_id, action="bspline_resize", color_index=4,
+                                  value=5,
+                                  settings={"insert": {"segment": 2, "count": 1,
+                                                       "x": 5, "y": 5}})
+            if no_error("cdr_doc(bspline_resize insert)", bs87):
+                check("B 样条可插入控制点（InsertControlPoints）",
+                      bs87.get("inserted") is True,
+                      f"{bs87.get('points_before')} → {bs87.get('points_after')}")
+        no_error("关闭第八十七波测试文档", server.cdr_close(w87_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

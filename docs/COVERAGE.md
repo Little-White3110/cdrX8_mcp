@@ -2,7 +2,7 @@
 
 > 目的：证明"还有多少没探"。每一行要么有对应的工具，要么有实测失败证据。
 > 环境：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）/ Python 3.11.9 64 位
-> 最近更新：2026-10-27 第八十六波（图像列表收字节 / 状态栏位图 / 数据源 / 配置文件安装）
+> 最近更新：2026-10-27 第八十七波（SetLight* 正式方法 / 点距 / 图案原点 / B样条插点）
 
 ## 怎么得出这份清单
 
@@ -244,6 +244,7 @@
 > * 混合 **可用（第十七波）**：`CreateBlend` 传全参数且 `Path=None` 时成功；
 >   效果经 `Effects.Item(i).Blend`（IVGEffectBlend）读写 Steps/Spacing/Angle 等。
 > * 调色板查找/插入/默认 / 命名视图 / 数据字段重排 / B样条扩容 **可用（第七十七波）**：`Palette.FindColor/InsertColor/MakeDefault`、`Views.AddActiveView`、`DataField.Reorder`、`ControlPoints.Resize`。
+> * SetLight* 正式方法 / 点距 / 图案原点 / B样条插点 **可用（第八十七波）**：`extrude_set(lights=…)`、`point_math`、`hatch_fill(pattern_origin=…)`、`bspline_resize(insert=…)`。
 > * 图像列表收字节 / 状态栏位图 / 数据源注销 / 配置文件安装 **可用（第八十六波）**：`imagelist_info(image_path=…)`、`status_text(set_bitmap)`、`datasource_info`、`color_profile_install`。
 > * 图像列表登记 **可用（第八十五波）**：`cdr_doc(imagelist_info)`，`AddBitmap(键, ICUIBitmapImage)`。
 > * 主窗口控制 / 屏幕矩形 / 状态栏 / GMS 路径 **可用（第八十四波）**：`frame_maximize/restore/tile/combine`、`screen_rect`、`status_text`、`gms_info`。
@@ -383,7 +384,7 @@
 
 ```powershell
 python -m pytest -q              # 93 项纯逻辑
-python scripts/live_smoke.py     # 575 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
+python scripts/live_smoke.py     # 579 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
 ```
 
 联调断言覆盖了上表所有 ✅ 项。反解脚本属于过程产物，已按要求放在 `tmp/` 并在完成时清理；
@@ -391,13 +392,13 @@ python scripts/live_smoke.py     # 575 项端到端（真实 CorelDRAW，**跑�
 
 ---
 
-## 六、量化覆盖率（2026-10-27 第八十六波实测）
+## 六、量化覆盖率（2026-10-27 第八十七波实测）
 
 方法：反解类型库拿到 196 个自动化类 / **1619** 个方法（已剔除 `QueryInterface` 等 COM 基础设施）；
 用 AST 扫描 `src/cdrx8_mcp/*.py`，收集所有 `.方法名(` 调用与 `setattr/getattr` 的属性名，
 与主干接口的方法名求交集。**注意：属性名（如 `curve.Nodes`）也会被计入**，所以本波数字含真实属性访问。
 
-**全局：1201 / 1619 = 74.2%**（21.2% → … → 73.9% → 本轮 74.2%）
+**全局：1208 / 1619 = 74.6%**（21.2% → … → 74.2% → 本轮 74.6%）
 **主干 20 接口：670 / 743 = 90.2%**
 
 复现命令：`python scripts/coverage_audit.py`（会临时展开类型库到 `tmp/gen_py`，跑完自动清理）
@@ -1501,21 +1502,21 @@ python scripts/live_smoke.py     # 575 项端到端（真实 CorelDRAW，**跑�
 > 又一个"名字看着像 A、实际要 B"的例子。另外冒烟里顺手修掉一个长期偶发：
 > 视口缩放异常时 `IsOnShape` 会返回 0，测试前先把视口归位到实际大小即可稳定。
 
-## 八、终版覆盖报告（2026-10-26，第七十四波后收敛）
+## 八、终版覆盖报告（2026-10-27 刷新，第八十七波后）
 
 ### 8.1 总览
 
 | 指标 | 数值 |
 |---|---|
 | 类型库自动化类 / 方法 | **196 / 1619** |
-| 全局方法覆盖 | **1162 / 1619 = 71.8%** |
+| 全局方法覆盖 | **1208 / 1619 = 74.6%** |
 | 主干 20 接口覆盖 | **670 / 743 = 90.2%** |
 | 已达 100% 的接口 | `IVGWindow`、`IVGFountainFill`、`IVGStyle`、`IVGColorContext`、`IVGDimension`、`IVGPowerClip`、`IVGGuide`、`IVGText`(结构体族)、`IVGToolStateAttributes`、`IVGToolShapeAttributes`、`IVGAppStatus`、`IVGPaletteManager`、`IVGTreeManager`、`IVGOnScreenText`、`IVGOnScreenCurve`、`IVGOutlineStyle`(读)、`IVGAppleEvents`… 共 **30+ 个接口** |
 | MCP 工具数 | **30** |
-| 端到端联调 | **539/539 通过**（真实 CorelDRAW 18.0.0.450） |
+| 端到端联调 | **579/579 通过**（真实 CorelDRAW 18.0.0.450） |
 | 单元测试 | **93/93 通过** |
-| 已记录 X8 陷阱 | **160 条** |
-| 波次 | 74 轮（从 21.2% 起步） |
+| 已记录 X8 陷阱 | **170 条** |
+| 波次 | 87 轮（从 21.2% 起步） |
 
 ### 8.2 能力边界（一句话版）
 
@@ -1727,6 +1728,23 @@ python -m pytest -q                       # 93 项纯 Python 单元测试
 > `ICUIStatusText` 至此 **2/2 满**，`ICUIImageList` **5/5 满**。
 > 另：`RegisterDataSource` 需要 `ICUIDataSourceFactory` 实例，纯自动化不可达；
 > `Application.Printers` 在本机报 `STG_E_FILENOTFOUND`（无打印机），也留不可用。
+
+## 七之八十六、第八十七波已接入（2026-10-27，SetLight* 正式方法 / 点距 / 图案原点 / B样条插点）
+
+| 能力 | 落地位置 | 实测 |
+|---|---|---|
+| **灯光三方法**（IVGEffectExtrude 10/10 满） | `extrude_set(effect={"lights":[{present,intensity,position}…]})` | ✅ `SetLightPresent(索引, True)` / `SetLightIntensity(索引, 值)` / `SetLightPosition(索引, 码)` 是**正式方法** —— 比第 83 波的 Invoke putter 干净得多（1 号 90 + 2 号 55 同开） |
+| **点间距离**（IVGPoint.DistanceTo） | `cdr_shape_ops(op="point_math", other=曲线, params={index_a,index_b})` | ✅ 返回 10.092 |
+| **剖面线图案原点**（IVGHatchPattern 2 方法） | `cdr_shape_ops(op="hatch_fill", params={"pattern_origin":[2,3]})` | ✅ 入口是 `Fill.Hatch.Patterns.Item(i)`；`SetOrigin(x,y)` 写入、`GetOrigin` 读回 `[2.0, 3.0]` |
+| **B 样条插控制点**（IVGBSpline 4/4 满） | `cdr_doc(action="bspline_resize", settings={"insert":{"segment":2,…}})` | ✅ `InsertControlPoints(段, 个数, x, y, 平滑)`，`segment` 要 **≥2**（1 报错），控制点 4→6 |
+
+> **第八十七波记录**：
+> 1. 第 83 波我用 `_oleobj_.Invoke(DISPATCH_PROPERTYPUT)` 硬塞灯光属性 —— 本轮发现
+>    **`SetLightPresent/SetLightIntensity/SetLightPosition` 本来就是正式方法**，之前的弯路可以省掉。
+> 2. `IVGBSpline.InsertControlPoints(段, 个数, x, y, 平滑)` 的**段号必须 ≥2**（段 1 报错）。
+> 3. `IVGHatchPattern` 的入口是 `Fill.Hatch.Patterns.Item(i)` —— 之前试 `Hatch.Pattern` /
+>    `Hatch.HatchPattern` 都不存在，**先枚举成员再猜**比猜名字快得多。
+> 4. 「先 `dir()` 看成员」这条经验一次省了三轮试错，已写进维护流程。
 
 ## 七之二、仍未接入（第三轮候选）
 

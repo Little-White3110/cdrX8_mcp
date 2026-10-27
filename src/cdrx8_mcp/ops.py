@@ -1830,9 +1830,19 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
         before = _n(lambda: int(cps.Count), 0)
         new_n = int(value if value is not None else (before or 4) + 2)
         cps.Resize(new_n)
+        # 实测：IVGBSpline.InsertControlPoints(段, 个数, x, y, 平滑) 也可用
+        inserted = False
+        ins = dict(settings or {}).get("insert")
+        if ins is not None:
+            bspline.InsertControlPoints(int(ins.get("segment", 1)),
+                                        int(ins.get("count", 1)),
+                                        float(ins.get("x", 0.0)),
+                                        float(ins.get("y", 0.0)),
+                                        bool(ins.get("smooth", False)))
+            inserted = True
         return {"action": act, "points_before": before,
                 "points_after": _n(lambda: int(cps.Count), 0),
-                "requested": new_n}
+                "requested": new_n, "inserted": inserted}
 
     if act == "views_add_active":
         # 实测：Document.Views.AddActiveView(名) 可把当前视口存为命名视图
@@ -6920,6 +6930,8 @@ SHAPE_OPS = (
     "envelope_object",
     # 第八十二波：点集容器编辑（PointRange.Reverse/AddPoints/InsertPoint）
     "point_range_edit",
+    # 第八十七波：点间距离（IVGPoint.DistanceTo）
+    "point_math",
     # 第七十四波：拉伸消失点共享
     "extrude_vp_share",
     # 第七十五波：批量斜切（含范围版）
@@ -7360,10 +7372,34 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
                     "points": [[_round(_s(lambda i=i: float(rng.Item(i).x))),
                                 _round(_s(lambda i=i: float(rng.Item(i).y)))]
                                for i in range(1, min(count_after, 12) + 1)]}
+        if op == "point_math":
+            # 实测：IVGPoint.DistanceTo(另一个 IVGPoint) 返回两点距离；
+            # Subtract 需要不同类型的参数（不可用）
+            spec = dict(params or {})
+            if not other:
+                raise CdrBadArgument("point_math 需要 other（取点来源曲线）")
+            src_shape = find_shape(doc, page, other)
+            sub = _s(lambda: src_shape.Curve.SubPaths.Item(
+                int(spec.get("subpath", 1))))
+            if sub is None:
+                raise CdrBadArgument("other 不是曲线对象")
+            spacing = float(spec.get("spacing", 10.0))
+            rng = _s(lambda: sub.GetEvenlySpacedPoints(spacing, True))
+            cnt = _n(lambda: int(rng.Count), 0) or 0
+            if cnt < 2:
+                raise CdrBadArgument("取到的点少于 2 个")
+            i1 = int(spec.get("index_a", 1))
+            i2 = int(spec.get("index_b", 2))
+            pa, pb = rng.Item(i1), rng.Item(i2)
+            dist = _s(lambda: float(pa.DistanceTo(pb)))
+            return {"op": op, "count": cnt, "index_a": i1, "index_b": i2,
+                    "distance": _round(dist) if dist is not None else None,
+                    "spacing": spacing}
         if op in {"hatch_fill", "fountain_colors", "ellipse_geometry"}:
             source = find_shape(doc, page, target or {})
             spec = dict(params or {})
             applied = []
+            pattern_info: dict = {}
             if op == "hatch_fill":
                 # 实测：Fill.Hatch → IVGHatchFill；GetFillScale/GetLineScale 零参，
                 # SetFillScale/SetLineScale/SetNoBackColor 可用
@@ -7380,8 +7416,30 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
                     if spec.get("no_back_color"):
                         hf.SetNoBackColor()
                         applied.append("no_back_color")
+                    # 实测：Fill.Hatch.Patterns.Item(i) → IVGHatchPattern，
+                    # SetOrigin(x, y) / GetOrigin(byref x, byref y) / Shift / Reset 可用
+                    if (spec.get("pattern_origin") is not None
+                            or spec.get("pattern_shift") is not None
+                            or spec.get("pattern_reset")):
+                        pat = _s(lambda: hf.Patterns.Item(
+                            int(spec.get("pattern_index", 1))))
+                        if pat is not None:
+                            if spec.get("pattern_reset"):
+                                pat.Reset()
+                                applied.append("pattern_reset")
+                            if spec.get("pattern_origin") is not None:
+                                ox, oy = spec["pattern_origin"]
+                                pat.SetOrigin(float(ox), float(oy))
+                                org = pat.GetOrigin(0.0, 0.0)
+                                pattern_info["origin"] = [float(org[0]), float(org[1])]
+                                applied.append("pattern_origin")
+                            if spec.get("pattern_shift") is not None:
+                                sx, sy = spec["pattern_shift"]
+                                pat.Shift(float(sx), float(sy))
+                                applied.append("pattern_shift")
                 return {"op": op, "fill_scale": _round(_s(lambda: float(hf.GetFillScale()))),
                         "line_scale": _round(_s(lambda: float(hf.GetLineScale()))),
+                        "pattern": pattern_info or None,
                         "applied": applied}
             if op == "fountain_colors":
                 local_warnings: list = []
@@ -8229,23 +8287,18 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
                         typed.SetLight(li, pos, intensity)
                         applied.append(f"light_{li}")
                     if isinstance(light_spec.get("lights"), list):
-                        # 实测：LightPresent(i) / LightIntensity(i) 是带索引的属性，
-                        # pywin32 的 setattr 走不通，要用 _oleobj_.Invoke 直接 put
-                        import pythoncom
+                        # 实测：SetLightPresent(索引, True) / SetLightIntensity(索引, 值) /
+                        # SetLightPosition(索引, 位置码) 是**正式方法**（比 Invoke putter 干净）
                         for li, item in enumerate(light_spec["lights"][:3], start=1):
                             spec_item = item if isinstance(item, dict) else {}
                             if not spec_item.get("present"):
                                 continue
-                            intensity = int(spec_item.get("intensity", 80))
-                            for prop, value in (("LightPresent", 1),
-                                                ("LightIntensity", intensity)):
-                                try:
-                                    did = typed._oleobj_.GetIDsOfNames(prop)
-                                    typed._oleobj_.Invoke(
-                                        did, 0, pythoncom.DISPATCH_PROPERTYPUT,
-                                        False, li, value)
-                                except Exception:
-                                    continue
+                            typed.SetLightPresent(li, True)
+                            typed.SetLightIntensity(
+                                li, int(spec_item.get("intensity", 80)))
+                            if spec_item.get("position") is not None:
+                                typed.SetLightPosition(li,
+                                                       int(spec_item["position"]))
                             applied.append(f"light_{li}")
                     if light_spec.get("bevel_depth") is not None or \
                             light_spec.get("bevel_angle") is not None:
