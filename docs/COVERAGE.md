@@ -2,7 +2,7 @@
 
 > 目的：证明"还有多少没探"。每一行要么有对应的工具，要么有实测失败证据。
 > 环境：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）/ Python 3.11.9 64 位
-> 最近更新：2026-10-27 第八十七波（SetLight* 正式方法 / 点距 / 图案原点 / B样条插点）
+> 最近更新：2026-10-28 第八十八波（**易用性**：cdr_help 自描述目录 / 错误 hint / 工具数唯一真源）
 
 ## 怎么得出这份清单
 
@@ -384,7 +384,7 @@
 
 ```powershell
 python -m pytest -q              # 93 项纯逻辑
-python scripts/live_smoke.py     # 579 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
+python scripts/live_smoke.py     # 586 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
 ```
 
 联调断言覆盖了上表所有 ✅ 项。反解脚本属于过程产物，已按要求放在 `tmp/` 并在完成时清理；
@@ -1512,8 +1512,8 @@ python scripts/live_smoke.py     # 579 项端到端（真实 CorelDRAW，**跑�
 | 全局方法覆盖 | **1208 / 1619 = 74.6%** |
 | 主干 20 接口覆盖 | **670 / 743 = 90.2%** |
 | 已达 100% 的接口 | `IVGWindow`、`IVGFountainFill`、`IVGStyle`、`IVGColorContext`、`IVGDimension`、`IVGPowerClip`、`IVGGuide`、`IVGText`(结构体族)、`IVGToolStateAttributes`、`IVGToolShapeAttributes`、`IVGAppStatus`、`IVGPaletteManager`、`IVGTreeManager`、`IVGOnScreenText`、`IVGOnScreenCurve`、`IVGOutlineStyle`(读)、`IVGAppleEvents`… 共 **30+ 个接口** |
-| MCP 工具数 | **30** |
-| 端到端联调 | **579/579 通过**（真实 CorelDRAW 18.0.0.450） |
+| MCP 工具数 | **31**（含 cdr_help 能力目录） |
+| 端到端联调 | **586/586 通过**（真实 CorelDRAW 18.0.0.450） |
 | 单元测试 | **93/93 通过** |
 | 已记录 X8 陷阱 | **170 条** |
 | 波次 | 87 轮（从 21.2% 起步） |
@@ -1745,6 +1745,22 @@ python -m pytest -q                       # 93 项纯 Python 单元测试
 > 3. `IVGHatchPattern` 的入口是 `Fill.Hatch.Patterns.Item(i)` —— 之前试 `Hatch.Pattern` /
 >    `Hatch.HatchPattern` 都不存在，**先枚举成员再猜**比猜名字快得多。
 > 4. 「先 `dir()` 看成员」这条经验一次省了三轮试错，已写进维护流程。
+
+## 七之八十七、第八十八波已接入（2026-10-28，易用性：能力目录 / 错误提示）
+
+这一波不做新 COM 能力，专门解决「**功能多但不好发现、报错后不知道下一步**」两个易用性痛点。
+
+| 改进 | 落地 | 效果 |
+|---|---|---|
+| **自描述能力目录**（新工具 `cdr_help`） | `cdr_help()` / `cdr_help(tool="cdr_shape_ops")` | 不传参返回 **31 个工具 + 418 项 action + 7 步推荐工作流**；传 tool 返回该工具全部 action，并把 **只读 action 单独列出**（如 `cdr_snap` 19 项里 10 项只读），显著降低误改风险 |
+| **错误响应统一带 `hint`** | `_guard` 里按错误码挂建议 | `document_not_found` → 「调 cdr_documents 获取 document_id」；`bad_argument` → 「调 cdr_help 看 action」；`stale_revision` → 「重新 inspect 取 token」等 8 类 |
+| **工具数唯一真源** | `cdr_status()["tools"]` 改为 `len(_TOOL_CATALOG)` | 之前是硬编码 `30`，加工具就过期；现在目录与状态永远一致（实测 31 = 31） |
+| **action 目录不手写** | `_TOOL_CATALOG` 只存**常量名**，运行时 `getattr(ops, 常量)` 展开 | 新增 op 时目录**自动更新**，不会出现「文档里有、实际没有」 |
+
+> **为什么这比再加 5 个 COM 方法更值**：调用方（尤其 LLM agent）最贵的是**猜参数**的成本。
+> 现在它可以先 `cdr_help()` 一次看清 31 个工具与 418 项 action，再按需 `cdr_help(tool=…)`
+> 拿到精确清单；报错时还能直接得到下一步动作。这套自描述是**从源码常量派生的**，
+> 不会随时间腐化 —— 这是本轮相对「堆接口」的核心收益。
 
 ## 七之二、仍未接入（第三轮候选）
 

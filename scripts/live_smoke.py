@@ -5042,6 +5042,37 @@ def main() -> int:
                       f"{bs87.get('points_before')} → {bs87.get('points_after')}")
         no_error("关闭第八十七波测试文档", server.cdr_close(w87_id))
 
+    # ---------------- 15cp. 第八十八波：能力目录 cdr_help / 错误 hint / 工具数唯一真源 ----------------
+    print("\n[15cp] 第八十八波：cdr_help 自描述目录·错误响应 hint·工具数动态")
+    hl88 = server.cdr_help()
+    check("cdr_help 列出全部工具（含自身）",
+          (hl88.get("tool_count") or 0) >= 31
+          and any(t.get("tool") == "cdr_help" for t in (hl88.get("tools") or [])),
+          f"tool_count={hl88.get('tool_count')} actions={hl88.get('action_count')}")
+    check("cdr_help 给出可执行工作流",
+          len(hl88.get("workflow") or []) >= 5,
+          f"steps={len(hl88.get('workflow') or [])}")
+    hs88 = server.cdr_help(tool="shape_ops")
+    check("cdr_help(tool=…) 返回该工具 action 清单（支持省略 cdr_ 前缀）",
+          (hs88.get("tool") == "cdr_shape_ops"
+           and len(hs88.get("actions") or []) >= 80),
+          f"actions={len(hs88.get('actions') or [])}")
+    hsn88 = server.cdr_help(tool="cdr_snap")
+    check("只读 action 单独标注（降低误改风险）",
+          len(hsn88.get("read_only_actions") or []) >= 5,
+          f"read_only={len(hsn88.get('read_only_actions') or [])}")
+    check("未知工具名返回可用清单",
+          server.cdr_help(tool="not_a_tool").get("error") == "unknown_tool",
+          str(server.cdr_help(tool="not_a_tool").get("error")))
+    hb88 = server.cdr_modify("no-such-doc", {"index": 1}, {"width": 10})
+    check("错误响应带可操作 hint",
+          bool(hb88.get("hint")) and hb88.get("error"),
+          f"{hb88.get('error')} → {str(hb88.get('hint'))[:34]}")
+    stt88 = server.cdr_status()
+    check("cdr_status 的工具数与目录一致（唯一真源）",
+          stt88.get("tools") == hl88.get("tool_count"),
+          f"status={stt88.get('tools')} catalog={hl88.get('tool_count')}")
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

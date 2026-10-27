@@ -7,7 +7,7 @@
 
 > **已在真机验证**：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）+ Python 3.11.9 64 位
 > - 单元测试 **93 项通过**
-> - 端到端联调（真实 CorelDRAW）**579/579 通过**
+> - 端到端联调（真实 CorelDRAW）**586/586 通过**
 > - 能力边界来自对 `vgcoreauto.tlb` 的反解（196 个自动化类 / 1619 个方法）+ 逐项实跑
 > - 方法级覆盖 **71.8%**（主干 20 接口 90.2%），可用 `python scripts/coverage_audit.py` 复现
 > - 完整清单见 [docs/COVERAGE.md](docs/COVERAGE.md)
@@ -52,6 +52,7 @@ python -m cdrx8_mcp              # 启动 MCP 服务器（stdio）
 
 | 工具 | 作用 |
 |---|---|
+| `cdr_help` | **能力目录（自描述）**：不传参返回全部工具 + 推荐工作流；`tool="cdr_shape_ops"` 返回该工具全部 action（约 418 项），只读 action 单独标注 |
 | `cdr_status` | 运行状态、版本、服务配置（无副作用） |
 | `cdr_connect` | 附着已运行实例；`launch=true` 才允许启动 |
 | `cdr_documents` | 列出打开的文档，给出 `document_id` |
@@ -412,7 +413,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ```powershell
 python -m pytest -q                # 93 项逻辑测试，任何平台可跑
-python scripts/live_smoke.py       # 579 项端到端（跑前先确认没有残留 CorelDRW 进程）
+python scripts/live_smoke.py       # 586 项端到端（跑前先确认没有残留 CorelDRW 进程）
 python scripts/live_smoke.py --keep   # 保留文档方便肉眼看效果
 python scripts/coverage_audit.py   # 覆盖率审计（复现 README/COVERAGE 里的数字）
 ```

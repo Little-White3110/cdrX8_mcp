@@ -40,6 +40,19 @@ def _com(fn, *, timeout: float | None = None, label: str = "com"):
     return _bridge().call(fn, timeout=timeout, label=label)
 
 
+# 错误码 → 可操作建议（统一挂在错误响应里，减少来回试错）
+_ERROR_HINTS: dict[str, str] = {
+    "bad_argument": "检查参数名/取值；不确定某个工具能做哪些 action 时调 cdr_help(tool='cdr_xxx')",
+    "unknown_action": "调 cdr_help(tool='cdr_xxx') 看该工具全部 action",
+    "not_found": "先用 cdr_find / cdr_inspect 确认对象名或索引",
+    "stale_revision": "重新 cdr_inspect 取最新 revision/snapshot_token 后重试",
+    "no_document": "先 cdr_open() 建文档，或用 cdr_documents() 找回 document_id",
+    "com_error": "CorelDRAW 侧报错：多为参数值域/对象状态不满足；也可能需要先创建对应效果",
+    "com_timeout": "X8 该调用可能弹窗或阻塞；换等价能力，或重启 CorelDRAW 后重试",
+    "internal_error": "服务端异常：读 message 定位；必要时重试一次",
+}
+
+
 def _guard(fn, *, extra: dict | None = None) -> dict:
     try:
         result = fn()
@@ -47,9 +60,15 @@ def _guard(fn, *, extra: dict | None = None) -> dict:
             result = {**extra, **result}
         return result
     except CdrError as exc:
-        return exc.as_dict()
+        out = exc.as_dict()
+        hint = _ERROR_HINTS.get(str(out.get("error") or ""))
+        if hint and "hint" not in out:
+            out["hint"] = hint
+        return out
     except Exception as exc:  # noqa: BLE001
-        return {"error": "internal_error", "message": f"{type(exc).__name__}: {exc}"}
+        return {"error": "internal_error",
+                "message": f"{type(exc).__name__}: {exc}",
+                "hint": _ERROR_HINTS["internal_error"]}
 
 
 def _doc_state(doc: Any, sess) -> dict:
@@ -113,6 +132,113 @@ def _commit(doc: Any, sess, result: dict, warnings: list[str] | None = None) -> 
     return result
 
 
+
+# --------------------------------------------------------------------------- #
+# 能力目录（自描述，供调用方发现可用操作）
+# --------------------------------------------------------------------------- #
+# 工具 → (用途一句话, 提供 action 列表的常量名 或 内联元组, 示例参数提示)
+_TOOL_CATALOG: dict[str, dict] = {
+    "cdr_status": {"purpose": "查看 CorelDRAW 安装/运行状态与服务配置（无副作用）"},
+    "cdr_connect": {"purpose": "连接或启动 CorelDRAW（launch=True 自动拉起）"},
+    "cdr_documents": {"purpose": "列出当前打开的文档与会话 id"},
+    "cdr_open": {"purpose": "新建或打开文档（preset/path/尺寸）"},
+    "cdr_inspect": {"purpose": "读取文档概览：页面/图层/对象/选区"},
+    "cdr_create": {"purpose": "批量创建图元", "actions": "CREATABLE",
+                   "hint": "items=[{'type':'rectangle','x':0,'y':0,'width':20,'height':10}]"},
+    "cdr_modify": {"purpose": "修改已有对象的几何/填充/描边/变换",
+                   "hint": "changes={'fill':'#FF0000','width':30}"},
+    "cdr_text": {"purpose": "文字读写与排版（内容/字体/段落/多栏/区间）"},
+    "cdr_replace_text": {"purpose": "文档内查找替换文字"},
+    "cdr_select": {"purpose": "选择对象（name/index/全部）"},
+    "cdr_shape_ops": {"purpose": "形状级运算集合（布尔/效果/变换/批量）", "actions": "SHAPE_OPS",
+                      "hint": "op='weld'|'extrude'|'hatch_fill'…；range_* 类 op 作用于选区"},
+    "cdr_align": {"purpose": "对齐/分布（水平、垂直、相对页面或选区）"},
+    "cdr_layers": {"purpose": "图层管理", "inline": ("list", "add", "delete", "rename",
+                                                   "activate", "visible", "lock", "move")},
+    "cdr_find": {"purpose": "按名字/类型/条件查找对象"},
+    "cdr_node": {"purpose": "节点级编辑（增删/移动/断开/连接/平滑）", "actions": "NODE_ACTIONS"},
+    "cdr_style": {"purpose": "图形与文字样式（创建/应用/导入导出）", "actions": "STYLE_ACTIONS"},
+    "cdr_pages": {"purpose": "页面管理", "inline": ("list", "add", "delete", "rename",
+                                                  "activate", "size", "preset", "layout")},
+    "cdr_path": {"purpose": "路径级操作（子路径/偏移/拟合/映射）", "actions": "PATH_ACTIONS"},
+    "cdr_color": {"purpose": "颜色对象与色彩管理", "actions": "COLOR_OBJECT_ACTIONS"},
+    "cdr_doc": {"purpose": "文档级杂项（调色板/参考线/设置/窗口/系统信息）",
+                "actions": "DOC_ACTIONS"},
+    "cdr_view": {"purpose": "视图与缩放/叠加层/窗口控制", "actions": "VIEW_ACTIONS"},
+    "cdr_rect": {"purpose": "矩形工具（偏移/膨胀/布尔/包含判定）", "actions": "RECT_ACTIONS",
+                 "read_only": "RECT_READ_ACTIONS"},
+    "cdr_outline": {"purpose": "描边属性读写与转对象", "actions": "OUTLINE_ACTIONS"},
+    "cdr_snap": {"purpose": "捕捉点与捕捉设置", "actions": "SNAP_ACTIONS",
+                 "read_only": "SNAP_READ_ACTIONS"},
+    "cdr_import": {"purpose": "导入外部文件"},
+    "cdr_export": {"purpose": "导出（png/jpg/pdf/svg/gds 等）",
+                   "hint": "format='png', dpi=150, selection=False"},
+    "cdr_save": {"purpose": "另存为 .cdr"},
+    "cdr_undo": {"purpose": "撤销/重做（一次工具调用 = 一个撤销组）"},
+    "cdr_bitmap": {"purpose": "位图处理（模式/重采样/特效/调色板）", "actions": "BITMAP_ACTIONS"},
+    "cdr_close": {"purpose": "关闭文档（可先保存）"},
+    "cdr_help": {"purpose": "本目录：列出工具，或查某个工具的可用 action"},
+}
+
+
+def _catalog_entry(name: str, entry: dict) -> dict:
+    """把目录条目展开成实际 action 列表（常量动态取，避免手写副本过期）。"""
+    from . import ops as _ops
+
+    out: dict = {"tool": name, "purpose": entry.get("purpose", "")}
+    const = entry.get("actions")
+    if const:
+        values = getattr(_ops, const, ())
+        out["actions"] = sorted({str(v) for v in values})
+    inline = entry.get("inline")
+    if inline:
+        out["actions"] = list(inline)
+    ro = entry.get("read_only")
+    if ro:
+        out["read_only_actions"] = sorted({str(v) for v in getattr(_ops, ro, ())})
+    if entry.get("hint"):
+        out["hint"] = entry["hint"]
+    return out
+
+
+@mcp.tool()
+def cdr_help(tool: str | None = None) -> dict:
+    """能力目录：不传 tool 返回全部工具与工作流；传 tool 返回该工具的可用 action 清单。
+
+    建议调用顺序：cdr_help() → cdr_status() → cdr_connect() → cdr_open() → …
+    """
+    if tool:
+        key = tool.strip()
+        if not key.startswith("cdr_"):
+            key = f"cdr_{key}"
+        entry = _TOOL_CATALOG.get(key)
+        if entry is None:
+            return {"error": "unknown_tool", "tool": key,
+                    "available": sorted(_TOOL_CATALOG)}
+        detail = _catalog_entry(key, entry)
+        detail["workflow"] = WORKFLOW
+        return detail
+    tools = []
+    total_actions = 0
+    for name, entry in _TOOL_CATALOG.items():
+        item = _catalog_entry(name, entry)
+        tools.append({"tool": name, "purpose": item["purpose"],
+                      "actions": len(item.get("actions") or [])})
+        total_actions += len(item.get("actions") or [])
+    return {"tool_count": len(tools), "action_count": total_actions,
+            "tools": tools, "workflow": WORKFLOW,
+            "hint": "传 tool='cdr_shape_ops' 可查看该工具全部 action"}
+
+
+WORKFLOW = [
+    "cdr_help() / cdr_status()  —— 先看能力和环境",
+    "cdr_connect(launch=True)   —— 连接或拉起 CorelDRAW",
+    "cdr_open(preset='A4')      —— 新建文档（也可 path= 打开已有文件）",
+    "cdr_create(doc_id, [...])  —— 批量建图元，返回每个对象的 name",
+    "cdr_modify / cdr_text / cdr_shape_ops / cdr_path …  —— 编辑（一次调用=一个撤销组）",
+    "cdr_export(doc_id, path, format='png')  —— 导出",
+    "cdr_close(doc_id, save=False)           —— 收尾",
+]
 # --------------------------------------------------------------------------- #
 # 状态 / 连接 / 文档
 # --------------------------------------------------------------------------- #
@@ -126,6 +252,8 @@ def cdr_status() -> dict:
             "allowed_roots": os.environ.get("CDR_ALLOWED_ROOTS", "") or None,
             "strict_revision": env_flag("CDR_STRICT_REVISION", False),
             "timeout_s": env_float("CDR_TIMEOUT", DEFAULT_TIMEOUT_S),
+            "tools": len(_TOOL_CATALOG),
+            "help_hint": "调用 cdr_help() 看全部工具与工作流，cdr_help(tool='cdr_shape_ops') 看具体 action",
         }
         try:
             def _probe(b):
@@ -146,7 +274,7 @@ def cdr_status() -> dict:
             info.update({"running": False, "probe_error": str(exc)})
         except Exception as exc:  # noqa: BLE001
             info.update({"running": False, "probe_error": f"{type(exc).__name__}: {exc}"})
-        info["tools"] = 30
+        info["tools"] = len(_TOOL_CATALOG)  # 唯一真源，别再硬编码
         return info
 
     return _guard(_run)
