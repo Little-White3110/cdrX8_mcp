@@ -50,6 +50,7 @@ _ERROR_HINTS: dict[str, str] = {
     "com_error": "CorelDRAW 侧报错：多为参数值域/对象状态不满足；也可能需要先创建对应效果",
     "com_timeout": "X8 该调用可能弹窗或阻塞；换等价能力，或重启 CorelDRAW 后重试",
     "internal_error": "服务端异常：读 message 定位；必要时重试一次",
+    "unknown_tool": "工具名不存在：调 cdr_help() 看全部 31 个工具的名字",
 }
 
 
@@ -1950,6 +1951,16 @@ def cdr_save(document_id: str, path: str, overwrite: bool = False,
                       "keep_appearance":true,"overwrite":true,"thumbnail_size":1}
     """
     def _run():
+        # 前置校验：目录必须存在且可写（与 export/import 对齐）
+        out_dir = os.path.dirname(os.path.abspath(path or "")) or "."
+        if not os.path.isdir(out_dir):
+            return {"error": "bad_argument",
+                    "message": f"目标目录不存在：{out_dir}",
+                    "hint": "先创建目录，或换一个已存在的目录（建议绝对路径）"}
+        if not os.access(out_dir, os.W_OK):
+            return {"error": "bad_argument",
+                    "message": f"目标目录不可写：{out_dir}",
+                    "hint": "换可写目录，或以管理员身份运行"}
         p, warn = resolve_write_path(path, overwrite=overwrite)
         if p.suffix.lower() != ".cdr":
             return {"error": "bad_argument", "message": "保存路径必须以 .cdr 结尾"}

@@ -2,7 +2,7 @@
 
 > 目的：证明"还有多少没探"。每一行要么有对应的工具，要么有实测失败证据。
 > 环境：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）/ Python 3.11.9 64 位
-> 最近更新：2026-10-28 第九十四波（**健壮性**：cdr_import 前置校验，与 export 对称）
+> 最近更新：2026-10-28 第九十五波（**健壮性**：cdr_save 前置校验 + 错误 hint 覆盖率测试）
 
 ## 怎么得出这份清单
 
@@ -1514,7 +1514,7 @@ python scripts/live_smoke.py     # 610 项端到端（真实 CorelDRAW，**跑�
 | 已达 100% 的接口 | `IVGWindow`、`IVGFountainFill`、`IVGStyle`、`IVGColorContext`、`IVGDimension`、`IVGPowerClip`、`IVGGuide`、`IVGText`(结构体族)、`IVGToolStateAttributes`、`IVGToolShapeAttributes`、`IVGAppStatus`、`IVGPaletteManager`、`IVGTreeManager`、`IVGOnScreenText`、`IVGOnScreenCurve`、`IVGOutlineStyle`(读)、`IVGAppleEvents`… 共 **30+ 个接口** |
 | MCP 工具数 | **31**（含 cdr_help 能力目录） |
 | 端到端联调 | **610/610 通过**（真实 CorelDRAW 18.0.0.450） |
-| 单元测试 | **98/98 通过**（含 5 项目录防漂移） |
+| 单元测试 | **101/101 通过**（含目录防漂移 + 错误 hint 覆盖率） |
 | 已记录 X8 陷阱 | **170 条** |
 | 波次 | 87 轮（从 21.2% 起步） |
 
@@ -1846,6 +1846,17 @@ ope` + 「先创建目录或换目录」 |
 > 至此**导入与导出的前置校验对称**：两端都在碰 CorelDRAW 之前把「路径类错误」变成
 > 带解决方案的参数错误。这类错误原本要花一次 COM 往返 + 一次错误翻译才能定位，
 > 现在零往返。
+
+## 七之九十四、第九十五波已接入（2026-10-28，cdr_save 前置校验 + hint 覆盖率测试）
+
+| 改进 | 说明 |
+|---|---|
+| **cdr_save 前置校验** | 目标目录不存在 / 不可写时直接返回可读错误 + 建议（与 import/export 三端对齐） |
+| **错误 hint 覆盖率测试**（新增 3 项 pytest） | 扫描 src 下所有错误字面量，断言每个错误码都在 _ERROR_HINTS 里有建议；并断言 _guard 会给「直接 return 的错误字典」补 hint |
+| **补 unknown_tool hint** | 覆盖率测试立刻暴露这个漏网错误码，已补「调 cdr_help() 看 31 个工具名」 |
+
+> 这条测试的价值：以后任何人新加错误码却忘了写 hint，pytest 会立刻红 ——
+> 「所有错误都带下一步建议」从「约定」变成了「约束」。
 
 ## 七之二、仍未接入（第三轮候选）
 
