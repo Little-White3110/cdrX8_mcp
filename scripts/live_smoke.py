@@ -5102,6 +5102,38 @@ def main() -> int:
           and "weld" in str(pre90b.get("message") or ""),
           str(pre90b.get("message"))[:70])
 
+    # ---------------- 15cq. 第九十一波：cdr_inspect summary 模式 / 对象列表截断 ----------------
+    i91_doc = server.cdr_open(preset="A4")
+    if "document_id" in i91_doc:
+        i91_id = i91_doc["document_id"]
+        server.cdr_create(i91_id, [
+            {"type": "rectangle", "x": i * 15, "y": 0, "width": 10, "height": 10}
+            for i in range(8)])
+        sm91 = server.cdr_inspect(i91_id, include="summary")
+        if no_error("cdr_inspect(summary)", sm91):
+            check("摘要模式只回计数（大文档省 token）",
+                  sm91.get("shape_count") == 8
+                  and "shapes" not in sm91,
+                  f"shape_count={sm91.get('shape_count')} "
+                  f"keys={sorted(k for k in sm91 if k not in ('state',))}")
+        tr91 = server.cdr_inspect(i91_id, include="shapes", limit=3)
+        if no_error("cdr_inspect(limit=3)", tr91):
+            check("对象列表可截断并给出总数",
+                  len(tr91.get("shapes") or []) == 3
+                  and tr91.get("truncated") is True
+                  and tr91.get("total") == 8,
+                  f"returned={len(tr91.get('shapes') or [])} total={tr91.get('total')}")
+        pg91 = server.cdr_inspect(i91_id, include="pages")
+        if no_error("cdr_inspect(pages)", pg91):
+            check("pages 模式不含对象列表",
+                  "shapes" not in pg91 and bool(pg91.get("layers")),
+                  f"keys={sorted(k for k in pg91 if k not in ('state',))}")
+        bad91 = server.cdr_inspect(i91_id, include="bogus")
+        check("非法 include 返回可读错误而非崩溃",
+              bad91.get("error") == "bad_argument",
+              str(bad91.get("message"))[:50])
+        no_error("关闭第九十一波测试文档", server.cdr_close(i91_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

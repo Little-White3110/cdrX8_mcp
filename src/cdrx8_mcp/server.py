@@ -574,7 +574,7 @@ def cdr_open(path: str | None = None, width_mm: float | None = None,
 
 @mcp.tool()
 def cdr_inspect(document_id: str, page_index: int | None = None,
-                include: str = "shapes") -> dict:
+                include: str = "shapes", limit: int = 300) -> dict:
     """读取文档当前状态：页面、图层、revision、snapshot_token、每个对象的 bbox 与文字。
 
     修改前**必须**先调用它，把返回的 revision + snapshot_token 原样传给修改类工具。
@@ -582,19 +582,50 @@ def cdr_inspect(document_id: str, page_index: int | None = None,
     Args:
         document_id: 来自 cdr_documents / cdr_open。
         page_index: 只看某一页（1 起）；不传则看活动页。
-        include: "shapes"（含对象列表）或 "pages"（只看页面/图层概览）。
+        include:
+            "summary" —— 只回页面/图层计数 + 对象总数（大文档首选，几乎不耗 token）
+            "pages"   —— 页面/图层概览（比 summary 多每页图层明细）
+            "shapes"  —— 完整对象列表（默认；受 limit 限制）
+        limit: include="shapes" 时最多返回多少个对象（默认 300；0 表示不限制）。
+               被截断时返回 truncated=true 与 total，可用 cdr_find 精确定位。
     """
     def _run():
+        mode = (include or "shapes").strip().lower()
+        if mode not in {"summary", "pages", "shapes"}:
+            raise CdrBadArgument(
+                f"include 只支持 summary / pages / shapes（收到 {include!r}）")
         doc, sess = _with_doc(document_id)
 
         def _do(_b):
             state = _doc_state(doc, sess)
-            result = {"state": state, "unit": "mm", "origin": "页面左下角，Y 轴向上"}
+            result = {"state": state, "unit": "mm", "origin": "页面左下角，Y 轴向上",
+                      "include": mode}
+            if mode == "summary":
+                # 轻量模式：只给计数与图层名，避免大文档一次吐几千个对象
+                result["page_count"] = state.get("pages")
+                result["shape_count"] = state.get("shapes")
+                result["layers"] = ops.list_layers(doc, page_index)
+                result["active_page"] = ops._n(lambda: int(doc.ActivePage.Index), 1)
+                result["hint"] = ("需要对象明细时用 include=\"shapes\"（可用 limit 限制），"
+                                  "或 cdr_find 精确查找；修改前把 state 里的 "
+                                  "revision/snapshot_token 带上")
+                return result
             result["pages"] = ops.page_summary(doc)
             result["layers"] = ops.list_layers(doc, page_index)
-            if include != "pages":
-                result["shapes"] = ops.list_shapes(doc, page_index)
-                result["active_page"] = ops._n(lambda: int(doc.ActivePage.Index), 1)
+            if mode == "pages":
+                return result
+            shapes = ops.list_shapes(doc, page_index)
+            total = len(shapes)
+            cap = int(limit) if limit is not None else 0
+            if cap and total > cap:
+                shapes = shapes[:cap]
+                result["truncated"] = True
+                result["returned"] = cap
+                result["hint"] = (f"本页共 {total} 个对象，只返回前 {cap} 个；"
+                                  f"传 limit=0 取全部，或 cdr_find 精确定位")
+            result["shapes"] = shapes
+            result["total"] = total
+            result["active_page"] = ops._n(lambda: int(doc.ActivePage.Index), 1)
             return result
 
         return _com(_do, label="cdr_inspect")

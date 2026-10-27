@@ -2,7 +2,7 @@
 
 > 目的：证明"还有多少没探"。每一行要么有对应的工具，要么有实测失败证据。
 > 环境：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）/ Python 3.11.9 64 位
-> 最近更新：2026-10-28 第九十波（**易用性**：缺参前置报错 / 未知 op 近似建议）
+> 最近更新：2026-10-28 第九十一波（**易用性**：cdr_inspect 摘要模式 / 列表截断）
 
 ## 怎么得出这份清单
 
@@ -384,7 +384,7 @@
 
 ```powershell
 python -m pytest -q              # 93 项纯逻辑
-python scripts/live_smoke.py     # 592 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
+python scripts/live_smoke.py     # 596 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
 ```
 
 联调断言覆盖了上表所有 ✅ 项。反解脚本属于过程产物，已按要求放在 `tmp/` 并在完成时清理；
@@ -1513,7 +1513,7 @@ python scripts/live_smoke.py     # 592 项端到端（真实 CorelDRAW，**跑�
 | 主干 20 接口覆盖 | **670 / 743 = 90.2%** |
 | 已达 100% 的接口 | `IVGWindow`、`IVGFountainFill`、`IVGStyle`、`IVGColorContext`、`IVGDimension`、`IVGPowerClip`、`IVGGuide`、`IVGText`(结构体族)、`IVGToolStateAttributes`、`IVGToolShapeAttributes`、`IVGAppStatus`、`IVGPaletteManager`、`IVGTreeManager`、`IVGOnScreenText`、`IVGOnScreenCurve`、`IVGOutlineStyle`(读)、`IVGAppleEvents`… 共 **30+ 个接口** |
 | MCP 工具数 | **31**（含 cdr_help 能力目录） |
-| 端到端联调 | **592/592 通过**（真实 CorelDRAW 18.0.0.450） |
+| 端到端联调 | **596/596 通过**（真实 CorelDRAW 18.0.0.450） |
 | 单元测试 | **98/98 通过**（含 5 项目录防漂移） |
 | 已记录 X8 陷阱 | **170 条** |
 | 波次 | 87 轮（从 21.2% 起步） |
@@ -1792,6 +1792,19 @@ python -m pytest -q                       # 93 项纯 Python 单元测试
 > 都不在我手写的白名单里。**白名单不完整就会误伤正常调用**，比不校验更糟。
 > 已撤销该机制，只保留**零误伤**的两条：缺 `other` 硬报错（语义明确）+ 未知 op 模糊建议。
 > **结论**：校验的收益必须大于误伤风险；能"模糊提示"就不要"硬性阻断"。
+
+## 七之九十、第九十一波已接入（2026-10-28，cdr_inspect 摘要模式 / 列表截断）
+
+| 改进 | 落地 | 效果 |
+|---|---|---|
+| **摘要模式** | `cdr_inspect(doc, include="summary")` | 只回 `page_count` / `shape_count` / `layers` / `active_page` + 下一步提示 —— 大文档不再一次吐出几千个对象，**token 成本从 O(对象数) 降到 O(1)** |
+| **三档查看** | `summary` < `pages` < `shapes` | `pages` 多给每页图层明细；`shapes` 给完整对象列表 |
+| **对象列表截断** | `cdr_inspect(doc, include="shapes", limit=300)` | 超限时返回 `truncated=true` + `total` + 提示（`limit=0` 取全部 / `cdr_find` 精确定位），避免超大响应把客户端撑爆 |
+| **非法 include 走统一错误** | 校验放在 `_guard` 内 | 返回 `bad_argument` + hint，而不是抛异常 |
+
+> **为什么这条对易用性重要**：MCP 的每次调用结果都会进调用方上下文窗口。
+> 一个 2000 对象的文档，`inspect` 一次可能就吃掉几万 token —— 现在默认摘要 + 可选截断，
+> 让"看整体"和"看细节"分开，这是最实在的可控性。
 
 ## 七之二、仍未接入（第三轮候选）
 
