@@ -649,6 +649,7 @@ DOC_ACTIONS = ("info", "clear_selection", "clear_undo", "palette", "arrowhead",
                "palette_set_color", "palette_make_default", "views_add_active",
                "datafield_reorder", "bspline_resize", "ole_info",
                "datafield_info", "select_color_profile",
+               "clipboard_info", "components_info",
                "fountain_transform", "arrowhead_unnamed",
                # 第四十六波：CorelScriptTools（VBA 辅助对象）单位/数学/日期
                "script_tools")
@@ -1821,6 +1822,28 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
                 "modified": bool(_s(lambda: bool(ole.Modified), False)),
             })
         result["ole_count"] = found
+        return result
+
+    if act == "clipboard_info":
+        # 实测：Application.Clipboard → IVGClipboard（DataPresent / Valid / Empty 可读）
+        clip = _s(lambda: _app_of(doc).Clipboard)
+        if clip is None:
+            raise CdrComFailure("取不到 Clipboard")
+        return {"action": act,
+                "data_present": bool(_s(lambda: bool(clip.DataPresent), False)),
+                "valid": bool(_s(lambda: bool(clip.Valid), False)),
+                "empty": bool(_s(lambda: bool(clip.Empty), False))}
+    if act == "components_info":
+        # 实测：Application.Components → IVGComponents（IsComponentInstalled）
+        comps = _s(lambda: _app_of(doc).Components)
+        if comps is None:
+            raise CdrComFailure("取不到 Components")
+        spec = dict(settings or {})
+        names = spec.get("names") or ["CorelDRAW", "PHOTO-PAINT"]
+        result = {"action": act, "checked": []}
+        for name in names[:10]:
+            installed = _s(lambda name=name: comps.IsComponentInstalled(str(name)))
+            result["checked"].append({"name": str(name), "installed": installed})
         return result
 
     if act == "tree_manager":
@@ -8049,6 +8072,25 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
                         intensity = int(light_spec.get("light_intensity", 80))
                         typed.SetLight(li, pos, intensity)
                         applied.append(f"light_{li}")
+                    if isinstance(light_spec.get("lights"), list):
+                        # 实测：LightPresent(i) / LightIntensity(i) 是带索引的属性，
+                        # pywin32 的 setattr 走不通，要用 _oleobj_.Invoke 直接 put
+                        import pythoncom
+                        for li, item in enumerate(light_spec["lights"][:3], start=1):
+                            spec_item = item if isinstance(item, dict) else {}
+                            if not spec_item.get("present"):
+                                continue
+                            intensity = int(spec_item.get("intensity", 80))
+                            for prop, value in (("LightPresent", 1),
+                                                ("LightIntensity", intensity)):
+                                try:
+                                    did = typed._oleobj_.GetIDsOfNames(prop)
+                                    typed._oleobj_.Invoke(
+                                        did, 0, pythoncom.DISPATCH_PROPERTYPUT,
+                                        False, li, value)
+                                except Exception:
+                                    continue
+                            applied.append(f"light_{li}")
                     if light_spec.get("bevel_depth") is not None or \
                             light_spec.get("bevel_angle") is not None:
                         typed.SetBevel(float(light_spec.get("bevel_depth", 1.0)),

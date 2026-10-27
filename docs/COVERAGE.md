@@ -2,7 +2,7 @@
 
 > 目的：证明"还有多少没探"。每一行要么有对应的工具，要么有实测失败证据。
 > 环境：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）/ Python 3.11.9 64 位
-> 最近更新：2026-10-27 第八十二波（点集容器编辑 PointRange 补方法）
+> 最近更新：2026-10-27 第八十三波（立体化双灯 / 剪贴板 / 组件检测）
 
 ## 怎么得出这份清单
 
@@ -244,6 +244,7 @@
 > * 混合 **可用（第十七波）**：`CreateBlend` 传全参数且 `Path=None` 时成功；
 >   效果经 `Effects.Item(i).Blend`（IVGEffectBlend）读写 Steps/Spacing/Angle 等。
 > * 调色板查找/插入/默认 / 命名视图 / 数据字段重排 / B样条扩容 **可用（第七十七波）**：`Palette.FindColor/InsertColor/MakeDefault`、`Views.AddActiveView`、`DataField.Reorder`、`ControlPoints.Resize`。
+> * 立体化双灯 / 剪贴板 / 组件检测 **可用（第八十三波）**：`extrude_set(effect={"lights":[…]})`、`clipboard_info`、`components_info`。
 > * 点集容器编辑 **可用（第八十二波）**：`point_range_edit`（Reverse/AddPoints/InsertPoint/RemoveAdjacentDuplicates）与 `fit_to_points(reverse=true)`。
 > * 立体化效果复制 / 数据字段详情 **可用（第八十一波）**：`extrude_set(effect={"copy_from":…})`、`cdr_doc(datafield_info)`。
 > * OLE 对象只读清点 **可用（第八十波）**：`cdr_doc(ole_info)` 清点页面上的 Type 12 对象并读 IVGOLE 只读属性。
@@ -379,7 +380,7 @@
 
 ```powershell
 python -m pytest -q              # 93 项纯逻辑
-python scripts/live_smoke.py     # 561 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
+python scripts/live_smoke.py     # 564 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
 ```
 
 联调断言覆盖了上表所有 ✅ 项。反解脚本属于过程产物，已按要求放在 `tmp/` 并在完成时清理；
@@ -387,13 +388,13 @@ python scripts/live_smoke.py     # 561 项端到端（真实 CorelDRAW，**跑�
 
 ---
 
-## 六、量化覆盖率（2026-10-27 第八十二波实测）
+## 六、量化覆盖率（2026-10-27 第八十三波实测）
 
 方法：反解类型库拿到 196 个自动化类 / **1619** 个方法（已剔除 `QueryInterface` 等 COM 基础设施）；
 用 AST 扫描 `src/cdrx8_mcp/*.py`，收集所有 `.方法名(` 调用与 `setattr/getattr` 的属性名，
 与主干接口的方法名求交集。**注意：属性名（如 `curve.Nodes`）也会被计入**，所以本波数字含真实属性访问。
 
-**全局：1185 / 1619 = 73.2%**（21.2% → … → 72.9% → 本轮 73.2%）
+**全局：1186 / 1619 = 73.3%**（21.2% → … → 73.2% → 本轮 73.3%）
 **主干 20 接口：670 / 743 = 90.2%**
 
 复现命令：`python scripts/coverage_audit.py`（会临时展开类型库到 `tmp/gen_py`，跑完自动清理）
@@ -1664,6 +1665,19 @@ python -m pytest -q                       # 93 项纯 Python 单元测试
 > 与 `AddPoints` 要另一个 **IVGPointRange** 一致 —— 点集容器族的传参全是对象而非数值。
 > `DataFields.AddEx` / `TextTabPositions`（入口不在 Text 上）/ `HatchPattern`（不在 HatchFill 上）
 > 三族入口找不到或格式串不可用，留不可用清单。
+
+## 七之八十二、第八十三波已接入（2026-10-27，立体化双灯 / 剪贴板 / 组件检测）
+
+| 能力 | 落地位置 | 实测 |
+|---|---|---|
+| **立体化双灯同开** | `cdr_shape_ops(op="extrude_set", effect={"lights":[{...},{...}]})` | ✅ 1 号灯强度 80、2 号灯强度 60 同时打开（`Invoke putter` 绕过 pywin32 的 setattr 限制） |
+| **剪贴板状态**（IVGClipboard） | `cdr_doc(action="clipboard_info")` | ✅ `DataPresent` / `Valid` 可读（复制对象后 present=True） |
+| **组件检测**（IVGComponents） | `cdr_doc(action="components_info", settings={"names":[…]})` | ✅ `IsComponentInstalled(名)` 可查（本机 CorelDRAW/PHOTO-PAINT 都返回 False） |
+
+> **第八十三波记录**：立体化灯光的 putter（`LightPresent(i)=v` / `LightIntensity(i)=v`）
+> pywin32 的 `setattr` 走不通，要用 `ext._oleobj_.Invoke(did, 0, DISPATCH_PROPERTYPUT, False, i, v)`
+> 直接按 dispid 调 —— 这也是第 78 波 `SetLight` 只能开一盏灯的根因。
+> `Clipboard` / `Components` 都在 `Application` 上，一次就通。
 
 ## 七之二、仍未接入（第三轮候选）
 

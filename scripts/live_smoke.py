@@ -4861,6 +4861,41 @@ def main() -> int:
                       f"points={fit82.get('points')}")
         no_error("关闭点集编辑测试文档", server.cdr_close(p82_id))
 
+    # ---------------- 15ck. 第八十三波：双灯配置 / 剪贴板状态 / 组件检测 ----------------
+    print("\n[15ck] 第八十三波：EffectExtrude 双灯 Invoke putter·Clipboard·Components")
+    x83_doc = server.cdr_open(preset="A4")
+    if "document_id" in x83_doc:
+        x83_id = x83_doc["document_id"]
+        x83r = server.cdr_create(x83_id, [
+            {"type": "rectangle", "x": 0, "y": 0, "width": 20, "height": 10}])
+        if no_error("cdr_create(双灯测试)", x83r):
+            x83a = {"name": x83r["created"][0]["name"]}
+            server.cdr_shape_ops(x83_id, op="extrude", target=x83a,
+                                 params={"depth": 20})
+            es83 = server.cdr_shape_ops(x83_id, op="extrude_set", target=x83a,
+                                        effect={"lights": [
+                                            {"present": True, "intensity": 80},
+                                            {"present": True, "intensity": 60}]})
+            if no_error("cdr_shape_ops(extrude_set 双灯)", es83):
+                ext83 = es83.get("extrude") or {}
+                lights83 = ext83.get("lights") or []
+                on83 = [l for l in lights83 if l.get("present")]
+                check("立体化可双灯同开（Invoke putter）",
+                      len(on83) == 2 and {l.get("intensity") for l in on83} == {80, 60},
+                      f"on={[(l.get('index'), l.get('intensity')) for l in on83]}")
+            cb83 = server.cdr_doc(x83_id, action="clipboard_info")
+            if no_error("cdr_doc(clipboard_info)", cb83):
+                check("剪贴板状态可读（Clipboard.DataPresent/Valid）",
+                      "data_present" in cb83 and "valid" in cb83,
+                      f"present={cb83.get('data_present')}")
+            cm83 = server.cdr_doc(x83_id, action="components_info")
+            if no_error("cdr_doc(components_info)", cm83):
+                check("组件安装状态可查（IsComponentInstalled）",
+                      isinstance(cm83.get("checked"), list)
+                      and len(cm83.get("checked")) >= 1,
+                      str(cm83.get("checked"))[:60])
+        no_error("关闭双灯测试文档", server.cdr_close(x83_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,
