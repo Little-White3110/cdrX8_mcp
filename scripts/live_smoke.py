@@ -4896,6 +4896,42 @@ def main() -> int:
                       str(cm83.get("checked"))[:60])
         no_error("关闭双灯测试文档", server.cdr_close(x83_id))
 
+    # ---------------- 15cl. 第八十四波：主窗口控制 / 屏幕矩形 / 状态栏文字 / GMS 路径 ----------------
+    print("\n[15cl] 第八十四波：ICUIFrameWindow 控制·ICUIApplication.Create*·GMSManager 路径")
+    u84_doc = server.cdr_open(preset="A4")
+    if "document_id" in u84_doc:
+        u84_id = u84_doc["document_id"]
+        fm84 = server.cdr_view(u84_id, action="frame_maximize")
+        if no_error("cdr_view(frame_maximize)", fm84):
+            check("主窗口可最大化（ICUIFrameWindow.Maximize）",
+                  fm84.get("done") is True and bool(fm84.get("caption")),
+                  f"caption={fm84.get('caption')}")
+        fr84 = server.cdr_view(u84_id, action="frame_restore")
+        if no_error("cdr_view(frame_restore)", fr84):
+            check("主窗口可还原（Restore）", fr84.get("done") is True,
+                  str(fr84.get("done")))
+        ft84 = server.cdr_view(u84_id, action="frame_tile")
+        if no_error("cdr_view(frame_tile)", ft84):
+            check("视口可平铺（TileViews）", ft84.get("done") is True,
+                  str(ft84.get("done")))
+        sr84 = server.cdr_doc(u84_id, action="screen_rect",
+                              settings={"left": 0, "top": 0, "right": 300,
+                                        "bottom": 200})
+        if no_error("cdr_doc(screen_rect)", sr84):
+            check("屏幕矩形可创建（ICUIApplication.CreateScreenRect）",
+                  sr84.get("created") is True, str(sr84.get("created")))
+        st84 = server.cdr_doc(u84_id, action="status_text",
+                              settings={"caption": "MCP 状态"})
+        if no_error("cdr_doc(status_text)", st84):
+            check("状态栏文字可设（ICUIStatusText.SetCaptionText）",
+                  st84.get("caption_set") == "MCP 状态",
+                  str(st84.get("caption_set")))
+        gi84 = server.cdr_doc(u84_id, action="gms_info")
+        if no_error("cdr_doc(gms_info)", gi84):
+            check("GMS 路径可查（GMSManager）",
+                  bool(gi84.get("gms_path")), str(gi84.get("gms_path"))[:40])
+        no_error("关闭第八十四波测试文档", server.cdr_close(u84_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

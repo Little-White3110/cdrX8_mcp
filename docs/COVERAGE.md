@@ -2,7 +2,7 @@
 
 > 目的：证明"还有多少没探"。每一行要么有对应的工具，要么有实测失败证据。
 > 环境：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）/ Python 3.11.9 64 位
-> 最近更新：2026-10-27 第八十三波（立体化双灯 / 剪贴板 / 组件检测）
+> 最近更新：2026-10-27 第八十四波（主窗口控制 / 屏幕矩形 / 状态栏 / GMS 路径）
 
 ## 怎么得出这份清单
 
@@ -244,6 +244,7 @@
 > * 混合 **可用（第十七波）**：`CreateBlend` 传全参数且 `Path=None` 时成功；
 >   效果经 `Effects.Item(i).Blend`（IVGEffectBlend）读写 Steps/Spacing/Angle 等。
 > * 调色板查找/插入/默认 / 命名视图 / 数据字段重排 / B样条扩容 **可用（第七十七波）**：`Palette.FindColor/InsertColor/MakeDefault`、`Views.AddActiveView`、`DataField.Reorder`、`ControlPoints.Resize`。
+> * 主窗口控制 / 屏幕矩形 / 状态栏 / GMS 路径 **可用（第八十四波）**：`frame_maximize/restore/tile/combine`、`screen_rect`、`status_text`、`gms_info`。
 > * 立体化双灯 / 剪贴板 / 组件检测 **可用（第八十三波）**：`extrude_set(effect={"lights":[…]})`、`clipboard_info`、`components_info`。
 > * 点集容器编辑 **可用（第八十二波）**：`point_range_edit`（Reverse/AddPoints/InsertPoint/RemoveAdjacentDuplicates）与 `fit_to_points(reverse=true)`。
 > * 立体化效果复制 / 数据字段详情 **可用（第八十一波）**：`extrude_set(effect={"copy_from":…})`、`cdr_doc(datafield_info)`。
@@ -380,7 +381,7 @@
 
 ```powershell
 python -m pytest -q              # 93 项纯逻辑
-python scripts/live_smoke.py     # 564 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
+python scripts/live_smoke.py     # 570 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
 ```
 
 联调断言覆盖了上表所有 ✅ 项。反解脚本属于过程产物，已按要求放在 `tmp/` 并在完成时清理；
@@ -388,13 +389,13 @@ python scripts/live_smoke.py     # 564 项端到端（真实 CorelDRAW，**跑�
 
 ---
 
-## 六、量化覆盖率（2026-10-27 第八十三波实测）
+## 六、量化覆盖率（2026-10-27 第八十四波实测）
 
 方法：反解类型库拿到 196 个自动化类 / **1619** 个方法（已剔除 `QueryInterface` 等 COM 基础设施）；
 用 AST 扫描 `src/cdrx8_mcp/*.py`，收集所有 `.方法名(` 调用与 `setattr/getattr` 的属性名，
 与主干接口的方法名求交集。**注意：属性名（如 `curve.Nodes`）也会被计入**，所以本波数字含真实属性访问。
 
-**全局：1186 / 1619 = 73.3%**（21.2% → … → 73.2% → 本轮 73.3%）
+**全局：1193 / 1619 = 73.7%**（21.2% → … → 73.3% → 本轮 73.7%）
 **主干 20 接口：670 / 743 = 90.2%**
 
 复现命令：`python scripts/coverage_audit.py`（会临时展开类型库到 `tmp/gen_py`，跑完自动清理）
@@ -1678,6 +1679,22 @@ python -m pytest -q                       # 93 项纯 Python 单元测试
 > pywin32 的 `setattr` 走不通，要用 `ext._oleobj_.Invoke(did, 0, DISPATCH_PROPERTYPUT, False, i, v)`
 > 直接按 dispid 调 —— 这也是第 78 波 `SetLight` 只能开一盏灯的根因。
 > `Clipboard` / `Components` 都在 `Application` 上，一次就通。
+
+## 七之八十三、第八十四波已接入（2026-10-27，主窗口控制 / 屏幕矩形 / 状态栏 / GMS 路径）
+
+| 能力 | 落地位置 | 实测 |
+|---|---|---|
+| **主窗口控制**（ICUIFrameWindow 4 方法） | `cdr_view(action="frame_maximize"/"frame_restore"/"frame_tile"/"frame_combine")` | ✅ `Maximize` / `Restore` / `TileViews(0)` / `CombineViews` 都可用，Caption 可读（`CorelDRAW X8 (64-Bit)`） |
+| **屏幕矩形**（ICUIApplication.CreateScreenRect） | `cdr_doc(action="screen_rect", settings={"left":…,"top":…,"right":…,"bottom":…})` | ✅ 4 个整数参数（0~500 均可） |
+| **状态栏文字**（ICUIStatusText.SetCaptionText） | `cdr_doc(action="status_text", settings={"caption":"…"})` | ✅ `CreateStatusText()` + `SetCaptionText("…")` |
+| **GMS 路径查询**（GMSManager 属性） | `cdr_doc(action="gms_info")` | ✅ `GMSPath` / `UserGMSPath` 可读 |
+
+> **第七十七波记录的 UI 自动化结论需更新**：`ICUIFrameWork.Application` 是 ICUIApplication 入口，
+> 它的 **Create\* 系列（ScreenRect/ImageList/BitmapImage/StatusText）全部可用**；
+> `ICUIFrameWindow` 的窗口控制方法也可用。真正不可达的只剩**需要命令栏 GUID 的
+> `ICUIAutomation` 14 个方法**和 `ICUIDataContext`/`ICUIViewHost` 等 dock 族 —— 比之前判断的窄。
+> 另：`GMSManager.RunMacro` 需要**已加载的宏工程**（格式「模块.宏」），纯自动化不可用；
+> `Bitmap.TraceSettings` 不存在（入口在 Trace 调用内部）。
 
 ## 七之二、仍未接入（第三轮候选）
 

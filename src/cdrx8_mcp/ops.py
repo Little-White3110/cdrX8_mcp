@@ -387,7 +387,8 @@ def save_as_copy(doc: Any, path: str, *, options: dict | None = None) -> dict:
     }
 
 
-VIEW_ACTIONS = ("refresh", "activate", "new_window", "overlay_handle", "overlay_points",
+VIEW_ACTIONS = ("refresh", "activate", "new_window", "overlay_handle",
+                "frame_maximize", "frame_restore", "frame_tile", "frame_combine", "overlay_points",
                 "to_screen", "to_document",
                 "zoom_fit_page", "zoom_fit_width", "zoom_fit_height",
                 "zoom_all_objects", "zoom_selection", "actual_size", "zoom_in",
@@ -502,6 +503,25 @@ def view_ops(doc: Any, action: str, *, x: float | None = None, y: float | None =
                 "color": int(color),
                 "hot_tracked": bool(_s(lambda: bool(handle.IsHotTracked), False)),
                 "applied": applied}
+    if act in {"frame_maximize", "frame_restore", "frame_tile", "frame_combine"}:
+        # 实测：Application.FrameWork.MainFrameWindow 是 ICUIFrameWindow，
+        # Maximize / Restore / TileViews(mode) / CombineViews 可用
+        app = _app_of(doc)
+        fw = _s(lambda: app.FrameWork)
+        mw = _s(lambda: fw.MainFrameWindow) if fw is not None else None
+        if mw is None:
+            raise CdrComFailure("取不到 MainFrameWindow")
+        if act == "frame_maximize":
+            mw.Maximize()
+        elif act == "frame_restore":
+            mw.Restore()
+        elif act == "frame_tile":
+            mw.TileViews(0)
+        else:
+            mw.CombineViews()
+        return {"action": act, "done": True,
+                "caption": _s(lambda: str(mw.Caption))[:40],
+                "is_active": bool(_s(lambda: bool(mw.IsActive), False))}
     if act == "new_window":
         # 实测：Application.ActiveWindow.NewWindow() 可开新窗口（Document 上没有这个方法）
         win = _s(lambda: _app_of(doc).ActiveWindow.NewWindow())
@@ -650,6 +670,7 @@ DOC_ACTIONS = ("info", "clear_selection", "clear_undo", "palette", "arrowhead",
                "datafield_reorder", "bspline_resize", "ole_info",
                "datafield_info", "select_color_profile",
                "clipboard_info", "components_info",
+               "screen_rect", "status_text", "gms_info",
                "fountain_transform", "arrowhead_unnamed",
                # 第四十六波：CorelScriptTools（VBA 辅助对象）单位/数学/日期
                "script_tools")
@@ -1845,6 +1866,40 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
             installed = _s(lambda name=name: comps.IsComponentInstalled(str(name)))
             result["checked"].append({"name": str(name), "installed": installed})
         return result
+
+    if act in {"screen_rect", "status_text", "gms_info"}:
+        # 实测：Application.FrameWork.Application 是 ICUIApplication
+        # （CreateScreenRect(4 整数) / CreateImageList / CreateBitmapImage /
+        #   CreateStatusText 都可用）；GMSManager 提供 GMSPath/UserGMSPath
+        app = _app_of(doc)
+        fw = _s(lambda: app.FrameWork)
+        if fw is None:
+            raise CdrComFailure("取不到 FrameWork")
+        uiapp = _s(lambda: fw.Application)
+        if uiapp is None:
+            raise CdrComFailure("取不到 FrameWork.Application")
+        if act == "screen_rect":
+            spec = dict(settings or {})
+            rect = _s(lambda: uiapp.CreateScreenRect(
+                int(spec.get("left", 0)), int(spec.get("top", 0)),
+                int(spec.get("right", 300)), int(spec.get("bottom", 200))))
+            return {"action": act, "created": rect is not None}
+        if act == "status_text":
+            spec = dict(settings or {})
+            st = _s(lambda: uiapp.CreateStatusText())
+            if st is None:
+                raise CdrComFailure("CreateStatusText 返回空")
+            caption = str(spec.get("caption") or "MCP 状态")
+            st.SetCaptionText(caption)
+            return {"action": act, "caption_set": caption}
+        # gms_info
+        gms = _s(lambda: app.GMSManager)
+        if gms is None:
+            raise CdrComFailure("取不到 GMSManager")
+        return {"action": act,
+                "gms_path": _s(lambda: str(gms.GMSPath))[:80],
+                "user_gms_path": _s(lambda: str(gms.UserGMSPath))[:80],
+                "note": "GMSManager.RunMacro 需要已加载的宏工程，纯自动化不可用"}
 
     if act == "tree_manager":
         # 实测：Document.TreeManager → IVGTreeManager
