@@ -5091,6 +5091,17 @@ def main() -> int:
           set(["parse", "convert", "blend"]) <= set(col89.get("actions") or []),
           f"actions={len(col89.get('actions') or [])}")
 
+    pre90 = server.cdr_shape_ops(d90_id if 'd90_id' in dir() else list(server.cdr_documents().get("documents") or [{}])[0].get("document_id", ""), op="weld", target={"index": 1})
+    check("缺 other 时立刻给可操作参数错误（不进 COM）",
+          pre90.get("error") == "bad_argument"
+          and "other" in str(pre90.get("message") or ""),
+          str(pre90.get("message"))[:60])
+    pre90b = server.cdr_shape_ops(list(server.cdr_documents().get("documents") or [{}])[0].get("document_id", ""), op="weld_shape", target={"index": 1})
+    check("未知 op 给出最接近的名字建议",
+          pre90b.get("error") == "bad_argument"
+          and "weld" in str(pre90b.get("message") or ""),
+          str(pre90b.get("message"))[:70])
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

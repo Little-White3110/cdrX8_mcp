@@ -2,7 +2,7 @@
 
 > 目的：证明"还有多少没探"。每一行要么有对应的工具，要么有实测失败证据。
 > 环境：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）/ Python 3.11.9 64 位
-> 最近更新：2026-10-28 第八十九波（**易用性**：action 级用法示例 / 防漂移单测）
+> 最近更新：2026-10-28 第九十波（**易用性**：缺参前置报错 / 未知 op 近似建议）
 
 ## 怎么得出这份清单
 
@@ -384,7 +384,7 @@
 
 ```powershell
 python -m pytest -q              # 93 项纯逻辑
-python scripts/live_smoke.py     # 590 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
+python scripts/live_smoke.py     # 592 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
 ```
 
 联调断言覆盖了上表所有 ✅ 项。反解脚本属于过程产物，已按要求放在 `tmp/` 并在完成时清理；
@@ -1513,7 +1513,7 @@ python scripts/live_smoke.py     # 590 项端到端（真实 CorelDRAW，**跑�
 | 主干 20 接口覆盖 | **670 / 743 = 90.2%** |
 | 已达 100% 的接口 | `IVGWindow`、`IVGFountainFill`、`IVGStyle`、`IVGColorContext`、`IVGDimension`、`IVGPowerClip`、`IVGGuide`、`IVGText`(结构体族)、`IVGToolStateAttributes`、`IVGToolShapeAttributes`、`IVGAppStatus`、`IVGPaletteManager`、`IVGTreeManager`、`IVGOnScreenText`、`IVGOnScreenCurve`、`IVGOutlineStyle`(读)、`IVGAppleEvents`… 共 **30+ 个接口** |
 | MCP 工具数 | **31**（含 cdr_help 能力目录） |
-| 端到端联调 | **590/590 通过**（真实 CorelDRAW 18.0.0.450） |
+| 端到端联调 | **592/592 通过**（真实 CorelDRAW 18.0.0.450） |
 | 单元测试 | **98/98 通过**（含 5 项目录防漂移） |
 | 已记录 X8 陷阱 | **170 条** |
 | 波次 | 87 轮（从 21.2% 起步） |
@@ -1779,6 +1779,19 @@ python -m pytest -q                       # 93 项纯 Python 单元测试
 >    改成 `ellipse`/`curve_segment`。
 >
 > **经验**：文档与目录这类"人工维护的元数据"必须配**可执行的断言**，否则一定漂移。
+
+## 七之八十九、第九十波已接入（2026-10-28，缺参前置报错 / 未知 op 近似建议）
+
+| 改进 | 落地 | 效果 |
+|---|---|---|
+| **缺 `other` 前置报错** | `_precheck_shape_op()` 在进 COM 前执行 | `weld`/`trim`/`intersect`/`powerclip`/`blend`/`point_math` 等 **13 个 op** 缺第二个对象时立刻返回：`weld 需要 other 参数（被焊接的另一个对象）；写法：other={"name": "对象名"}` —— 不再白跑一次 CorelDRAW |
+| **未知 op 近似建议** | `difflib.get_close_matches`（cutoff 0.55） | `op="weld_shape"` → 「你是不是想用：weld, weld_to_shape…；完整列表见 cdr_help」 |
+
+> **一次被自己推翻的设计（重要）**：我最初还加了「params 键白名单」校验，想抓拼写错误 ——
+> 结果冒烟立刻挂了两项：`corners` 的合法键 `roundness`、`drop_shadow` 的 `offset_x/offset_y`
+> 都不在我手写的白名单里。**白名单不完整就会误伤正常调用**，比不校验更糟。
+> 已撤销该机制，只保留**零误伤**的两条：缺 `other` 硬报错（语义明确）+ 未知 op 模糊建议。
+> **结论**：校验的收益必须大于误伤风险；能"模糊提示"就不要"硬性阻断"。
 
 ## 七之二、仍未接入（第三轮候选）
 

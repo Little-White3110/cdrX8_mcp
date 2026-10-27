@@ -7056,6 +7056,50 @@ def _effect_info(shape: Any) -> dict:
     return {"count": count, "effects": items}
 
 
+# 哪些 op 必须有 other（第二个对象），以及 other 应该是什么
+_OP_NEEDS_OTHER: dict[str, str] = {
+    "weld": "被焊接的另一个对象",
+    "trim": "作为修剪刀的另一个对象",
+    "intersect": "参与相交的另一个对象",
+    "combine": "（用选区，不需 other）",
+    "fillet": "（用 params.radius，不需 other）",
+    "powerclip": "作为容器的对象（target 放内容）",
+    "powerclip_extract": "（不需 other）",
+    "place_text": "要内嵌的文字对象（target 放容器）",
+    "envelope_from_shape": "作为包络模板的对象",
+    "blend": "混合的终点对象（target 起点）",
+    "extrude_vp_share": "作为共享源的拉伸对象",
+    "compare": "被比较的对象",
+    "parallel_curves": "（用 target 即可）",
+    "point_math": "取点来源曲线对象",
+    "point_range_edit": "取点来源曲线对象",
+    "fit_to_points": "取点来源曲线对象",
+    "copy_props": "属性来源对象（target 放目标）",
+    "align_to_range": "（用选区）",
+    "find_snap": "（用坐标）",
+}
+_NEEDS_OTHER_SET = {"weld", "trim", "intersect", "powerclip", "place_text",
+                    "envelope_from_shape", "blend", "extrude_vp_share", "compare",
+                    "point_math", "point_range_edit", "fit_to_points", "copy_props"}
+
+
+def _precheck_shape_op(op: str, target: dict | None, other: dict | None,
+                       params: dict | None) -> None:
+    """在进 COM 之前把最常见的"参数错"变成清晰的参数错误。
+
+    只做**不会误判**的检查：未知 params 键给警告（不阻断）、缺 other 直接报错并说明该给什么。
+    """
+    if op in _NEEDS_OTHER_SET and not other:
+        hint = _OP_NEEDS_OTHER.get(op, "另一个对象")
+        raise CdrBadArgument(
+            f"{op} 需要 other 参数（{hint}）；写法：other={{\"name\": \"对象名\"}} "
+            f"或 other={{\"index\": 1}}")
+    if op in {"range_skew", "range_info", "range_add", "range_remove",
+              "duplicate_range", "clone_range", "align_to_range"} and not target:
+        # 这些默认作用于选区，没选区时给明确提示（不强制 target）
+        return
+
+
 def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = None,
              other: dict | None = None, *, radius: float = 0, distance_a: float = 0,
              distance_b: float = 0, leave_source: bool = True, leave_target: bool = True,
@@ -7090,7 +7134,13 @@ def shape_op(doc: Any, page_index: int | None, op: str, target: dict | None = No
              label: str = "cdr_shape_ops") -> dict:
     op = (op or "").lower().replace("-", "_")
     if op not in SHAPE_OPS:
-        raise CdrBadArgument(f"未知操作 {op!r}；可用：{', '.join(SHAPE_OPS)}")
+        import difflib
+
+        close = difflib.get_close_matches(op, SHAPE_OPS, n=3, cutoff=0.55)
+        hint = f"；你是不是想用：{', '.join(close)}" if close else ""
+        raise CdrBadArgument(
+            f"未知操作 {op!r}{hint}；完整可用列表见 cdr_help(tool='cdr_shape_ops')")
+    _precheck_shape_op(op, target, other, params)
 
     with mm_units(doc):
         page = _page(doc, page_index)
