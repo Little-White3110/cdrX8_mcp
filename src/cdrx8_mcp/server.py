@@ -58,6 +58,12 @@ def _guard(fn, *, extra: dict | None = None) -> dict:
         result = fn()
         if extra:
             result = {**extra, **result}
+        # 有些分支直接 return {"error": ...} 而不抛异常 —— 统一补 hint，
+        # 保证「任何错误响应都带下一步建议」这条约束对全部工具成立
+        if isinstance(result, dict) and result.get("error") and "hint" not in result:
+            hint = _ERROR_HINTS.get(str(result["error"]))
+            if hint:
+                result["hint"] = hint
         return result
     except CdrError as exc:
         out = exc.as_dict()
@@ -1849,15 +1855,15 @@ def cdr_import(document_id: str, path: str, center: bool = True,
 
 
 @mcp.tool()
-def cdr_export(document_id: str, path: str, format: str = "png",
+def cdr_export(document_id: str, path: str, format: str = "",
                dpi: int | None = None, overwrite: bool = False,
                selection: bool = False, export_options: dict | None = None,
                 export_api: str = "ex") -> dict:
     """导出 png / jpg / svg / pdf。
 
     Args:
-        path: 目标文件绝对路径。
-        format: png / jpg / svg / pdf。
+        path: 目标文件绝对路径（建议 .png/.jpg/.svg/.pdf，便于自动推断格式）。
+        format: png / jpg / svg / pdf；留空则按 path 的扩展名推断。
         dpi: 位图导出分辨率（png/jpg 有效）。实测：resolution≈dpi，大页面误差 <1%。
         overwrite: 目标已存在时是否覆盖。
         selection: 只导出当前选中对象（png/jpg/svg）。
@@ -1867,9 +1873,34 @@ def cdr_export(document_id: str, path: str, format: str = "png",
     """
     def _run():
         fmt = (format or "").lower().lstrip(".")
+        ext = os.path.splitext(path or "")[1].lower().lstrip(".")
+        warnings: list[str] = []
+        # format 缺省时按扩展名推断（path="out.png" 可省略 format）
+        if not fmt and ext:
+            fmt = {"jpeg": "jpg", "tif": "tif"}.get(ext, ext)
+            warnings.append(f"format 未指定，按扩展名推断为 {fmt!r}")
         if fmt not in {"png", "jpg", "svg", "pdf"}:
-            return {"error": "bad_argument", "message": "format 只支持 png / jpg / svg / pdf"}
+            return {"error": "bad_argument",
+                    "message": f"format 只支持 png / jpg / svg / pdf（收到 {format!r}）",
+                    "hint": "也可以只给 path=out.png，按扩展名自动推断"}
+        # 扩展名与 format 不一致：给出明确纠正而不是等 CorelDRAW 报错
+        if ext and ext != fmt and not (fmt == "jpg" and ext == "jpeg"):
+            return {"error": "bad_argument",
+                    "message": f"path 的扩展名 .{ext} 与 format={fmt!r} 不一致",
+                    "hint": f"把 path 改成 .{fmt}，或把 format 改成 {ext!r}"}
+        # 目录必须存在且可写（否则 COM 侧报一个很难懂的错）
+        out_dir = os.path.dirname(os.path.abspath(path or "")) or "."
+        if not os.path.isdir(out_dir):
+            return {"error": "bad_argument",
+                    "message": f"目标目录不存在：{out_dir}",
+                    "hint": "先创建目录，或换一个已存在的输出目录（建议用绝对路径）"}
+        if not os.access(out_dir, os.W_OK):
+            return {"error": "bad_argument",
+                    "message": f"目标目录不可写：{out_dir}",
+                    "hint": "换可写目录，或以管理员身份运行"}
         p, warn = resolve_write_path(path, overwrite=overwrite)
+        if warn:
+            warnings.append(warn)
         doc, _sess = _with_doc(document_id)
         result = _com(lambda _b: ops.export(doc, fmt, str(p), dpi=dpi,
                                             selection=selection,
@@ -1878,8 +1909,11 @@ def cdr_export(document_id: str, path: str, format: str = "png",
                       timeout=DEFAULT_EXPORT_TIMEOUT_S, label="cdr_export")
         if fmt in {"png", "jpg", "svg"}:
             result["scope"] = "selection" if selection else "current_page"
-        if warn:
-            result.setdefault("warnings", []).append(warn)
+        if warnings:
+            result.setdefault("warnings", [])
+            for w in warnings:
+                if w not in result["warnings"]:
+                    result["warnings"].append(w)
         return result
 
     return _guard(_run)

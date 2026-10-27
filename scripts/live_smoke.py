@@ -5188,6 +5188,36 @@ def main() -> int:
         check("⑥ cdr_close 正常收尾", no_error("cdr_close", wf92_cl),
               str(wf92_cl.get("closed")))
 
+    # ---------------- 15ct. 第九十三波：导出前置校验（目录/扩展名/推断/统一 hint） ----------------
+    print("\n[15ct] 第九十三波：cdr_export 前置健壮性")
+    ex93_doc = server.cdr_open(preset="A4")
+    if "document_id" in ex93_doc:
+        e93_id = ex93_doc["document_id"]
+        server.cdr_create(e93_id, [{"type": "rectangle", "x": 0, "y": 0,
+                                    "width": 30, "height": 20}])
+        bd93 = server.cdr_export(e93_id, "Z:/definitely-missing-dir/out.png",
+                                 format="png")
+        check("目标目录不存在时给出明确错误 + 建议",
+              bd93.get("error") == "bad_argument"
+              and "不存在" in str(bd93.get("message") or "")
+              and bool(bd93.get("hint")),
+              str(bd93.get("message"))[:46])
+        mx93 = server.cdr_export(e93_id, os.path.join(out, "mix93.svg"),
+                                 format="png")
+        check("扩展名与 format 不一致时指出怎么改",
+              mx93.get("error") == "bad_argument"
+              and ".svg" in str(mx93.get("message") or ""),
+              str(mx93.get("message"))[:46])
+        inf93 = server.cdr_export(e93_id, os.path.join(out, "infer93.png"))
+        check("省略 format 时按扩展名推断",
+              no_error("cdr_export(推断)", inf93)
+              and any("推断" in w for w in (inf93.get("warnings") or [])),
+              str(inf93.get("warnings"))[:60])
+        check("任何错误响应都带 hint（含直接 return 的错误）",
+              bool(bd93.get("hint")) and bool(mx93.get("hint")),
+              "ok" if bd93.get("hint") and mx93.get("hint") else "缺少 hint")
+        no_error("关闭第九十三波测试文档", server.cdr_close(e93_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

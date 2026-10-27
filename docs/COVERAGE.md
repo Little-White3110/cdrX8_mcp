@@ -2,7 +2,7 @@
 
 > 目的：证明"还有多少没探"。每一行要么有对应的工具，要么有实测失败证据。
 > 环境：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）/ Python 3.11.9 64 位
-> 最近更新：2026-10-28 第九十二波（**易用性**：cdr_find 截断/brief + 端到端最小工作流验收）
+> 最近更新：2026-10-28 第九十三波（**健壮性**：cdr_export 前置校验 / 统一 hint）
 
 ## 怎么得出这份清单
 
@@ -384,7 +384,7 @@
 
 ```powershell
 python -m pytest -q              # 93 项纯逻辑
-python scripts/live_smoke.py     # 604 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
+python scripts/live_smoke.py     # 608 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
 ```
 
 联调断言覆盖了上表所有 ✅ 项。反解脚本属于过程产物，已按要求放在 `tmp/` 并在完成时清理；
@@ -1513,7 +1513,7 @@ python scripts/live_smoke.py     # 604 项端到端（真实 CorelDRAW，**跑�
 | 主干 20 接口覆盖 | **670 / 743 = 90.2%** |
 | 已达 100% 的接口 | `IVGWindow`、`IVGFountainFill`、`IVGStyle`、`IVGColorContext`、`IVGDimension`、`IVGPowerClip`、`IVGGuide`、`IVGText`(结构体族)、`IVGToolStateAttributes`、`IVGToolShapeAttributes`、`IVGAppStatus`、`IVGPaletteManager`、`IVGTreeManager`、`IVGOnScreenText`、`IVGOnScreenCurve`、`IVGOutlineStyle`(读)、`IVGAppleEvents`… 共 **30+ 个接口** |
 | MCP 工具数 | **31**（含 cdr_help 能力目录） |
-| 端到端联调 | **604/604 通过**（真实 CorelDRAW 18.0.0.450） |
+| 端到端联调 | **608/608 通过**（真实 CorelDRAW 18.0.0.450） |
 | 单元测试 | **98/98 通过**（含 5 项目录防漂移） |
 | 已记录 X8 陷阱 | **170 条** |
 | 波次 | 87 轮（从 21.2% 起步） |
@@ -1818,6 +1818,21 @@ python -m pytest -q                       # 93 项纯 Python 单元测试
 > 都不会因为文档大而把上下文撑爆。
 > 端到端工作流冒烟则是**验收而非功能** —— 它保证新用户按文档走一遍是顺的，
 > 以后任何改动破坏了这条主路径，冒烟会立刻红。
+
+## 七之九十二、第九十三波已接入（2026-10-28，cdr_export 前置校验 / 统一 hint）
+
+| 改进 | 触发场景 | 改进前 → 改进后 |
+|---|---|---|
+| **目录存在性校验** | `path="Z:/不存在/out.png"` | 之前：COM 抛一个难懂的错 → 现在：`目标目录不存在：Z:
+ope` + 「先创建目录或换目录」 |
+| **目录可写性校验** | 只读目录 | 之前：导出失败信息模糊 → 现在：`目标目录不可写` + 建议 |
+| **扩展名/格式一致性** | `path="a.svg", format="png"` | 之前：按 png 导出成 .svg（埋雷）→ 现在：`扩展名 .svg 与 format='png' 不一致` + 「改 path 或改 format」 |
+| **格式自动推断** | `cdr_export(doc, "out.png")`（不传 format） | 之前：默认写死 png，扩展名可能不符 → 现在：按扩展名推断并在 `warnings` 里说明 |
+| **统一 hint 补齐** | 所有 `return {"error": …}` 分支 | `_guard` 现在给**直接 return 的错误字典**也补 hint —— 「任何错误响应都带下一步建议」这条约束对全部 31 个工具真正成立 |
+
+> **为什么改这个**：导出是整条链路最后一步，也是最容易因为路径问题失败的一步。
+> 之前失败只回一个 COM 错误码，用户（尤其 agent）不知道是路径问题还是格式问题，
+> 只能瞎试。现在三类失败都指向**具体怎么改**，且推断逻辑让 `format` 可以省略。
 
 ## 七之二、仍未接入（第三轮候选）
 
