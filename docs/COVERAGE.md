@@ -2,7 +2,7 @@
 
 > 目的：证明"还有多少没探"。每一行要么有对应的工具，要么有实测失败证据。
 > 环境：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）/ Python 3.11.9 64 位
-> 最近更新：2026-10-28 第九十一波（**易用性**：cdr_inspect 摘要模式 / 列表截断）
+> 最近更新：2026-10-28 第九十二波（**易用性**：cdr_find 截断/brief + 端到端最小工作流验收）
 
 ## 怎么得出这份清单
 
@@ -384,7 +384,7 @@
 
 ```powershell
 python -m pytest -q              # 93 项纯逻辑
-python scripts/live_smoke.py     # 596 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
+python scripts/live_smoke.py     # 604 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
 ```
 
 联调断言覆盖了上表所有 ✅ 项。反解脚本属于过程产物，已按要求放在 `tmp/` 并在完成时清理；
@@ -1513,7 +1513,7 @@ python scripts/live_smoke.py     # 596 项端到端（真实 CorelDRAW，**跑�
 | 主干 20 接口覆盖 | **670 / 743 = 90.2%** |
 | 已达 100% 的接口 | `IVGWindow`、`IVGFountainFill`、`IVGStyle`、`IVGColorContext`、`IVGDimension`、`IVGPowerClip`、`IVGGuide`、`IVGText`(结构体族)、`IVGToolStateAttributes`、`IVGToolShapeAttributes`、`IVGAppStatus`、`IVGPaletteManager`、`IVGTreeManager`、`IVGOnScreenText`、`IVGOnScreenCurve`、`IVGOutlineStyle`(读)、`IVGAppleEvents`… 共 **30+ 个接口** |
 | MCP 工具数 | **31**（含 cdr_help 能力目录） |
-| 端到端联调 | **596/596 通过**（真实 CorelDRAW 18.0.0.450） |
+| 端到端联调 | **604/604 通过**（真实 CorelDRAW 18.0.0.450） |
 | 单元测试 | **98/98 通过**（含 5 项目录防漂移） |
 | 已记录 X8 陷阱 | **170 条** |
 | 波次 | 87 轮（从 21.2% 起步） |
@@ -1805,6 +1805,19 @@ python -m pytest -q                       # 93 项纯 Python 单元测试
 > **为什么这条对易用性重要**：MCP 的每次调用结果都会进调用方上下文窗口。
 > 一个 2000 对象的文档，`inspect` 一次可能就吃掉几万 token —— 现在默认摘要 + 可选截断，
 > 让"看整体"和"看细节"分开，这是最实在的可控性。
+
+## 七之九十一、第九十二波已接入（2026-10-28，cdr_find 截断/brief + 端到端工作流验收）
+
+| 改进 | 落地 | 效果 |
+|---|---|---|
+| **查找结果截断** | `cdr_find(doc, type_id=1, limit=2)` | 返回 `count=6`（总数）+ 2 条明细 + `truncated=true` + 缩小范围的建议 |
+| **brief 模式** | `cdr_find(doc, brief=True)` | 每个对象只回 `name/type/type_id/index/bbox`，不带文字内容 —— 批量定位时省 token |
+| **端到端最小工作流验收**（新增 6 项） | `help → open → create → inspect(summary) → export → close` | 全链路一次通过：断言 31 工具/工作流 → document_id → 对象名 → revision+计数 → PNG 文件真实存在 → 关闭无错 |
+
+> 这两项把「低 token 成本操作」补齐到**查找**环节：`inspect` 管全局概览，`find` 管精确定位，
+> 都不会因为文档大而把上下文撑爆。
+> 端到端工作流冒烟则是**验收而非功能** —— 它保证新用户按文档走一遍是顺的，
+> 以后任何改动破坏了这条主路径，冒烟会立刻红。
 
 ## 七之二、仍未接入（第三轮候选）
 

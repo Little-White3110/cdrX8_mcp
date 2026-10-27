@@ -5134,6 +5134,60 @@ def main() -> int:
               str(bad91.get("message"))[:50])
         no_error("关闭第九十一波测试文档", server.cdr_close(i91_id))
 
+    # ---------------- 15cr. 第九十二波：cdr_find limit/brief + 端到端最小工作流 ----------------
+    f92_doc = server.cdr_open(preset="A4")
+    if "document_id" in f92_doc:
+        f92_id = f92_doc["document_id"]
+        server.cdr_create(f92_id, [
+            {"type": "rectangle", "x": i * 12, "y": 0, "width": 8, "height": 8}
+            for i in range(6)])
+        fl92 = server.cdr_find(f92_id, type_id=1, limit=2)
+        if no_error("cdr_find(limit=2)", fl92):
+            check("查找结果可截断并给出总数（cdr_find limit）",
+                  len(fl92.get("shapes") or []) == 2
+                  and fl92.get("count") == 6
+                  and fl92.get("truncated") is True,
+                  f"shown={len(fl92.get('shapes') or [])} total={fl92.get('count')}")
+        fb92 = server.cdr_find(f92_id, type_id=1, brief=True, limit=0)
+        if no_error("cdr_find(brief)", fb92):
+            first92 = (fb92.get("shapes") or [{}])[0]
+            check("brief 模式只回关键字段（省 token）",
+                  "name" in first92 and "bbox" in first92,
+                  f"keys={sorted(first92)}")
+        no_error("关闭第九十二波测试文档", server.cdr_close(f92_id))
+
+    # ---------------- 15cs. 第九十二波：端到端最小工作流（新用户路径） ----------------
+    print("\n[15cs] 端到端最小工作流：help → connect → open → create → inspect → export → close")
+    wf92_help = server.cdr_help()
+    check("① cdr_help 可直接开始（31 个工具 + 工作流）",
+          (wf92_help.get("tool_count") or 0) >= 31
+          and len(wf92_help.get("workflow") or []) >= 5,
+          f"tools={wf92_help.get('tool_count')}")
+    wf92_open = server.cdr_open(preset="A4")
+    wf92_id = wf92_open.get("document_id")
+    check("② cdr_open 建文档并拿到 document_id", bool(wf92_id), str(wf92_id))
+    if wf92_id:
+        wf92_cr = server.cdr_create(wf92_id, [
+            {"type": "rectangle", "x": 0, "y": 0, "width": 40, "height": 30,
+             "fill": "#3388CC"}])
+        check("③ cdr_create 建图元并返回 name",
+              len(wf92_cr.get("created") or []) == 1,
+              str((wf92_cr.get("created") or [{}])[0].get("name")))
+        wf92_in = server.cdr_inspect(wf92_id, include="summary")
+        check("④ cdr_inspect(summary) 拿到 revision/snapshot 与计数",
+              (wf92_in.get("state") or {}).get("revision") is not None
+              and wf92_in.get("shape_count") == 1,
+              f"rev={(wf92_in.get('state') or {}).get('revision')} "
+              f"shapes={wf92_in.get('shape_count')}")
+        wf92_out = os.path.join(out, "wf92.png")
+        wf92_ex = server.cdr_export(wf92_id, wf92_out, format="png")
+        check("⑤ cdr_export 导出成功且文件存在",
+              no_error("cdr_export", wf92_ex) and os.path.exists(wf92_out),
+              str(wf92_ex.get("path") or wf92_ex.get("message"))[:50])
+        wf92_cl = server.cdr_close(wf92_id)
+        check("⑥ cdr_close 正常收尾", no_error("cdr_close", wf92_cl),
+              str(wf92_cl.get("closed")))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

@@ -1102,13 +1102,45 @@ def cdr_layers(document_id: str, action: str = "list",
 
 @mcp.tool()
 def cdr_find(document_id: str, name: str | None = None, type_id: int | None = None,
-             page_index: int | None = None) -> dict:
-    """按名字或类型查找对象（type_id: 1矩形 2椭圆 3曲线 4多边形 6文字 7组合体 9参考线）。"""
+             page_index: int | None = None, limit: int = 100,
+             brief: bool = False) -> dict:
+    """按名字或类型查找对象（type_id: 1矩形 2椭圆 3曲线 4多边形 6文字 7组合体 9参考线）。
+
+    Args:
+        name: 精确名字；与 type_id 可同时给（取交集）。
+        type_id: 按类型筛选。
+        page_index: 限定页面（1 起）；不传则活动页。
+        limit: 最多返回多少个（默认 100；0 表示不限制）。
+        brief: true 时每个对象只回 name/type/index/bbox，不带文字内容（更省 token）。
+    """
     def _run():
         doc, _sess = _with_doc(document_id)
         found = _com(lambda _b: ops.find_shapes(doc, name=name, type_id=type_id,
                                                 page_index=page_index), label="cdr_find")
-        return {"count": len(found), "shapes": found}
+        total = len(found)
+        cap = int(limit) if limit is not None else 0
+        shown = found
+        truncated = False
+        if cap and total > cap:
+            shown = found[:cap]
+            truncated = True
+        if brief:
+            kept = []
+            for item in shown:
+                if isinstance(item, dict):
+                    kept.append({k: item.get(k) for k in
+                                 ("name", "type", "type_id", "index", "bbox")
+                                 if k in item})
+                else:
+                    kept.append(item)
+            shown = kept
+        out: dict = {"count": total, "shapes": shown, "brief": bool(brief)}
+        if truncated:
+            out["truncated"] = True
+            out["returned"] = cap
+            out["hint"] = (f"共 {total} 个匹配，只返回前 {cap} 个；传 limit=0 取全部，"
+                           f"或加 type_id/name 缩小范围")
+        return out
 
     return _guard(_run)
 
