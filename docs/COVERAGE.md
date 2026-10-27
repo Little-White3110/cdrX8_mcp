@@ -2,7 +2,7 @@
 
 > 目的：证明"还有多少没探"。每一行要么有对应的工具，要么有实测失败证据。
 > 环境：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）/ Python 3.11.9 64 位
-> 最近更新：2026-10-27 第八十五波（图像列表登记 ICUIImageList）
+> 最近更新：2026-10-27 第八十六波（图像列表收字节 / 状态栏位图 / 数据源 / 配置文件安装）
 
 ## 怎么得出这份清单
 
@@ -244,6 +244,7 @@
 > * 混合 **可用（第十七波）**：`CreateBlend` 传全参数且 `Path=None` 时成功；
 >   效果经 `Effects.Item(i).Blend`（IVGEffectBlend）读写 Steps/Spacing/Angle 等。
 > * 调色板查找/插入/默认 / 命名视图 / 数据字段重排 / B样条扩容 **可用（第七十七波）**：`Palette.FindColor/InsertColor/MakeDefault`、`Views.AddActiveView`、`DataField.Reorder`、`ControlPoints.Resize`。
+> * 图像列表收字节 / 状态栏位图 / 数据源注销 / 配置文件安装 **可用（第八十六波）**：`imagelist_info(image_path=…)`、`status_text(set_bitmap)`、`datasource_info`、`color_profile_install`。
 > * 图像列表登记 **可用（第八十五波）**：`cdr_doc(imagelist_info)`，`AddBitmap(键, ICUIBitmapImage)`。
 > * 主窗口控制 / 屏幕矩形 / 状态栏 / GMS 路径 **可用（第八十四波）**：`frame_maximize/restore/tile/combine`、`screen_rect`、`status_text`、`gms_info`。
 > * 立体化双灯 / 剪贴板 / 组件检测 **可用（第八十三波）**：`extrude_set(effect={"lights":[…]})`、`clipboard_info`、`components_info`。
@@ -382,7 +383,7 @@
 
 ```powershell
 python -m pytest -q              # 93 项纯逻辑
-python scripts/live_smoke.py     # 571 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
+python scripts/live_smoke.py     # 575 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
 ```
 
 联调断言覆盖了上表所有 ✅ 项。反解脚本属于过程产物，已按要求放在 `tmp/` 并在完成时清理；
@@ -390,13 +391,13 @@ python scripts/live_smoke.py     # 571 项端到端（真实 CorelDRAW，**跑�
 
 ---
 
-## 六、量化覆盖率（2026-10-27 第八十五波实测）
+## 六、量化覆盖率（2026-10-27 第八十六波实测）
 
 方法：反解类型库拿到 196 个自动化类 / **1619** 个方法（已剔除 `QueryInterface` 等 COM 基础设施）；
 用 AST 扫描 `src/cdrx8_mcp/*.py`，收集所有 `.方法名(` 调用与 `setattr/getattr` 的属性名，
 与主干接口的方法名求交集。**注意：属性名（如 `curve.Nodes`）也会被计入**，所以本波数字含真实属性访问。
 
-**全局：1197 / 1619 = 73.9%**（21.2% → … → 73.7% → 本轮 73.9%）
+**全局：1201 / 1619 = 74.2%**（21.2% → … → 73.9% → 本轮 74.2%）
 **主干 20 接口：670 / 743 = 90.2%**
 
 复现命令：`python scripts/coverage_audit.py`（会临时展开类型库到 `tmp/gen_py`，跑完自动清理）
@@ -1709,6 +1710,23 @@ python -m pytest -q                       # 93 项纯 Python 单元测试
 > 永远不可达，表现为「报的错来自下一个无关分支的 `find_shape`」。
 > **教训**：给这种巨型 `if act == ...` 链加分支时，锚点必须选**顶层 `    if act ==`**
 > （4 格缩进）而不是 8 格缩进的嵌套行，改完立刻用 `pytest` + 一次单点调用验证可达性。
+
+## 七之八十五、第八十六波已接入（2026-10-27，图像列表收字节 / 状态栏位图）
+
+| 能力 | 落地位置 | 实测 |
+|---|---|---|
+| **图像列表收原始字节**（AddImage + CreateBitmapImage） | `cdr_doc(action="imagelist_info", settings={"key":…, "image_path":"*.bmp"})` | ✅ `AddImage(键, 原始字节, MaxSize)` 返回 True；`CreateBitmapImage(字节, MaxSize)` 拿到**真图**（Valid=True、尺寸 1×1，不再是空图） |
+| **状态栏位图**（ICUIStatusText.SetBitmap → 2/2 满） | `cdr_doc(action="status_text", settings={"caption":…, "set_bitmap":True})` | ✅ `SetBitmap(CreateBitmapImage())` 可调 |
+| **数据源注销**（ICUIApplication.UnregisterDataSource） | `cdr_doc(action="datasource_info", settings={"name":"mcp"})` | ✅ 可调（不存在时返回 False）；`DataContext` 存在 |
+| **色彩配置文件安装**（IVGColorProfiles.Install） | `cdr_doc(action="color_profile_install", settings={"path":"*.icc"})` | ✅ 可调（非法 .icc 返回 False 不抛异常，数量 64→64 如实返回） |
+
+> **第八十六波关键发现**：`CreateBitmapImage` / `ImageList.AddImage` 的第一个参数类型是
+> **VT_VARIANT（原始图像字节）**，不是对象 —— 传 `ICUIBitmapImage`/`IVGBitmap` 都会
+> 报「为参数 ImageData 指定的值无效」。传字节后 `Valid/Width/Height` 才有真实值
+> （之前空构造恒为 0/0/0，是我误判成"恒为 0"）。
+> `ICUIStatusText` 至此 **2/2 满**，`ICUIImageList` **5/5 满**。
+> 另：`RegisterDataSource` 需要 `ICUIDataSourceFactory` 实例，纯自动化不可达；
+> `Application.Printers` 在本机报 `STG_E_FILENOTFOUND`（无打印机），也留不可用。
 
 ## 七之二、仍未接入（第三轮候选）
 

@@ -4947,6 +4947,49 @@ def main() -> int:
                   f"count={il85.get('image_count')} key={il85.get('added_key')}")
         no_error("关闭图像列表测试文档", server.cdr_close(i85_id))
 
+    # ---------------- 15cn. 第八十六波：图像列表传字节 / 状态栏位图 / 数据源 / 配置文件安装 ----------------
+    print("\n[15cn] 第八十六波：ImageList.AddImage/CreateBitmapImage(字节)·StatusText.SetBitmap·UnregisterDataSource·ColorProfiles.Install")
+    i86_doc = server.cdr_open(preset="A4")
+    if "document_id" in i86_doc:
+        i86_id = i86_doc["document_id"]
+        bmp86 = (b"BM" + (58).to_bytes(4, "little") + b"\x00" * 4
+                 + (54).to_bytes(4, "little") + (40).to_bytes(4, "little")
+                 + (1).to_bytes(4, "little") + (1).to_bytes(4, "little")
+                 + (1).to_bytes(2, "little") + (24).to_bytes(2, "little")
+                 + b"\x00" * 24 + b"\xff\xff\xff\x00")
+        p86 = os.path.join(out, "w86_icon.bmp")
+        with open(p86, "wb") as fh:
+            fh.write(bmp86)
+        il86 = server.cdr_doc(i86_id, action="imagelist_info",
+                              settings={"key": "MCP 图标", "image_path": p86})
+        if no_error("cdr_doc(imagelist_info 字节)", il86):
+            check("图像列表可收原始字节（AddImage + CreateBitmapImage）",
+                  il86.get("add_mode") == "bytes"
+                  and il86.get("bitmap_valid") is True
+                  and il86.get("bitmap_size") == [1, 1],
+                  f"mode={il86.get('add_mode')} size={il86.get('bitmap_size')}")
+        st86 = server.cdr_doc(i86_id, action="status_text",
+                              settings={"caption": "MCP", "set_bitmap": True})
+        if no_error("cdr_doc(status_text 位图)", st86):
+            check("状态栏可设位图（ICUIStatusText.SetBitmap）",
+                  st86.get("bitmap_set") is True,
+                  str(st86.get("bitmap_set")))
+        ds86 = server.cdr_doc(i86_id, action="datasource_info",
+                              settings={"name": "mcp"})
+        if no_error("cdr_doc(datasource_info)", ds86):
+            check("数据源可注销（UnregisterDataSource）",
+                  ds86.get("unregistered") is False
+                  and ds86.get("has_data_context") is True,
+                  f"unregistered={ds86.get('unregistered')}")
+        cp86 = server.cdr_doc(i86_id, action="color_profile_install",
+                              settings={"path": p86})
+        if no_error("cdr_doc(color_profile_install)", cp86):
+            check("配置文件安装可调（ColorProfiles.Install，非法文件如实返回 False）",
+                  cp86.get("installed") is False
+                  and cp86.get("count_before") == cp86.get("count_after"),
+                  f"installed={cp86.get('installed')}")
+        no_error("关闭第八十六波测试文档", server.cdr_close(i86_id))
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

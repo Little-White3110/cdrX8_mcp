@@ -7,7 +7,7 @@
 
 > **已在真机验证**：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）+ Python 3.11.9 64 位
 > - 单元测试 **93 项通过**
-> - 端到端联调（真实 CorelDRAW）**571/571 通过**
+> - 端到端联调（真实 CorelDRAW）**575/575 通过**
 > - 能力边界来自对 `vgcoreauto.tlb` 的反解（196 个自动化类 / 1619 个方法）+ 逐项实跑
 > - 方法级覆盖 **71.8%**（主干 20 接口 90.2%），可用 `python scripts/coverage_audit.py` 复现
 > - 完整清单见 [docs/COVERAGE.md](docs/COVERAGE.md)
@@ -186,7 +186,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ---
 
-## X8 特有问题（169 条，全部实测）
+## X8 特有问题（170 条，全部实测）
 
 这些是 **X8 与 2024+ 的差异**，也是本项目存在的主要理由。
 
@@ -361,6 +361,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 | 167 | **立体化灯光 putter 要 `_oleobj_.Invoke` 直调** | `ext.LightPresent(i) = v` / `ext.LightIntensity(i) = v` 的 setattr 走不通（pywin32 按调用号派发失败）；要用 `ext._oleobj_.Invoke(did, 0, DISPATCH_PROPERTYPUT, False, i, v)` 按 dispid 直调 —— 这也是第 78 波只能开一盏灯的根因 | `extrude_set(effect={"lights":[{present,intensity}…]})` 已支持多盏灯 |
 | 168 | **UI 自动化家族的可用面比之前判断的宽** | `ICUIFrameWork.Application` （ICUIApplication）的 `CreateScreenRect`（4 整数）/`CreateImageList`/`CreateBitmapImage`/`CreateStatusText` 全部可用；`ICUIFrameWindow` 的 `Maximize`/`Restore`/`TileViews`/`CombineViews` 也可用。真正不可达的只剩需要命令栏 GUID 的 `ICUIAutomation` 与 dock 族 | 已封装 `cdr_view(frame_*)` 与 `cdr_doc(screen_rect/status_text/gms_info)` |
 | 169 | **给巨型 `if act ==` 链加分支要选顶层锚点** | 把分支插到某个分支 `return` 之后会变成**死代码**（表现是「报错来自下一个无关分支」）；`ImageList.AddBitmap` 的第二参是 `CreateBitmapImage()` 的产物（ICUIBitmapImage），**不是** IVGBitmap | 已封装 `cdr_doc(imagelist_info)`；加分支后必须单点调用验证可达性 |
+| 170 | **`CreateBitmapImage`/`AddImage` 收原始字节而非对象** | 第一参是 VT_VARIANT 原始图像字节；传 `ICUIBitmapImage`/`IVGBitmap` 报「为参数 ImageData 指定的值无效」。空构造的 `CreateBitmapImage()` 的 Valid/Width/Height 恒为 0，传字节后才有真实尺寸。`RegisterDataSource` 要 ICUIDataSourceFactory（不可达）；`Application.Printers` 无打印机时报 STG_E_FILENOTFOUND | 已封装 `imagelist_info(image_path=…)`、`status_text(set_bitmap)`、`datasource_info`、`color_profile_install` |
 
 改代码前请先读 [`src/cdrx8_mcp/constants.py`](src/cdrx8_mcp/constants.py) 里的注释。
 
@@ -410,7 +411,7 @@ cdr_status → cdr_connect → cdr_open → cdr_inspect
 
 ```powershell
 python -m pytest -q                # 93 项逻辑测试，任何平台可跑
-python scripts/live_smoke.py       # 571 项端到端（跑前先确认没有残留 CorelDRW 进程）
+python scripts/live_smoke.py       # 575 项端到端（跑前先确认没有残留 CorelDRW 进程）
 python scripts/live_smoke.py --keep   # 保留文档方便肉眼看效果
 python scripts/coverage_audit.py   # 覆盖率审计（复现 README/COVERAGE 里的数字）
 ```

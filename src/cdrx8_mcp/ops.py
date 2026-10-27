@@ -671,7 +671,8 @@ DOC_ACTIONS = ("info", "clear_selection", "clear_undo", "palette", "arrowhead",
                "datafield_info", "select_color_profile",
                "clipboard_info", "components_info",
                "screen_rect", "status_text", "gms_info",
-               "imagelist_info",
+               "imagelist_info", "color_profile_install",
+               "datasource_info",
                "fountain_transform", "arrowhead_unnamed",
                # 第四十六波：CorelScriptTools（VBA 辅助对象）单位/数学/日期
                "script_tools")
@@ -866,9 +867,10 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
             })
         return {"action": act, "count": count, "palettes": items}
     if act == "imagelist_info":
-        # 实测：ICUIApplication.CreateImageList() → ICUIImageList，
-        # AddBitmap(键, ICUIBitmapImage) —— 第二参是 CreateBitmapImage() 的产物
-        # （不是 IVGBitmap！）；ImageCount / ImageExists / ImageKeys / RemoveImage 可用
+        # 实测：ICUIApplication.CreateImageList() → ICUIImageList；
+        # AddBitmap(键, ICUIBitmapImage) 的第二参是 CreateBitmapImage() 的产物（不是 IVGBitmap）；
+        # AddImage(键, **原始图像字节**, MaxSize) 与 CreateBitmapImage(原始字节, MaxSize)
+        # 都直接收字节 —— 传字节时才有真实尺寸（Valid/Width/Height）
         app = _app_of(doc)
         fw = _s(lambda: app.FrameWork)
         if fw is None:
@@ -880,15 +882,29 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
         il = _s(lambda: uiapp.CreateImageList())
         if il is None:
             raise CdrComFailure("CreateImageList 返回空")
-        bi = _s(lambda: uiapp.CreateBitmapImage())
+        key = str(spec.get("key") or "mcp 图标")
+        img_path = spec.get("image_path")
+        bi = None
         added = None
-        if bi is not None:
-            key = str(spec.get("key") or "mcp 图标")
-            try:
-                il.AddBitmap(key, bi)
-                added = key
-            except Exception as exc:  # noqa: BLE001
-                return {"action": act, "add_error": str(exc)[:80]}
+        add_mode = None
+        if img_path:
+            raw = None
+            if os.path.exists(str(img_path)):
+                with open(str(img_path), "rb") as fh:
+                    raw = fh.read()
+            if raw is None:
+                raise CdrBadArgument(f"image_path 不存在：{img_path}")
+            bi = _s(lambda: uiapp.CreateBitmapImage(raw, 0))
+            il.AddImage(key, raw, 0)
+            added, add_mode = key, "bytes"
+        else:
+            bi = _s(lambda: uiapp.CreateBitmapImage())
+            if bi is not None:
+                try:
+                    il.AddBitmap(key, bi)
+                    added, add_mode = key, "bitmap_image"
+                except Exception as exc:  # noqa: BLE001
+                    return {"action": act, "add_error": str(exc)[:80]}
         keys = _s(lambda: il.ImageKeys)
         return {"action": act,
                 "image_count": _n(lambda: int(il.ImageCount), 0),
@@ -896,8 +912,14 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
                 "exists": (bool(_s(lambda: bool(il.ImageExists(added)), False))
                            if added else None),
                 "keys": str(keys)[:80],
-                "note": "ICUIBitmapImage 的 Valid/Width/Height 恒为 0（空图），"
-                "但可登记进 ImageList"}
+                "add_mode": add_mode,
+                "bitmap_valid": (bool(_s(lambda: bool(bi.Valid), False))
+                                 if bi is not None else None),
+                "bitmap_size": ([_n(lambda: int(bi.Width)),
+                                 _n(lambda: int(bi.Height))]
+                                if bi is not None else None),
+                "note": "空 CreateBitmapImage() 的 Valid/Width/Height 恒为 0；"
+                        "传原始图像字节（settings.image_path）才有真实尺寸"}
     if act == "palette_color":
         app = _app_of(doc)
         pi = int(palette_index if palette_index is not None else 1)
@@ -1896,6 +1918,36 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
                 "data_present": bool(_s(lambda: bool(clip.DataPresent), False)),
                 "valid": bool(_s(lambda: bool(clip.Valid), False)),
                 "empty": bool(_s(lambda: bool(clip.Empty), False))}
+    if act == "color_profile_install":
+        # 实测：IVGColorProfiles.Install(文件名) 可调（非法 .icc 返回 False 而不抛异常）
+        app = _app_of(doc)
+        cm = _s(lambda: app.ColorManager)
+        profiles = _s(lambda: cm.ColorProfiles) if cm is not None else None
+        if profiles is None:
+            raise CdrComFailure("取不到 ColorProfiles")
+        spec = dict(settings or {})
+        fname = spec.get("path") or path
+        if not fname:
+            raise CdrBadArgument("需要 settings.path / path 指向 .icc 文件")
+        before = _n(lambda: int(profiles.Count), 0)
+        ok = bool(_s(lambda: bool(profiles.Install(str(fname))), False))
+        return {"action": act, "file": str(fname), "installed": ok,
+                "count_before": before,
+                "count_after": _n(lambda: int(profiles.Count), 0)}
+    if act == "datasource_info":
+        # 实测：ICUIApplication.UnregisterDataSource(名字) 可调（不存在时 False）；
+        # RegisterDataSource 需要 ICUIDataSourceFactory 实例 —— 不可达
+        app = _app_of(doc)
+        fw = _s(lambda: app.FrameWork)
+        uiapp = _s(lambda: fw.Application) if fw is not None else None
+        if uiapp is None:
+            raise CdrComFailure("取不到 FrameWork.Application")
+        spec = dict(settings or {})
+        name = str(spec.get("name") or "mcp")
+        removed = bool(_s(lambda: bool(uiapp.UnregisterDataSource(name)), False))
+        return {"action": act, "name": name, "unregistered": removed,
+                "has_data_context": _s(lambda: uiapp.DataContext) is not None,
+                "note": "RegisterDataSource 需要 ICUIDataSourceFactory，纯自动化不可达"}
     if act == "components_info":
         # 实测：Application.Components → IVGComponents（IsComponentInstalled）
         comps = _s(lambda: _app_of(doc).Components)
@@ -1933,7 +1985,14 @@ def doc_ops(doc: Any, action: str, *, target: dict | None = None,
             raise CdrComFailure("CreateStatusText 返回空")
         caption = str(spec.get("caption") or "MCP 状态")
         st.SetCaptionText(caption)
-        return {"action": act, "caption_set": caption}
+        bitmap_set = None
+        if spec.get("set_bitmap"):
+            # 实测：ICUIStatusText.SetBitmap(ICUIBitmapImage) 收 CreateBitmapImage() 产物
+            bi = _s(lambda: uiapp.CreateBitmapImage())
+            if bi is not None:
+                st.SetBitmap(bi)
+                bitmap_set = True
+        return {"action": act, "caption_set": caption, "bitmap_set": bitmap_set}
     if act == "gms_info":
         gms = _s(lambda: app.GMSManager)
         if gms is None:
