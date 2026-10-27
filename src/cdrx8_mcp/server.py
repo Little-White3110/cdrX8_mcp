@@ -161,7 +161,10 @@ _TOOL_CATALOG: dict[str, dict] = {
     "cdr_pages": {"purpose": "页面管理", "inline": ("list", "add", "delete", "rename",
                                                   "activate", "size", "preset", "layout")},
     "cdr_path": {"purpose": "路径级操作（子路径/偏移/拟合/映射）", "actions": "PATH_ACTIONS"},
-    "cdr_color": {"purpose": "颜色对象与色彩管理", "actions": "COLOR_OBJECT_ACTIONS"},
+    "cdr_color": {"purpose": "颜色解析/转换/混合，以及颜色对象自身能力",
+                   "inline": ("info", "parse", "convert", "blend", "components",
+                               "name", "to_string"),
+                   "extra_actions": "COLOR_OBJECT_ACTIONS"},
     "cdr_doc": {"purpose": "文档级杂项（调色板/参考线/设置/窗口/系统信息）",
                 "actions": "DOC_ACTIONS"},
     "cdr_view": {"purpose": "视图与缩放/叠加层/窗口控制", "actions": "VIEW_ACTIONS"},
@@ -193,6 +196,11 @@ def _catalog_entry(name: str, entry: dict) -> dict:
     inline = entry.get("inline")
     if inline:
         out["actions"] = list(inline)
+    extra = entry.get("extra_actions")
+    if extra:
+        merged = set(out.get("actions") or [])
+        merged |= {str(v) for v in getattr(_ops, extra, ())}
+        out["actions"] = sorted(merged)
     ro = entry.get("read_only")
     if ro:
         out["read_only_actions"] = sorted({str(v) for v in getattr(_ops, ro, ())})
@@ -201,9 +209,201 @@ def _catalog_entry(name: str, entry: dict) -> dict:
     return out
 
 
+
+# 高频 action 的可直接复制用法（tool → action → 示例）
+_ACTION_EXAMPLES: dict[str, dict[str, str]] = {
+    "cdr_shape_ops": {
+        "weld": 'cdr_shape_ops(doc, op="weld", target={"selection": true})',
+        "trim": 'cdr_shape_ops(doc, op="trim", target={"selection": true})',
+        "extrude": 'cdr_shape_ops(doc, op="extrude", target={"name": n}, params={"depth": 20})',
+        "extrude_set": 'cdr_shape_ops(doc, op="extrude_set", target={"name": n}, '
+                       'effect={"lights": [{"present": true, "intensity": 80}], '
+                       '"bevel_depth": 2, "bevel_angle": 30})',
+        "lens": 'cdr_shape_ops(doc, op="lens", target={"name": n}, params={"type": 1})',
+        "drop_shadow": 'cdr_shape_ops(doc, op="drop_shadow", target={"name": n}, '
+                       'params={"x": 3, "y": -3, "feather": 5})',
+        "powerclip": 'cdr_shape_ops(doc, op="powerclip", target={"name": 内容}, '
+                     'other={"name": 容器})',
+        "range_skew": 'cdr_shape_ops(doc, op="range_skew", params={"angle_x": 10, "cx": 20, "cy": 5})',
+        "hatch_fill": 'cdr_shape_ops(doc, op="hatch_fill", target={"name": n}, '
+                      'params={"pattern_origin": [2, 3], "fill_scale": 2})',
+        "point_math": 'cdr_shape_ops(doc, op="point_math", other={"name": 曲线}, '
+                      'params={"spacing": 10, "index_a": 1, "index_b": 2})',
+        "point_range_edit": 'cdr_shape_ops(doc, op="point_range_edit", other={"name": 曲线}, '
+                            'params={"reverse": true, "append_from": 另一曲线名})',
+        "distort": 'cdr_shape_ops(doc, op="distort", target={"name": n}, '
+                   'params={"kind": "zipper", "amplitude": 20, "frequency": 5})',
+        "blend": 'cdr_shape_ops(doc, op="blend", target={"name": a}, other={"name": b}, '
+                 'params={"steps": 5})',
+        "range_info": 'cdr_shape_ops(doc, op="range_info", params={"use_selection": true})',
+        "align_to_range": 'cdr_shape_ops(doc, op="align_to_range", target={"selection": true}, '
+                          'params={"horizontal": "left", "vertical": "center"})',
+    },
+    "cdr_modify": {
+        "__call__": 'cdr_modify(doc, {"name": n}, {"width": 40, "fill": "#FF0000"})',
+        "batch_all": 'cdr_modify(doc, {"all": true}, {"outline": {"width": 0.5}})',
+        "batch_type": 'cdr_modify(doc, {"type_id": 1}, {"fill": None})  # 1=矩形',
+        "data": 'cdr_modify(doc, {"name": n}, {"data": {"SKU": "A-123"}})',
+    },
+    "cdr_text": {
+        "__call__": 'cdr_text(doc, {"name": n}, text="你好", font="Arial", size=12)',
+        "columns": 'cdr_text(doc, {"name": n}, columns={"count": 2, "widths": [30, 30], '
+                   '"gutters": [20]})',
+        "paragraph_format": 'cdr_text(doc, {"name": n}, paragraph_format={"line_spacing": 150})',
+        "runs": 'cdr_text(doc, {"name": n}, runs=true)',
+    },
+    "cdr_path": {
+        "fit_to_points": 'cdr_path(doc, {"name": n}, action="fit_to_points", '
+                          'other={"name": 曲线}, params={"spacing": 10, "tolerance": 3})',
+        "point_at_offset": 'cdr_path(doc, {"name": n}, action="point_at_offset", '
+                           'params={"offset": 5})',
+    },
+    "cdr_node": {
+        "__call__": 'cdr_node(doc, {"name": n}, action="list")',
+        "move": 'cdr_node(doc, {"name": n}, action="move", index=1, x=10, y=10)',
+    },
+    "cdr_doc": {
+        "palette_open_fixed": 'cdr_doc(doc, action="palette_open_fixed", palette_id=1)',
+        "imagelist_info": 'cdr_doc(doc, action="imagelist_info", '
+                          'settings={"key": "图标", "image_path": "*.bmp"})',
+        "windows": 'cdr_doc(doc, action="windows", settings={"arrange": 1})',
+        "outline_styles_save": 'cdr_doc(doc, action="outline_styles_save")',
+        "bspline_resize": 'cdr_doc(doc, action="bspline_resize", color_index=4, value=6, '
+                          'settings={"insert": {"segment": 2, "count": 1, "x": 5, "y": 5}})',
+    },
+    "cdr_view": {
+        "frame_maximize": 'cdr_view(doc, action="frame_maximize")',
+        "zoom_fit_page": 'cdr_view(doc, action="zoom_fit_page")',
+        "overlay_points": 'cdr_view(doc, action="overlay_points", settings={"points": [[0,0],[10,10]]})',
+    },
+    "cdr_export": {
+        "__call__": 'cdr_export(doc, r"C:/out.png", format="png", dpi=150)',
+        "selection": 'cdr_export(doc, r"C:/sel.png", selection=True)',
+    },
+    "cdr_color": {
+        "__call__": 'cdr_color(action="parse", color="#FF8800")',
+        "parse": 'cdr_color(action="parse", color="#FF8800")',
+    },
+    "cdr_create": {
+        "__call__": 'cdr_create(doc, [{"type": "rectangle", "x": 0, "y": 0, '
+                    '"width": 20, "height": 10}])',
+        "curve_segment": 'cdr_create(doc, [{"type": "curve_segment", "x1": 0, '
+                         '"y1": 0, "x2": 40, "y2": 0}])',
+        "paragraph_text": 'cdr_create(doc, [{"type": "paragraph_text", "x": 0, "y": 0, '
+                          '"x2": 80, "y2": 60, "text": "正文"}])',
+        "ellipse": 'cdr_create(doc, [{"type": "ellipse", "x": 0, "y": 0, '
+                    '"width": 20, "height": 10}])',
+    },
+    "cdr_style": {
+        "list": 'cdr_style(doc, action="list")',
+        "create": 'cdr_style(doc, action="create", name="我的样式", target={"name": n})',
+        "apply": 'cdr_style(doc, action="apply", name="我的样式", target={"name": n})',
+    },
+    "cdr_pages": {
+        "list": 'cdr_pages(doc, action="list")',
+        "add": 'cdr_pages(doc, action="add", value=2)',
+        "preset": 'cdr_pages(doc, action="preset", preset="A4", landscape=True)',
+    },
+    "cdr_outline": {
+        "info": 'cdr_outline(doc, {"name": n}, action="info")',
+        "set": 'cdr_outline(doc, {"name": n}, action="set", width=1.5, color="#000")',
+    },
+    "cdr_snap": {
+        "list": 'cdr_snap(doc, action="list")',
+        "of_type": 'cdr_snap(doc, action="of_type", type_id=1, x=0, y=0)',
+        "add_user": 'cdr_snap(doc, action="add_user", x=10, y=10)',
+    },
+    "cdr_bitmap": {
+        "info": 'cdr_bitmap(doc, {"name": n}, action="info")',
+        "convert": 'cdr_bitmap(doc, {"name": n}, action="convert", mode="gray")',
+        "resample": 'cdr_bitmap(doc, {"name": n}, action="resample", width=200, '
+                    'height=200, dpi=96)',
+    },
+    "cdr_layers": {
+        "list": 'cdr_layers(doc, action="list")',
+        "add": 'cdr_layers(doc, action="add", name="图层2")',
+        "visible": 'cdr_layers(doc, action="visible", name="图层2", value=True)',
+    },
+    "cdr_align": {
+        "__call__": 'cdr_align(doc, horizontal="center", vertical="middle", '
+                    'relative_to="page")',
+        "distribute": 'cdr_align(doc, distribute="horizontal")',
+    },
+    "cdr_rect": {
+        "info": 'cdr_rect(action="info", rect={"left": 0, "top": 0, "right": 10, '
+                '"bottom": 10})',
+        "union": 'cdr_rect(action="union", rect={...}, rect2={...})',
+    },
+    "cdr_import": {
+        "__call__": 'cdr_import(doc, r"C:/in.svg", center=True)',
+    },
+    "cdr_select": {
+        "by_name": 'cdr_select(doc, name="cdr_ab12")',
+        "all": 'cdr_select(doc, all_items=True)',
+    },
+    "cdr_find": {
+        "__call__": 'cdr_find(doc, name="cdr_ab12")',
+        "by_type": 'cdr_find(doc, type_id=1)',
+    },
+    "cdr_undo": {
+        "__call__": 'cdr_undo(doc, steps=1)',
+        "redo": 'cdr_undo(doc, redo=True)',
+    },
+    "cdr_save": {
+        "__call__": 'cdr_save(doc, r"C:/out.cdr", overwrite=True)',
+    },
+    "cdr_inspect": {
+        "__call__": 'cdr_inspect(doc, include="shapes")',
+    },
+    "cdr_node": {
+        "add_node": 'cdr_node(doc, {"name": n}, action="add_node", x=5, y=5)',
+        "delete": 'cdr_node(doc, {"name": n}, action="delete", index=2)',
+    },
+    "cdr_help": {
+        "__call__": 'cdr_help() / cdr_help(tool="cdr_shape_ops") / '
+                    'cdr_help(tool="cdr_shape_ops", action="extrude")',
+    },
+    "cdr_status": {
+        "__call__": 'cdr_status()',
+    },
+    "cdr_connect": {
+        "__call__": 'cdr_connect(launch=True)',
+    },
+    "cdr_documents": {
+        "__call__": 'cdr_documents()',
+    },
+    "cdr_open": {
+        "new": 'cdr_open(preset="A4")',
+        "existing": 'cdr_open(path=r"C:/in.cdr")',
+    },
+    "cdr_close": {
+        "__call__": 'cdr_close(doc, save=False)',
+    },
+    "cdr_replace_text": {
+        "__call__": 'cdr_replace_text(doc, find="旧", replace="新")',
+    },
+}
+
+
+def _action_examples(tool: str, action: str | None = None) -> dict | list:
+    """返回某工具的用法示例；给 action 时只返回该 action。"""
+    table = _ACTION_EXAMPLES.get(tool) or {}
+    if action:
+        if action in table:
+            return {"tool": tool, "action": action, "example": table[action]}
+        return {"tool": tool, "action": action, "example": None,
+                "available_examples": sorted(k for k in table if k != "__call__"),
+                "hint": "该 action 暂无手写示例；调 cdr_help(tool=…) 看完整 action 清单"}
+    out = [{"action": k, "example": v} for k, v in table.items() if k != "__call__"]
+    if "__call__" in table:
+        out.insert(0, {"action": "(默认用法)", "example": table["__call__"]})
+    return out
+
+
 @mcp.tool()
-def cdr_help(tool: str | None = None) -> dict:
-    """能力目录：不传 tool 返回全部工具与工作流；传 tool 返回该工具的可用 action 清单。
+def cdr_help(tool: str | None = None, action: str | None = None) -> dict:
+    """能力目录：不传参返回全部工具与工作流；传 tool 返回该工具 action 清单；
+    再传 action 返回该 action 的**可直接复制示例**。
 
     建议调用顺序：cdr_help() → cdr_status() → cdr_connect() → cdr_open() → …
     """
@@ -216,6 +416,11 @@ def cdr_help(tool: str | None = None) -> dict:
             return {"error": "unknown_tool", "tool": key,
                     "available": sorted(_TOOL_CATALOG)}
         detail = _catalog_entry(key, entry)
+        ex = _action_examples(key, action)
+        if action:
+            detail["example"] = ex
+        elif ex:
+            detail["examples"] = ex
         detail["workflow"] = WORKFLOW
         return detail
     tools = []
@@ -227,7 +432,9 @@ def cdr_help(tool: str | None = None) -> dict:
         total_actions += len(item.get("actions") or [])
     return {"tool_count": len(tools), "action_count": total_actions,
             "tools": tools, "workflow": WORKFLOW,
-            "hint": "传 tool='cdr_shape_ops' 可查看该工具全部 action"}
+            "examples_tools": sorted(_ACTION_EXAMPLES),
+            "hint": "传 tool='cdr_shape_ops' 看 action 清单；"
+                    "再传 action='extrude' 直接拿可复制的调用示例"}
 
 
 WORKFLOW = [

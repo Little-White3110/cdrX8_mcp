@@ -5073,6 +5073,24 @@ def main() -> int:
           stt88.get("tools") == hl88.get("tool_count"),
           f"status={stt88.get('tools')} catalog={hl88.get('tool_count')}")
 
+    ex89 = server.cdr_help(tool="shape_ops", action="extrude")
+    check("cdr_help(tool, action) 返回可直接复制的示例",
+          (ex89.get("example") or {}).get("example", "").startswith("cdr_shape_ops("),
+          str((ex89.get("example") or {}).get("example"))[:50])
+    top89 = server.cdr_help()
+    check("全部 31 个工具都有用法示例（24+ 有 action 级示例）",
+          len(top89.get("examples_tools") or []) >= 24,
+          f"examples_tools={len(top89.get('examples_tools') or [])}")
+    miss89 = server.cdr_help(tool="shape_ops", action="no_such_op")
+    check("未知 action 给出可用示例清单",
+          (miss89.get("example") or {}).get("example") is None
+          and len((miss89.get("example") or {}).get("available_examples") or []) >= 5,
+          f"avail={len((miss89.get('example') or {}).get('available_examples') or [])}")
+    col89 = server.cdr_help(tool="cdr_color")
+    check("彩色工具目录含内联基础 action（parse/convert/blend 等）",
+          set(["parse", "convert", "blend"]) <= set(col89.get("actions") or []),
+          f"actions={len(col89.get('actions') or [])}")
+
     # ---------------- 16. 并发校验 ----------------
     print("\n[16] 乐观锁（过期 token）")
     stale = server.cdr_create(doc_id, items=[{"type": "line", "x1": 0, "y1": 0,

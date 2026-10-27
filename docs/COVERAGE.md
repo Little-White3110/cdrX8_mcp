@@ -2,7 +2,7 @@
 
 > 目的：证明"还有多少没探"。每一行要么有对应的工具，要么有实测失败证据。
 > 环境：CorelDRAW Graphics Suite X8 `18.0.0.450`（64 位）/ Python 3.11.9 64 位
-> 最近更新：2026-10-28 第八十八波（**易用性**：cdr_help 自描述目录 / 错误 hint / 工具数唯一真源）
+> 最近更新：2026-10-28 第八十九波（**易用性**：action 级用法示例 / 防漂移单测）
 
 ## 怎么得出这份清单
 
@@ -384,7 +384,7 @@
 
 ```powershell
 python -m pytest -q              # 93 项纯逻辑
-python scripts/live_smoke.py     # 586 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
+python scripts/live_smoke.py     # 590 项端到端（真实 CorelDRAW，**跑前先确认没有残留 CorelDRW 进程**）
 ```
 
 联调断言覆盖了上表所有 ✅ 项。反解脚本属于过程产物，已按要求放在 `tmp/` 并在完成时清理；
@@ -1513,8 +1513,8 @@ python scripts/live_smoke.py     # 586 项端到端（真实 CorelDRAW，**跑�
 | 主干 20 接口覆盖 | **670 / 743 = 90.2%** |
 | 已达 100% 的接口 | `IVGWindow`、`IVGFountainFill`、`IVGStyle`、`IVGColorContext`、`IVGDimension`、`IVGPowerClip`、`IVGGuide`、`IVGText`(结构体族)、`IVGToolStateAttributes`、`IVGToolShapeAttributes`、`IVGAppStatus`、`IVGPaletteManager`、`IVGTreeManager`、`IVGOnScreenText`、`IVGOnScreenCurve`、`IVGOutlineStyle`(读)、`IVGAppleEvents`… 共 **30+ 个接口** |
 | MCP 工具数 | **31**（含 cdr_help 能力目录） |
-| 端到端联调 | **586/586 通过**（真实 CorelDRAW 18.0.0.450） |
-| 单元测试 | **93/93 通过** |
+| 端到端联调 | **590/590 通过**（真实 CorelDRAW 18.0.0.450） |
+| 单元测试 | **98/98 通过**（含 5 项目录防漂移） |
 | 已记录 X8 陷阱 | **170 条** |
 | 波次 | 87 轮（从 21.2% 起步） |
 
@@ -1761,6 +1761,24 @@ python -m pytest -q                       # 93 项纯 Python 单元测试
 > 现在它可以先 `cdr_help()` 一次看清 31 个工具与 418 项 action，再按需 `cdr_help(tool=…)`
 > 拿到精确清单；报错时还能直接得到下一步动作。这套自描述是**从源码常量派生的**，
 > 不会随时间腐化 —— 这是本轮相对「堆接口」的核心收益。
+
+## 七之八十八、第八十九波已接入（2026-10-28，action 级用法示例 / 防漂移单测）
+
+| 改进 | 落地 | 效果 |
+|---|---|---|
+| **action 级可复制示例** | `cdr_help(tool="cdr_shape_ops", action="extrude")` | 直接返回 `cdr_shape_ops(doc, op="extrude", target={"name": n}, params={"depth": 20})`；覆盖 **24 个工具 / 60+ 高频 action** |
+| **未知 action 引导** | 同上传错 action | 返回 `available_examples` 清单 + 提示 |
+| **目录防漂移单测**（新增 5 项 pytest） | `tests/test_help_catalog.py` | 断言：目录覆盖全部工具、示例工具/action 真实存在、`cdr_status` 工具数与目录一致、三种 `cdr_help` 形态结构正确 |
+
+> **防漂移单测立刻抓到 4 个真 bug**（这就是写它的价值）：
+> 1. `cdr_node` 的动作是 `add_node` 不是 `add`；
+> 2. `cdr_help(tool="cdr_color")` **漏了内联基础 action**（`parse`/`convert`/`blend` 明明可用却没列出）——
+>    已加 `extra_actions` 合并机制；
+> 3. 我给 `cdr_color` 写的示例 action `cmyk` 根本不存在；
+> 4. 给 `cdr_create` 写的 `fountain`/`text` 不是**可创建类型**（`fountain` 是填充属性）——
+>    改成 `ellipse`/`curve_segment`。
+>
+> **经验**：文档与目录这类"人工维护的元数据"必须配**可执行的断言**，否则一定漂移。
 
 ## 七之二、仍未接入（第三轮候选）
 
